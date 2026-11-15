@@ -96,3 +96,25 @@ batch3–7（公开数据，随镜像 `extra/uci-gas/` 打包）。该策略**�
 验证集/隐藏测试/校准 split 的标签在任何阶段都不参与拟合（`rsi/policy.py` 与
 Guard 双重强制）。报告与 `workspace_report.json` 会标注外部数据的用途、批次与
 隔离说明；关闭开关后流程仍完整可跑（仅性能不同）。
+
+## 11.10 批次流与提交契约（v0.6）
+
+* 官方答疑明确：评测按批次下发数据、**每批都带标签**、先输出“采用哪个模型/不上线”决策才
+  下发下一批。实现见 `rsi/stream/`：每批 materialise 小 package → 复用完整 `Runner(rounds=1)`
+  → 输出 `decision.json`（扁平平台字段 + `decision_detail`）与 `predictions.jsonl`（官方 predict
+  形状）。协议文档：`docs/21_STREAM_PROTOCOL.md`；契约快照与未知项：`docs/19_SUBMISSION_CONTRACT.md`。
+* 镜像 entrypoint 支持 `stream` 子命令；本地/平台 emulator：`scripts/emulate_stream_platform.py`
+  （A/B 10 批 demo + 真实 CLI 2 批均 PASS，0 errors）。
+* 对口合规：Track S（正式）只用官方 train；Track X 外部数据测试床不进入提交谱系；
+  批次输出不包含隐藏标签；`scripts/contract_check.py` 复核规则/公告漂移与 baseline 三方一致。
+
+## 11.11 知识库、软目标与记录（v0.6）
+
+* `knowledge/`：12 篇策展离线文档（漂移分类/检测统计/残差监控/归因/校准迁移/域适应/RUL 校准等），
+  由 `rsi/knowledge.py` 建 FTS5 索引；Agent 通过 `search_knowledge` 检索，prompt 注入 ≤1.8K 字符，
+  内容视为参考数据而非指令；检索次数/hits 写入 state 与看板。
+* `goal_soft`：A 0.7346 / B 409.74 / C 40.524 只是**软目标**（advisory），不阻塞收尾；
+  硬不变量 = 有效输出 + 时间/实验/token 预算 + 严格数据合规 + 完整记录（用户 m03315 要求，
+  测试 `tests/test_goal_nonblocking.py`）。
+* SwanLab：镜像默认 offline 记录每轮训练/决策/指标；操作者可用 `swanlab sync` 公开上传
+  （token 只在环境变量，绝不落仓库/镜像），见 `docs/22_SWANLAB.md`。

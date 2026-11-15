@@ -130,8 +130,11 @@ class Runner:
                  run_dir: Path | None = None, verbose: bool = True,
                  controller: str = "auto", memory: bool = True,
                  memory_dir: str | None = None, db_path: str | None = None,
-                 round_turns: int = 20, judge: bool = True):
-        self.configs = resolve_tasks(keys)
+                 round_turns: int = 20, judge: bool = True,
+                 configs: list[TaskConfig] | None = None):
+        # ``configs`` lets the batch-stream supervisor reuse this whole training
+        # loop on a per-batch package directory instead of the static registry.
+        self.configs = list(configs) if configs is not None else resolve_tasks(keys)
         self.rounds = int(rounds)
         self.seed = int(seed)
         self.state_dir = Path(state_dir)
@@ -185,6 +188,31 @@ class Runner:
         if self.db is not None and hasattr(self.recorder, "attach_db"):
             self.recorder.attach_db(self.db)
         self.recall = Recall(self.db, self.memory, self.skills) if self.memory_enabled else None
+        # -- offline curated knowledge base (Hermes-style procedural memory) --
+        self.knowledge = None
+        self.knowledge_stats = {"available": False, "docs": 0, "engine": "unavailable",
+                                "searches": 0, "hits": 0, "chars_injected": 0,
+                                "docs_detail": []}
+        if self.memory_enabled:
+            try:
+                from rsi.knowledge import default_knowledge
+
+                self.knowledge = default_knowledge()
+                self.knowledge.ensure_index()
+                stats = self.knowledge.stats()
+                try:
+                    slugs = list(self.knowledge.slugs())
+                except Exception:
+                    slugs = []
+                self.knowledge_stats.update({
+                    "available": True,
+                    "docs": int(stats.get("docs", len(slugs))),
+                    "engine": str(stats.get("engine", "unknown")),
+                    "docs_detail": [{"title": slug, "path": f"knowledge/{slug}.md",
+                                     "hits": 0} for slug in slugs],
+                })
+            except Exception as exc:  # knowledge is an enhancement, never a blocker
+                self.log("warn", "-", f"knowledge base unavailable: {exc}")
         self.reviewer = (MemoryReviewer(self.memory, self.db, self.skills, self.runtime, self.run_id)
                          if self.memory_enabled else None)
         self.curator = SkillCurator(self.skills, self.db) if self.memory_enabled else None
@@ -274,7 +302,7 @@ class Runner:
             memory_state["entries"] = len(self.memory.entries())
             memory_state["usage"] = self.memory.usage()
         state = {
-            "schema_version": 2,
+            "schema_version": 3,
             "run": {
                 "run_id": self.run_id,
                 "status": status,
@@ -298,6 +326,37 @@ class Runner:
             "events": self.events[-120:],
         }
         self.recorder.write_state(state)
+
+    def _knowledge_state(self, state: TaskState) -> dict:
+        skills: dict[str, int] = {}
+        for record in state.rounds:
+            env = ((record.get("agent") or {}).get("env") or {})
+            for name in env.get("used_skills") or []:
+                skills[name] = skills.get(name, 0) + 1
+        return {
+            "available": bool(self.knowledge is not None),
+            "searches": int(self.knowledge_stats["searches"]),
+            "hits": int(self.knowledge_stats["hits"]),
+            "docs": [dict(item) for item in self.knowledge_stats["docs_detail"]],
+            "skills_used": [{"skill": name, "uses": uses}
+                            for name, uses in sorted(skills.items(), key=lambda kv: -kv[1])],
+        }
+
+    def _goal_soft(self, state: TaskState) -> dict:
+        """Advisory target for the dashboard; never blocks completion (user m03315)."""
+        cfg = state.config
+        targets = {"A": 0.7346, "B": 409.74, "C": 40.524}
+        target = targets.get(cfg.key)
+        current = state.selection_metrics.get("primary")
+        if target is None or current is None:
+            return {"target": target, "current": current, "gap": None,
+                    "verdict": "unknown", "degraded": state.degraded,
+                    "note": "soft target, non-blocking"}
+        gap = (float(current) - target) if cfg.direction == "higher" else (target - float(current))
+        return {"target": target, "current": float(current), "gap": round(gap, 6),
+                "verdict": "met" if gap >= 0 else "missed",
+                "degraded": state.degraded,
+                "note": "soft target, non-blocking"}
 
     def _task_state(self, state: TaskState) -> dict:
         cfg = state.config
@@ -337,6 +396,9 @@ class Runner:
                        "experiments_cap": self.experiments_cap},
             "rounds": state.rounds,
             "panel": state.panel,
+            "goal_soft": self._goal_soft(state),
+            "knowledge": self._knowledge_state(state),
+            "batches": [],
         }
 
 
@@ -444,6 +506,7 @@ class Runner:
         if state.controller == "kernel" and self.llm_ready:
             kernel = Kernel(config, self.runtime, guard, memory=self.memory,
                             skills=self.skills, recall=self.recall,
+                            knowledge=self.knowledge,
                             recorder=self.recorder, run_id=self.run_id,
                             max_turns=self.round_turns,
                             round_timeout=float(os.environ.get("RSI_ROUND_TIMEOUT", 1800)),
@@ -746,6 +809,15 @@ class Runner:
                       history: list[dict], memory_snapshot: str,
                       goal_loop: GoalLoop | None) -> dict:
         cfg = state.config
+        knowledge_text = ""
+        if self.knowledge is not None:
+            try:
+                from rsi.knowledge import drift_context_for_brief
+
+                knowledge_text = drift_context_for_brief(drift, k=3)
+                self.knowledge_stats["chars_injected"] = len(knowledge_text)
+            except Exception:
+                knowledge_text = ""
         return {
             "task": {"key": cfg.key, "name": cfg.name, "name_en": cfg.name_en,
                      "task": cfg.task, "primary_metric": cfg.primary_metric,
@@ -762,9 +834,12 @@ class Runner:
             "history": history,
             "drift": {k: drift.get(k) for k in
                       ("severity", "score", "feature_shift", "max_feature_shift",
-                       "ks_max", "causes", "evidence")},
+                       "ks_max", "causes", "evidence", "drift_type",
+                       "knowledge_hints", "attribution")},
             "catalog": strategy_catalog_text() + "\n" + postprocess_catalog_text(),
             "skills": self.skills.index_text() if self.skills else "",
+            "knowledge": knowledge_text,
+            "knowledge_stats": dict(self.knowledge_stats),
         }
 
     def _run_kernel_round(self, state: TaskState, kernel: Kernel, coordinator: Coordinator,
@@ -797,6 +872,8 @@ class Runner:
         self.agent_stats["skill_writes"] += int(env.get("skill_writes", 0))
         usage = outcome.usage or {}
         self.agent_stats["kernel_tokens"] += int(usage.get("input", 0)) + int(usage.get("output", 0))
+        self.knowledge_stats["searches"] += int(env.get("knowledge_searches", 0) or 0)
+        self.knowledge_stats["hits"] += int(env.get("knowledge_hits", 0) or 0)
         state.agent_stats = dict(self.agent_stats)
 
         proposals = [ExperimentProposal(
@@ -838,6 +915,7 @@ class Runner:
                   "approvals": list(range(len(proposals))), "vetoes": [],
                   "violations": env.get("violations", [])}
         agent_record = outcome.to_record()
+        agent_record["env"] = dict(env or {})
         agent_record["brief"] = {
             "memory_chars": len(memory_snapshot or ""),
             "lessons_chars": len(brief.get("lessons") or ""),
@@ -914,7 +992,10 @@ class Runner:
             "llm": {"tokens_used": self.budget.used - token_before,
                     "calls": self.budget.calls,
                     "roles": list(roles) if roles is not None else list(coordinator_roles(proposals))},
-            "agent": agent or {},
+            "agent": dict(agent or {}, proposal_sources=(
+                (agent or {}).get("env", {}).get("proposal_sources")
+                if isinstance((agent or {}).get("env"), dict) else None
+            ) or {"seed": len(proposals), "agent": 0, "knowledge": 0, "panel": 0}),
             "created_at": utcnow_iso(),
         }
         state.rounds.append(record)

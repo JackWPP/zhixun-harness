@@ -50,6 +50,24 @@
   };
   const RECORD_TYPE = { event: "事件", round: "轮次", decision: "决策", panel: "Panel", llm_call: "LLM" };
   const GOAL_STATUS = { running: "进行中", done: "已完成", failed: "失败", blocked: "受阻", pending: "待开始" };
+  const SOFT_VERDICT = {
+    met: { label: "已达标", cls: "is-met" },
+    missed: { label: "未达标", cls: "is-missed" },
+    unknown: { label: "未知", cls: "is-unknown" },
+  };
+  const DRIFT_TYPE_LABEL = {
+    covariate_shift: "协变量漂移",
+    load_regime_shift: "工况漂移",
+    label_shift: "标签漂移",
+    concept_shift: "概念漂移",
+    none: "无显著漂移",
+  };
+  const PROPOSAL_SOURCES = {
+    seed: { label: "种子", en: "SEED", cls: "is-seed" },
+    agent: { label: "Agent 提案", en: "AGENT", cls: "is-agent" },
+    knowledge: { label: "知识命中", en: "KNOWLEDGE", cls: "is-knowledge" },
+    panel: { label: "Panel 讨论", en: "PANEL", cls: "is-panel" },
+  };
 
   const ui = {
     payload: null,
@@ -67,6 +85,8 @@
     lastError: "",
     memory: null,
     agent: null,
+    goal: null,
+    knowledge: null,
     search: { query: "", items: null, total: 0, busy: false, error: "", done: false },
   };
 
@@ -668,6 +688,307 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* 渲染：软目标 / 批次 / 漂移雷达 / 知识 / 提案来源（schema v3）        */
+  /* ------------------------------------------------------------------ */
+  function fmtMetricValue(metric, value) {
+    const n = num(value);
+    return n === null ? "—" : fmtMetric(metric, n);
+  }
+
+  function softGoalAvailable(soft) {
+    if (!soft || typeof soft !== "object") return false;
+    if (soft.available === false) return false;
+    return Boolean(soft.targets && Object.keys(soft.targets).length) || num(soft.gap) !== null;
+  }
+
+  function goalSoftHtml(task) {
+    const soft = task.goal_soft && typeof task.goal_soft === "object" ? task.goal_soft : null;
+    const verdict = (soft && SOFT_VERDICT[soft.verdict]) || SOFT_VERDICT.unknown;
+    const metric = (soft && soft.metric) || task.primary_metric || "";
+    const direction = (soft && soft.direction) || task.direction || "higher";
+    const degraded = Boolean(soft && soft.degraded);
+    const available = softGoalAvailable(soft);
+    const targets = available ? soft.targets || {} : {};
+    const currents = available ? soft.current || {} : {};
+    const metricKeys = Object.keys(targets).length ? Object.keys(targets) : Object.keys(currents);
+    const targetValue = metricKeys.length ? num(targets[metricKeys[0]]) : null;
+    const currentValue = metricKeys.length ? num(currents[metricKeys[0]]) : null;
+    const gap = available ? num(soft.gap) : null;
+    let coverage = 0;
+    if (targetValue && currentValue) {
+      coverage = direction === "lower" ? targetValue / currentValue : currentValue / targetValue;
+      coverage = Math.max(0, Math.min(1, coverage));
+    }
+    const goalLabel = task.goal && task.goal.goal ? task.goal.goal : "";
+    if (!available) {
+      return `<article class="goal-card is-empty">
+        <div class="goal-card-head">
+          <span class="task-badge">${esc(task.key)}</span>
+          <h3>${esc(task.name || "任务 " + task.key)}</h3>
+          <span class="goal-verdict is-unknown">未提供</span>
+        </div>
+        <p class="goal-empty">该任务未提供 goal_soft（软目标降级：仅展示当前指标与主目标）。</p>
+        ${goalLabel ? `<p class="goal-evidence">主目标：${esc(goalLabel)}</p>` : ""}
+      </article>`;
+    }
+    return `<article class="goal-card ${degraded ? "is-degraded" : ""}">
+        <div class="goal-card-head">
+          <span class="task-badge">${esc(task.key)}</span>
+          <h3>${esc(task.name || "任务 " + task.key)}</h3>
+          <span class="goal-verdict ${verdict.cls}">${verdict.label}</span>
+        </div>
+        <div class="goal-metrics">
+          <div class="goal-metric"><span>软目标</span><b class="mono">${fmtMetricValue(metric, targetValue)}</b></div>
+          <div class="goal-metric"><span>当前</span><b class="mono">${fmtMetricValue(metric, currentValue)}</b></div>
+          <div class="goal-metric"><span>缺口</span><b class="mono ${gap !== null && gap > 0 ? "is-bad" : "is-good"}">${fmtMetricValue(metric, gap)}</b></div>
+        </div>
+        <div class="goal-bar" role="img" aria-label="软目标覆盖 ${Math.round(coverage * 100)}%">
+          <i style="width:${(coverage * 100).toFixed(1)}%"></i>
+        </div>
+        <div class="goal-chips">
+          <span class="metric-tag mono">${esc(metric || "metric")}</span>
+          <span class="goal-flag ${degraded ? "is-warn" : "is-ok"}">${degraded ? "degraded · 已退化" : "正常"}</span>
+          <span class="goal-note">${esc((soft && soft.note) || "软目标，不阻塞完成")}</span>
+        </div>
+        ${soft.evidence ? `<p class="goal-evidence">${esc(soft.evidence)}</p>` : ""}
+      </article>`;
+  }
+
+  function batchTimelineHtml(batches) {
+    if (!Array.isArray(batches) || !batches.length) {
+      return '<p class="empty mini">尚无批次记录（state.batches 缺失或为空，自动降级）。</p>';
+    }
+    return `<ol class="batch-timeline">${batches.map((raw) => {
+      const batch = raw && typeof raw === "object" ? raw : {};
+      const before = batch.before_metrics && typeof batch.before_metrics === "object" ? batch.before_metrics : {};
+      const after = batch.after_metrics && typeof batch.after_metrics === "object" ? batch.after_metrics : {};
+      const metric = Object.keys(after)[0] || Object.keys(before)[0] || "";
+      const beforeValue = metric ? num(before[metric]) : null;
+      const afterValue = metric ? num(after[metric]) : null;
+      let deltaHtml = '<span class="batch-delta">—</span>';
+      if (beforeValue !== null && afterValue !== null) {
+        const delta = afterValue - beforeValue;
+        const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "◆";
+        deltaHtml = `<span class="batch-delta mono">${arrow} ${esc(fmtMetric(metric, Math.abs(delta)))}</span>`;
+      }
+      return `<li class="batch-item">
+          <div class="batch-index mono">B${esc(batch.index === undefined ? "?" : batch.index)}</div>
+          <div class="batch-main">
+            <span class="batch-task">任务 ${esc(batch.task || "—")}</span>
+            <span class="batch-metric mono">${esc(metric || "metric")} <b>${esc(beforeValue === null ? "—" : fmtMetric(metric, beforeValue))}</b> → <b>${esc(afterValue === null ? "—" : fmtMetric(metric, afterValue))}</b></span>
+            ${deltaHtml}
+          </div>
+          ${decisionBadge(batch.decision)}
+          ${batch.note ? `<p class="batch-note">${esc(batch.note)}</p>` : ""}
+        </li>`;
+    }).join("")}</ol>`;
+  }
+
+  function clamp01(value) {
+    const n = num(value);
+    return n === null ? 0 : Math.max(0, Math.min(1, n));
+  }
+
+  function metricPercentText(value) {
+    return `${Math.round(clamp01(value) * 100)}%`;
+  }
+
+  function radarHtml(drift) {
+    const d = drift && typeof drift === "object" ? drift : {};
+    const severity = DRIFT[String(d.severity || "").toLowerCase()];
+    const axes = [
+      { label: "严重度", value: clamp01(d.score) },
+      { label: "特征位移", value: clamp01(d.feature_shift) },
+      { label: "KS max", value: clamp01(d.ks_max) },
+      { label: "等级", value: severity ? severity.level / 3 : 0 },
+    ];
+    const cx = 100;
+    const cy = 84;
+    const radius = 52;
+    const pointAt = (index, scale) => {
+      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / axes.length;
+      return [cx + Math.cos(angle) * radius * scale, cy + Math.sin(angle) * radius * scale];
+    };
+    const grid = [0.25, 0.5, 0.75, 1].map((scale) => {
+      const points = axes.map((_, index) => pointAt(index, scale).map((v) => v.toFixed(1)).join(",")).join(" ");
+      return `<polygon points="${points}" class="radar-grid${scale === 1 ? " is-outer" : ""}" />`;
+    }).join("");
+    const spokes = axes.map((_, index) => {
+      const [x, y] = pointAt(index, 1);
+      return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="radar-spoke" />`;
+    }).join("");
+    const areaPoints = axes.map((axis, index) => pointAt(index, axis.value).map((v) => v.toFixed(1)).join(",")).join(" ");
+    const labels = axes.map((axis, index) => {
+      const [x, y] = pointAt(index, 1.38);
+      const anchor = Math.abs(x - cx) < 8 ? "middle" : x > cx ? "start" : "end";
+      return `<text x="${x.toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="${anchor}" class="radar-label">${esc(axis.label)}</text>`;
+    }).join("");
+    const aria = `漂移雷达：严重度 ${metricPercentText(d.score)}，特征位移 ${metricPercentText(d.feature_shift)}，KS max ${metricPercentText(d.ks_max)}`;
+    return `<svg viewBox="0 0 200 172" class="radar-svg" role="img" aria-label="${esc(aria)}">${grid}${spokes}<polygon points="${areaPoints}" class="radar-area" />${axes.map((axis, index) => {
+      const [x, y] = pointAt(index, axis.value);
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" class="radar-point" />`;
+    }).join("")}${labels}</svg>`;
+  }
+
+  function driftRadarHtml(goalData) {
+    const tasks = goalData && Array.isArray(goalData.tasks) ? goalData.tasks : [];
+    if (!tasks.length) {
+      return '<p class="empty mini">暂无漂移数据（/api/goal 不可用时自动降级）。</p>';
+    }
+    return tasks.map((task) => {
+      const drift = task.drift && typeof task.drift === "object" ? task.drift : {};
+      const sevKey = DRIFT[String(drift.severity || "").toLowerCase()] ? String(drift.severity).toLowerCase() : "stable";
+      const severity = DRIFT[sevKey];
+      const typeLabel = DRIFT_TYPE_LABEL[drift.type] || drift.type || "未分类";
+      const attribution = Array.isArray(drift.attribution) ? drift.attribution.slice(0, 4) : [];
+      const causes = attribution.length ? attribution : Array.isArray(drift.causes) ? drift.causes.slice(0, 4) : [];
+      return `<article class="radar-card sev-${esc(sevKey)}">
+          <div class="radar-card-head">
+            <span class="task-badge">${esc(task.key)}</span>
+            <h4>${esc(task.name || "任务 " + task.key)}</h4>
+            <span class="drift-sev sev-${esc(sevKey)}">${severity.label}</span>
+          </div>
+          <div class="radar-body">
+            ${radarHtml(drift)}
+            <div class="radar-meta">
+              <p><span>类型</span><b>${esc(typeLabel)}</b></p>
+              <p><span>归因</span>${causes.length ? causes.map((item) => `<i class="attrib-chip">${esc(item)}</i>`).join("") : '<b class="muted">—</b>'}</p>
+              ${drift.evidence ? `<p class="radar-evidence">${esc(drift.evidence)}</p>` : ""}
+            </div>
+          </div>
+        </article>`;
+    }).join("");
+  }
+
+  function knowledgeCardHtml() {
+    const data = ui.knowledge;
+    const knowledge = data && data.knowledge && typeof data.knowledge === "object" ? data.knowledge : null;
+    const available = Boolean(knowledge) && knowledge.available !== false;
+    if (!available) {
+      return '<p class="empty mini">知识接口不可用（/api/knowledge 未返回或为空），已降级显示。</p>';
+    }
+    const docs = Array.isArray(knowledge.docs) ? knowledge.docs : [];
+    const skills = Array.isArray(knowledge.skills_used) && knowledge.skills_used.length
+      ? knowledge.skills_used
+      : (Array.isArray(data.skills_used) ? data.skills_used : []);
+    const lessons = Array.isArray(data.lessons) ? data.lessons : [];
+    const maxUses = skills.reduce((max, skill) => Math.max(max, num(skill.uses) || 0), 0);
+    return `<div class="knowledge-stats">
+        <div class="knowledge-stat"><span>知识命中</span><b class="mono">${fmtInt(knowledge.hits)}</b></div>
+        <div class="knowledge-stat"><span>文档</span><b class="mono">${fmtInt(docs.length)}</b></div>
+        <div class="knowledge-stat"><span>lessons</span><b class="mono">${fmtInt(lessons.length)}</b></div>
+        <div class="knowledge-stat"><span>技能</span><b class="mono">${fmtInt(skills.length)}</b></div>
+      </div>
+      ${docs.length ? `<ul class="doc-list">${docs.slice(0, 5).map((raw) => {
+        const doc = raw && typeof raw === "object" ? raw : {};
+        return `<li><span class="doc-title">${esc(doc.title || doc.name || doc.path || "文档")}</span>
+            <span class="doc-path mono">${esc(doc.path || "")}</span><b class="mono">${fmtInt(doc.hits)}</b></li>`;
+      }).join("")}</ul>` : '<p class="empty mini">暂无知识文档命中。</p>'}
+      ${skills.length ? `<div class="skill-bars">${skills.slice(0, 6).map((raw) => {
+        const skill = raw && typeof raw === "object" ? raw : {};
+        const uses = num(skill.uses) || 0;
+        const width = maxUses > 0 ? (uses / maxUses) * 100 : 0;
+        return `<div class="skill-row"><span class="skill-name">${esc(skill.skill || "技能")}</span>
+            <span class="skill-bar"><i style="width:${width.toFixed(1)}%"></i></span>
+            <b class="mono">${fmtInt(uses)}</b></div>`;
+      }).join("")}</div>` : ""}`;
+  }
+
+  function aggregateProposalSources(agentData) {
+    const totals = { seed: 0, agent: 0, knowledge: 0, panel: 0 };
+    let rounds = 0;
+    const tasks = agentData && Array.isArray(agentData.tasks) ? agentData.tasks : [];
+    for (const task of tasks) {
+      const taskRounds = Array.isArray(task.rounds) ? task.rounds : [];
+      for (const round of taskRounds) {
+        const source = round && round.agent && round.agent.proposal_sources;
+        if (!source || typeof source !== "object" || !Object.keys(source).length) continue;
+        rounds += 1;
+        for (const key of Object.keys(totals)) totals[key] += num(source[key]) || 0;
+      }
+    }
+    return { totals, rounds };
+  }
+
+  function proposalBarHtml(sources) {
+    const safe = sources && typeof sources === "object" ? sources : {};
+    const order = ["seed", "agent", "knowledge", "panel"];
+    const total = order.reduce((sum, key) => sum + (num(safe[key]) || 0), 0);
+    if (!total) {
+      return '<p class="empty mini">暂无提案来源数据（round.agent.proposal_sources 缺失时自动降级）。</p>';
+    }
+    return `<div class="proposal-bar" role="img" aria-label="提案来源占比">
+        ${order.map((key) => {
+          const source = PROPOSAL_SOURCES[key];
+          const value = num(safe[key]) || 0;
+          const pct = (value / total) * 100;
+          return `<span class="proposal-seg ${source.cls}" style="width:${pct.toFixed(2)}%" title="${source.label} ${value}（${pct.toFixed(0)}%）"></span>`;
+        }).join("")}
+      </div>
+      <div class="proposal-legend">
+        ${order.map((key) => {
+          const source = PROPOSAL_SOURCES[key];
+          const value = num(safe[key]) || 0;
+          const pct = (value / total) * 100;
+          return `<span class="proposal-item"><i class="${source.cls}" aria-hidden="true"></i>${source.label} <b class="mono">${value}</b><em>${pct.toFixed(0)}%</em></span>`;
+        }).join("")}
+      </div>`;
+  }
+
+  function renderGoal() {
+    const panel = $("goal-panel");
+    if (!panel) return;
+    const data = ui.goal;
+    if (!data || !Array.isArray(data.tasks) || !data.tasks.length) {
+      panel.innerHTML = '<p class="empty">软目标数据不可用（/api/goal 未返回或为空）；主看板其余功能不受影响。</p>';
+      return;
+    }
+    const summary = data.summary && typeof data.summary === "object" ? data.summary : {};
+    const softCount = num(summary.goal_soft) !== null
+      ? num(summary.goal_soft)
+      : data.tasks.filter((task) => softGoalAvailable(task.goal_soft)).length;
+    const degradedCount = num(summary.degraded) !== null
+      ? num(summary.degraded)
+      : data.tasks.filter((task) => task.goal_soft && task.goal_soft.degraded).length;
+    const batches = Array.isArray(data.batches) ? data.batches : [];
+    const batchIndex = num(data.batch_index) !== null ? num(data.batch_index) : batches.length;
+    panel.innerHTML = `<div class="goal-summary">
+        <span class="goal-summary-item"><b class="mono">${softCount}</b> 项软目标</span>
+        <span class="goal-summary-item is-warn"><b class="mono">${degradedCount}</b> 项 degraded</span>
+        <span class="goal-summary-item"><b class="mono">${batchIndex}</b> 个批次</span>
+        <span class="goal-note-pill">软目标，不阻塞完成</span>
+      </div>
+      ${data.note ? `<p class="goal-banner">${esc(data.note)}</p>` : ""}
+      <div class="goal-grid">${data.tasks.map(goalSoftHtml).join("")}</div>
+      <div class="batch-block">
+        <div class="batch-head"><h3>批次时间线 <i>BATCH TIMELINE</i></h3><span class="panel-sub mono">BATCH INDEX ${esc(batchIndex)}</span></div>
+        ${batchTimelineHtml(batches)}
+      </div>`;
+  }
+
+  function renderInsight() {
+    const panel = $("insight-panel");
+    if (!panel) return;
+    const proposals = aggregateProposalSources(ui.agent);
+    const knowledgeReady = Boolean(ui.knowledge && ui.knowledge.knowledge);
+    panel.innerHTML = `<div class="insight-grid">
+        <section class="insight-card radar-panel">
+          <div class="card-section-head"><h3>漂移雷达 <i>DRIFT RADAR</i></h3><span class="panel-sub mono">score · shift · KS</span></div>
+          <div class="radar-list">${driftRadarHtml(ui.goal)}</div>
+        </section>
+        <section class="insight-card knowledge-panel">
+          <div class="card-section-head"><h3>知识 / 技能 <i>KNOWLEDGE</i></h3><span class="panel-sub mono">${knowledgeReady ? "db + state" : "降级"}</span></div>
+          ${knowledgeCardHtml()}
+        </section>
+        <section class="insight-card proposal-panel">
+          <div class="card-section-head"><h3>提案来源 <i>PROPOSALS</i></h3><span class="panel-sub mono">${proposals.rounds} 轮有数据</span></div>
+          ${proposalBarHtml(proposals.totals)}
+          <p class="proposal-hint">来源统计自 round.agent.proposal_sources（seed / agent / knowledge / panel）。</p>
+        </section>
+      </div>`;
+  }
+
+  /* ------------------------------------------------------------------ */
   /* 渲染：记忆与自主内核                                                */
   /* ------------------------------------------------------------------ */
   function controllerBadge(controller) {
@@ -1115,6 +1436,40 @@
     const shaCandidate = String(round.candidate_checkpoint_sha256 || "");
     const statusLabel = round.status === "running" ? "进行中" : round.status === "failed" ? "失败" : "已完成";
 
+    const goalTask = ui.goal && Array.isArray(ui.goal.tasks)
+      ? ui.goal.tasks.find((item) => String(item.key) === String(task.key))
+      : null;
+    const soft = goalTask && goalTask.goal_soft && typeof goalTask.goal_soft === "object" ? goalTask.goal_soft : null;
+    const softAvailable = softGoalAvailable(soft);
+    let softGoalSection = "";
+    if (softAvailable) {
+      const softMetric = soft.metric || metric;
+      const softKeys = Object.keys(soft.targets || {}).length ? Object.keys(soft.targets) : Object.keys(soft.current || {});
+      const softTarget = softKeys.length ? num((soft.targets || {})[softKeys[0]]) : null;
+      const softCurrent = softKeys.length ? num((soft.current || {})[softKeys[0]]) : null;
+      const softGap = num(soft.gap);
+      const softVerdict = SOFT_VERDICT[soft.verdict] || SOFT_VERDICT.unknown;
+      softGoalSection = `
+        <section class="drawer-section">
+          <h4>软目标 <i>SOFT GOAL</i></h4>
+          <div class="soft-goal-row">
+            <span class="goal-metric"><span>目标</span><b class="mono">${fmtMetricValue(softMetric, softTarget)}</b></span>
+            <span class="goal-metric"><span>当前</span><b class="mono">${fmtMetricValue(softMetric, softCurrent)}</b></span>
+            <span class="goal-metric"><span>缺口</span><b class="mono ${softGap !== null && softGap > 0 ? "is-bad" : "is-good"}">${fmtMetricValue(softMetric, softGap)}</b></span>
+            <span class="goal-verdict ${softVerdict.cls}">${softVerdict.label}</span>
+            ${soft.degraded ? '<span class="goal-flag is-warn">degraded</span>' : ""}
+          </div>
+          <p class="goal-note">软目标，不阻塞完成</p>
+          ${soft.evidence ? `<p class="goal-evidence">${esc(soft.evidence)}</p>` : ""}
+        </section>`;
+    }
+    const proposalSources = agent && agent.proposal_sources && typeof agent.proposal_sources === "object" && Object.keys(agent.proposal_sources).length
+      ? agent.proposal_sources
+      : null;
+    const proposalSection = proposalSources
+      ? `<section class="drawer-section"><h4>提案来源 <i>PROPOSALS</i></h4>${proposalBarHtml(proposalSources)}</section>`
+      : "";
+
     drawer.innerHTML = `
       <div class="drawer-head">
         <div>
@@ -1143,6 +1498,8 @@
           <h4>本轮指标 <i>METRICS</i></h4>
           ${metricTable(metrics)}
         </section>
+        ${softGoalSection}
+        ${proposalSection}
         ${goal && (goal.goal || goal.rounds_target) ? `
         <section class="drawer-section">
           <h4>任务目标 <i>GOAL</i></h4>
@@ -1252,6 +1609,8 @@
     renderBudget();
     renderTasks();
     renderKernel();
+    renderGoal();
+    renderInsight();
     renderEvents();
     renderSummary();
     renderFooter();
@@ -1340,11 +1699,13 @@
       return;
     }
     try {
-      const [stateResult, eventsResult, memoryResult, agentResult] = await Promise.allSettled([
+      const [stateResult, eventsResult, memoryResult, agentResult, goalResult, knowledgeResult] = await Promise.allSettled([
         fetchJSON("/api/state"),
         fetchJSON(`/api/events?limit=${EVENTS_LIMIT}`),
         fetchJSON("/api/memory", 6000),
         fetchJSON("/api/agent", 6000),
+        fetchJSON("/api/goal", 6000),
+        fetchJSON("/api/knowledge", 6000),
       ]);
       if (stateResult.status === "rejected") {
         throw new Error(stateResult.reason && stateResult.reason.name === "AbortError" ? "请求超时" : String(stateResult.reason));
@@ -1373,12 +1734,18 @@
       if (agentResult.status === "fulfilled" && agentResult.value.status === 200 && agentResult.value.body && agentResult.value.body.ok !== false) {
         ui.agent = agentResult.value.body;
       }
+      if (goalResult.status === "fulfilled" && goalResult.value.status === 200 && goalResult.value.body && goalResult.value.body.ok !== false) {
+        ui.goal = goalResult.value.body;
+      }
+      if (knowledgeResult.status === "fulfilled" && knowledgeResult.value.status === 200 && knowledgeResult.value.body && knowledgeResult.value.body.ok !== false) {
+        ui.knowledge = knowledgeResult.value.body;
+      }
       if (data._meta && data._meta.error) {
         showBanner(`数据源降级：${data._meta.error}`, "warn");
       } else {
         hideBanner();
       }
-      const kernelSignature = `${ui.memory ? JSON.stringify(ui.memory) : ""}|${ui.agent ? JSON.stringify(ui.agent) : ""}`;
+      const kernelSignature = `${ui.memory ? JSON.stringify(ui.memory) : ""}|${ui.agent ? JSON.stringify(ui.agent) : ""}|${ui.goal ? JSON.stringify(ui.goal) : ""}|${ui.knowledge ? JSON.stringify(ui.knowledge) : ""}`;
       const signature = signatureOf(data) + `|${ui.events.length}|${ui.events[0] ? ui.events[0].ts : ""}|${hashString(kernelSignature)}`;
       if (signature !== ui.signature) {
         ui.signature = signature;

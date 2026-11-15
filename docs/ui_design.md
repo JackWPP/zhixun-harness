@@ -10,7 +10,8 @@
 ## 1. 快速启动
 
 ```bash
-# 1) 一条命令启动：未指定 --state 时自动生成 schema v2 演示数据包
+# 1) 一条命令启动：未指定 --state 时自动生成 schema v3 演示数据包
+#    （含软目标 / 批次时间线 / 漂移雷达 / 知识 / 提案来源）
 ./.venv/bin/python -m rsi.dashboard --port 7861
 #    → .scratch/demo_state.json / records.jsonl / rounds.jsonl
 #      + memory/*.md + rsi_state.db
@@ -32,11 +33,11 @@
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `--state` | 自动生成 v2 demo 包 | harness 原子写出的 `state.json` 路径 |
+| `--state` | 自动生成 v3 demo 包 | harness 原子写出的 `state.json` 路径 |
 | `--records` | 与 state 同目录的 `records.jsonl` | 事件/轮次追加日志路径；不存在时自动忽略 |
 | `--host` | `127.0.0.1` | 监听地址；容器内演示可设 `0.0.0.0` |
 | `--port` | `7861` | 监听端口；`0` 表示随机端口（测试用） |
-| `--demo-out` | `.scratch/demo_state.json` | 未给 `--state` 时 v2 demo 包输出位置（sidecar 文件写到同目录） |
+| `--demo-out` | `.scratch/demo_state.json` | 未给 `--state` 时 v3 demo 包输出位置（sidecar 文件写到同目录） |
 | `--refresh-demo` | 关闭 | 未给 `--state` 时强制重新生成 demo |
 | `--quiet` | 关闭 | 关闭访问日志（pytest 中使用） |
 | `--version` | — | 打印版本后退出 |
@@ -75,6 +76,10 @@
 │ │ [Panel 讨论]  │ │               │ │               │                       │
 │ └───────────────┘ └───────────────┘ └───────────────┘                       │
 ├─────────────────────────────────────────────────────────────────────────────┤
+│ 软目标与批次（>=1210px 三列软目标卡）：目标 / 当前 / 缺口 + 覆盖条 + 批次线 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 漂移雷达与知识（>=1210px 三列）：4 轴雷达 + 知识命中/技能 + 提案来源堆叠条  │
+├─────────────────────────────────────────────────────────────────────────────┤
 │ 记忆与自主内核（>=1210px 三列）：MEMORY 用量 / lessons / 策略胜率 + 技能    │
 │  + controller 徽章 / kernel 计数 + records·rounds 检索框与结果              │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -85,7 +90,7 @@
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 页脚：版本 / 数据源路径 / 生成时间 / schema 版本 / 数据延迟                  │
 └─────────────────────────────────────────────────────────────────────────────┘
-                                    右侧抽屉：单轮证据（假设/变更/指标/panel/sha）
+                                    右侧抽屉：单轮证据（假设/变更/指标/软目标/提案/panel/sha）
 ```
 
 ### 交互
@@ -99,6 +104,9 @@
 | 事件流级别 / 任务胶囊 | 前端过滤 `info / warn / error` 与 `A / B / C` |
 | 悬停指标轨迹圆点 | 显示第几轮与指标值（原生 SVG `<title>`） |
 | 悬停漂移仪表 | 显示漂移原因与证据文本 |
+| 「软目标与批次」面板 | 每任务显示软目标、当前值、缺口（>0 为未达标）、degraded 徽章与证据，面板固定标注「软目标，不阻塞完成」；批次时间线逐批展示 `before → after` 指标、Δ 与 decision |
+| 「漂移雷达与知识」面板 | 每任务 4 轴 SVG 雷达（严重度 / 特征位移 / KS max / 等级）、漂移类型与归因 chips；知识命中/文档/技能条；提案来源堆叠条（seed / agent / knowledge / panel） |
+| 抽屉内滚动到 METRICS 之后 | 额外显示本任务软目标（目标/当前/缺口/verdict）与本轮提案来源占比 |
 | 搜索框输入后按 Enter / 点「检索」 | 调用 `/api/records/search`，列出最多 20 条命中 records.jsonl / rounds.jsonl 的记录；`Esc` 或「清除结果」复位 |
 | 查看任务卡头部 KERNEL / PIPELINE 徽章 | controller 指示：青色=自主内核，琥珀=流水线，取值来自 `/api/memory` 的 `run_agent.controller` |
 | 断网 / 服务停止 | 顶部红色横幅提示，保留上次数据，每 2s 自动重试；恢复后横幅消失 |
@@ -112,7 +120,7 @@
 
 ---
 
-## 3. 状态数据契约（schema v1 / v2，向后兼容）
+## 3. 状态数据契约（schema v1 / v2 / v3，向后兼容）
 
 `state.json` 由 harness 用 **原子替换**（临时文件 + `os.replace`）写出，看板每次请求按 `(mtime_ns, size)` 判断是否重解析。
 所有时间字段为 ISO 8601 字符串（建议 UTC，如 `2026-11-15T06:46:15+00:00`）；缺失字段按可选处理，前端做空值降级。
@@ -260,6 +268,20 @@
 
 看板对每个字段做类型防御：字段缺失、`null` 或结构不符时该区块显示空态，不影响其他面板。
 
+### 3.9.1 schema v3 增量字段（全部可选）
+
+`schema_version=3` 继续**只追加字段**；v1/v2 的 state.json 仍可直接展示：`/api/goal` 在无 `goal_soft` 时返回 `tasks` 空数组与降级提示，`/api/knowledge` 返回 `knowledge.available=false`，页面显示空态而非报错。
+
+| 路径 | 字段 | 说明 |
+| --- | --- | --- |
+| `tasks[]` | `goal_soft` | 软目标（仅展示，不阻塞完成）：`targets{metric:value}`、`current{metric:value}`、`gap`（>0 表示未达标）、`degraded`（bool）、`verdict`（`met` / `missed` / `unknown`）、`evidence`、`metric`、`direction`、`note` |
+| `tasks[]` | `drift` / `drift_extra` | 漂移雷达数据：`type`（如 `covariate_shift` / `load_regime_shift` / `none`）、`severity`、`score`、`feature_shift`、`ks_max`、`attribution[]`、`causes[]`、`evidence` |
+| `state` | `knowledge` | 知识层统计：`hits`（int / list / dict 均可）、`docs[{title,path,hits}]`、`skills_used[]`、`hits_detail` |
+| `state` | `batches[]` / `batch_index` | 批次时间线：`index`、`task`、`before_metrics{}`、`after_metrics{}`、`decision`、`note`；`batch_index` 缺省时回退批次数量 |
+| `rounds[]` | `agent.proposal_sources` | 提案来源计数：`{"seed":n,"agent":n,"knowledge":n,"panel":n}`；缺失时前端显示降级占位 |
+
+`gap` 的符号约定在看板侧统一：目标为「越大越好」时 `gap = target - current`，为「越小越好」时 `gap = current - target`；`gap > 0` 一律表示未达标。`degraded` 同时接受布尔与字符串。
+
 ### 3.10 运行目录 sidecar 文件
 
 | 文件 / 目录 | 内容 | 看板行为 |
@@ -279,7 +301,9 @@
 | GET | `/app.js`、`/style.css`、`/favicon.svg` | 静态资源白名单，无目录浏览 |
 | GET | `/api/state` | 完整 state + `ok` + `_meta`；数据源不可用时 `503` |
 | GET | `/api/memory` | 记忆与自主内核聚合：`run_agent`/`controller`、`memory`、三任务 `memory`+`goal`、`strategy_stats`、`lessons`（sqlite 优先，state 回退）、`skill_usage`、`memory_files`、`db{available}` |
-| GET | `/api/agent?task=A` | 内核数据：`run_agent`、`task_agent`、`goal`、每轮 `agent`（usage/latency/tool_calls/trace/env）；不带 `task` 返回三任务汇总；未知任务 `400` |
+| GET | `/api/agent?task=A` | 内核数据：`run_agent`、`task_agent`、`goal`、每轮 `agent`（usage/latency/tool_calls/trace/env/proposal_sources）；不带 `task` 返回三任务汇总；未知任务 `400` |
+| GET | `/api/goal` | 软目标与批次：`soft_goal_mode`、`note`、`summary{tasks,goal_soft,degraded,batches}`、`batch_index`、`tasks[{key,...,goal_soft,drift,goal}]`、`batches[]`；缺失 v3 字段时返回降级结构（200） |
+| GET | `/api/knowledge` | 知识/技能：`knowledge{available,hits,docs,skills_used,hits_detail}`、`skills_used`、`lessons`、`strategy_stats`、`memory_files`、`db{available}`；无数据时 200 + 空结构 |
 | GET | `/api/records/search?q=&limit=` | 在 records.jsonl + rounds.jsonl 做大小写不敏感子串检索；`limit` 默认 20、最大 100；空 `q` 返回最近记录；返回 `items/total/files` |
 | GET | `/api/events?limit=&level=&task=&q=` | 事件流；`limit` 默认 50、范围 1~500；返回 `events/total/returned/limit/filters/data_source` |
 | GET | `/api/health` | 轻量健康检查（状态、事件数、运行状态） |
@@ -315,6 +339,7 @@
 - 事件：`info` 青 / `warn` 琥珀 / `error` 红。
 - 预算：<80% 青、80~95% 琥珀、>=95% 红，进度条有慢速流光。
 - 指标 Δ：按 `direction` 判定好坏，好绿、坏红、持平灰，同时用 ▲ / ▼ / ◆ 三重编码（不只靠颜色）。
+- 提案来源：`seed` 青 / `agent` 琥珀 / `knowledge` 蓝 / `panel` 绿，堆叠条与图例同色；软目标 `missed` 红、`met` 绿、`unknown` 灰。
 
 ### 5.3 版式与响应式
 
@@ -392,7 +417,7 @@ def atomic_write_json(path: Path, payload: dict) -> None:
 
 ---
 
-## 7. 演示脚本建议（2~3 分钟）
+## 7. 演示脚本建议（约 3 分钟）
 
 | 时间 | 操作 | 讲解点 |
 | --- | --- | --- |
@@ -403,8 +428,9 @@ def atomic_write_json(path: Path, payload: dict) -> None:
 | 1:45–2:05 | 展开 A 的「Panel 讨论」 | 诊断者 / 实验者 / 评审者 / 仲裁者的立场、证据、置信度，以及最终 verdict；体现「多角色审议 + 门控」 |
 | 2:05–2:25 | 看 B/C 卡片 + 全局事件流 | B 轴承 RUL 仍在跑（第 4 轮运行中）；C 首轮提升后进入第 2 轮；事件流按 warn/error 过滤展示回滚与预算告警 |
 | 2:25–2:50 | 记忆与自主内核面板 | MEMORY 用量条（931/4000 chars）、KERNEL 控制器徽章、内核轮次/派发/记忆写入计数；6 条 lessons（A 漂移、B 单轴承方差等）、策略胜率条形图、技能使用；在搜索框输入 `promote` 回车，展示 records / rounds 命中 |
-| 2:50–3:05 | 打开 A 某一轮的抽屉 | 除假设/指标/sha 外，展示任务目标与 KERNEL TRACE（8 步工具调用，含一次 `experiment.run` 失败回滚），体现「内核可审计」 |
-| 3:05–3:20 | 页脚与「数据链路」 | 数据源路径、生成时间、schema 版本、数据延迟；强调只读文件、离线可运行 |
+| 2:50–3:10 | 软目标与批次 / 漂移雷达与知识 | 软目标卡：A 目标 0.76 / 当前 0.7308 / 缺口 0.0292 / degraded、「软目标，不阻塞完成」；批次 B1–B10 的 before→after 与决策；4 轴雷达展示 A severe、B mild、C stable；提案来源堆叠条说明 seed/agent/knowledge/panel 占比 |
+| 3:10–3:25 | 打开 A 某一轮的抽屉 | 除假设/指标/sha 外，展示软目标、提案来源、任务目标与 KERNEL TRACE（8 步工具调用，含一次 `experiment.run` 失败回滚），体现「内核可审计」 |
+| 3:25–3:35 | 页脚与「数据链路」 | 数据源路径、生成时间、schema 版本、数据延迟；强调只读文件、离线可运行 |
 
 **可选实时感增强**：演示前先跑一个 5 行脚本，每 3 秒 `build_state()` + 原子写一次 `.scratch/demo_state.json`（把 `elapsed_seconds` 递增、给运行中轮次追加一条事件），页面会在 2s 内自动更新；停止脚本后页脚延迟会变琥珀/红，正好演示降级提示。
 
@@ -440,6 +466,8 @@ curl -s localhost:7861/api/state | head -c 200
 curl -s localhost:7861/api/memory | head -c 200
 curl -s "localhost:7861/api/agent?task=A" | head -c 200
 curl -s "localhost:7861/api/records/search?q=promote&limit=3" | head -c 200
+curl -s localhost:7861/api/goal | head -c 200
+curl -s localhost:7861/api/knowledge | head -c 200
 curl -s -o /dev/null -w "%{http_code}\n" localhost:7861/
 kill %1
 
@@ -451,7 +479,7 @@ grep -n "http" rsi/dashboard/static/index.html rsi/dashboard/static/app.js rsi/d
 
 1. `GET /` 200、含关键中文（含「记忆与自主内核」「MEMORY」）、引用本地 CSS/JS、无外部 URL；
 2. `/app.js`、`/style.css`、`/favicon.svg` 200 且离线；`/favicon.ico` 204；
-3. `/api/state` 200：schema v1/v2、A/B/C 三任务、A 六轮、panel 结构、64 位 sha、`_meta`、records 合并；
+3. `/api/state` 200：schema v1/v2/v3、A/B/C 三任务、A 六轮、panel 结构、64 位 sha、`_meta`、records 合并；v3 批次字段；
 4. 原子替换 state.json 后下一次请求读到新 run_id 与 elapsed（恢复原文件）；
 5. `/api/events?limit=5`：数量、倒序、字段；`level/task` 过滤；
 6. 404 JSON；`/api/health` ready；
@@ -459,8 +487,12 @@ grep -n "http" rsi/dashboard/static/index.html rsi/dashboard/static/app.js rsi/d
 8. `/api/memory` 无 sqlite 降级：`db.available=false`，lessons 从 `state.json` 回退（`source="state"`）；
 9. `/api/agent?task=A`：6 轮、`trace[{tool,ok,detail,at}]`、usage/latency、goal；汇总接口三任务；未知任务 400；
 10. `/api/records/search`：`q=promote&limit=5` 数量/倒序/字段、空 q 最近记录、大小写不敏感、无匹配 total=0；
-11. v2 测试数据由 `rsi.dashboard.demo.write_demo_bundle()` 在临时目录生成（含/不含 sqlite 两种）；
-12. 测试进程与临时文件自动清理。
+11. v2/v3 测试数据由 `rsi.dashboard.demo.write_demo_bundle()` 在临时目录生成（含/不含 sqlite 两种）；
+12. `/api/goal`：schema v3、`summary`、三任务 `goal_soft`（targets/current/gap/degraded/verdict）、批次 before/after/decision、漂移 type/attribution/hits；
+13. `/api/goal` + `/api/knowledge` 在只有 v2 字段的 legacy state 下返回 200 降级结构（不报错、不白屏）；
+14. `/api/knowledge`：`available=true`、`hits/docs/skills_used`、lessons 与 strategy_stats、`_meta.db_available`；
+15. `/api/agent`：每轮 `agent.proposal_sources` 键域与数值合法性；
+16. 测试进程与临时文件自动清理（当前共 17 个用例）。
 
 浏览器侧人工检查（无自动化浏览器）：
 
@@ -480,5 +512,8 @@ grep -n "http" rsi/dashboard/static/index.html rsi/dashboard/static/app.js rsi/d
 - 页面未做 i18n 切换：中文为主、指标名保留英文。
 - 记忆 / 内核数据是只读展示：看板不写 `MEMORY.md`、不写 `rsi_state.db`；sqlite 只读连接失败时 `/api/memory` 降级而不是报错。
 - 内核面板的 lessons / 策略 / 技能依赖 sidecar 文件；若 harness 只写 `state.json`，面板会回退到 `tasks[].memory.review.lessons` 与 `tasks[].strategy_stats`，其余区块显示空态。
+- 软目标面板是**只读展示**：看板不参与 promote/retain/rollback 判定，`goal_soft.degraded` 与 `verdict` 由 harness 写入，缺失时一律显示「未提供」而不推断。
+- 漂移雷达把 `score / feature_shift / ks_max` 归一化到 0~1，第四轴「等级」取 `severity` 档位（stable=0 → severe=3）；未提供这些字段时雷达为空心占位。
+- `/api/knowledge` 的 `hits` 支持 int / list / dict 三种写法；若 harness 只写 `state.knowledge.hits` 而无 docs，页面用 `memory/` 文件列表兜底。
 - 搜索为文件尾部 2 万行内的逐行 JSON 子串匹配（缓存按文件 mtime/size），适合演示与调试，不适合当作全量日志检索。
 - E2E 无浏览器断言；若后续加入 CI 可补 `playwright`（需联网安装，当前离线环境不引入）。

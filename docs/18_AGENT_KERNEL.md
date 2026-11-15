@@ -153,3 +153,39 @@ continuation 是普通 user message，不改 system prompt（保护 prefix cache
 - 已知问题（已修）：panel 计数此前未写入 `agent_stats["panels"]`，
   `_record_panel(count=True)` 只在 supervisor 触发的 panel 上计数，kernel 工具
   触发的 panel 通过 `KernelEnv.summary()` 计数，避免重复。
+
+## 10.4 整夜 run：知识检索 + Panel + 软目标（2026-11-15 23:25–23:52）
+
+run `.scratch/night-kernel/rsi-20261115-232545`（A，strict `RSI_ALLOW_EXTENDED_DATA=0`，
+`--round-turns 16 --experiments-cap 8 --wall-cap 5400`）：
+
+| 轮 | 决策 | 主指标 | 关键行为 |
+|---|---|---|---|
+| 1 | promote | 0.7032 → **0.720696** (+0.01748) | 20 tool calls；`search_knowledge` 1 次（3 hits）；propose×3 中 3 个带知识引用；记忆写入 |
+| 2 | retain | 0.720696 | 15 calls；输出头 ridge 假设（继承第 1 轮记忆），候选 0.66 < 父 |
+| 3 | retain | 0.720696 | 14 calls；假设明确写“round2 的 continue_train+class_balance 未修复 class3”；stall 触发 **panel**（4 角色，1 次）|
+
+* 总计：3 轮全部由 kernel 完成、0 失败、0 降级；`panels=1`、`memory_writes=4`、
+  `kernel_tokens=463,125`（LLM calls=8：3 kernel + 4 panel + 1 reporter），wall ≈ 27 min。
+* 状态 v3：`goal_soft` 为 advisory（rounds_target=3 达成 → done）；`knowledge` 归一为
+  `{available, searches, hits, docs[], skills_used}`，本 run `searches=1/hits=3`。
+* 结论：知识检索已进入真实决策链（第 1 轮假设引用知识库文档）；panel 在 stall 时
+  正常触发且不破坏主循环；软目标不阻塞收尾（GoalLoop 以 rounds/budget 判定）。
+
+## 10.5 整夜 run：B 任务 kernel 验证（2026-11-16 00:14–00:30）
+
+run `.scratch/night-kernel-b/rsi-20261116-001411`（B，strict，`--round-turns 16
+--experiments-cap 6 --wall-cap 3600`）：
+
+| 轮 | 决策 | RMSE | 关键行为 |
+|---|---|---|---|
+| 1 | promote | 678.022 → **602.239** | 17 tool calls、2 实验；依据漂移归因选择 `retain + recenter(batch_mean, w=0.4)`；memory_write=1 |
+| 2 | retain | 602.239 | 8 候选（batch_std/ridge/continue_train 等）未过 margin；memory_write=2、skill_write=1（自建“B 漂移后处理”技能） |
+
+- 总计：2 轮全 kernel、0 失败、0 降级；5 实验；LLM 3 calls、467,689 tokens
+  （in 430,552 / out 37,137 / reasoning 29,014）；wall 939s、CPU 54s。
+- 跨任务结论：kernel 能在 B 任务上自主闭环并取得 +75.8 RMSE 提升，但**未发现**
+  `damage_shrink`（§12.19 的 −268.9 强配方）；说明“策略目录/知识候选”需要显式包含
+  当前最强配方，否则 Agent 会在局部候选里打转。
+- 软目标：B 目标 409.74 未达（602.24）→ `goal_soft.verdict=missed`，按设计不阻塞完成。
+- 已写入 `docs/12 §12.22` 与本文件；作为 v0.6 的“跨任务真实 LLM 证据”，不进入提交物。

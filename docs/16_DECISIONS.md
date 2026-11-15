@@ -206,3 +206,33 @@
   与代码后继续训练”。
 - **后果**：C selection 41.82→40.52、report 56.28→56.02；单次实验约 200s，
   仍在每任务预算内；作为候选策略由 agent 在 Guard 内自由选择，不做强制。
+
+## ADR-019：批次流协议在既有 Runner 之上实现（而不是另写一条训练路径）
+
+* 决策：`rsi/stream/` 每批 materialise 一个小 package 并调用未改动的 `Runner(rounds=1)`，
+  而不是复制一套轻量训练循环。
+* 理由：保证 Guard/记忆/记录/门控与 10 轮静态评测完全同一条代码路径；平台契约未知时仍能
+  复用已验收的产物（decision/predictions/summary），避免双实现漂移。
+* 代价：每批有少量初始化开销（秒级），可接受。
+
+## ADR-020：离线知识库进入 Agent 决策循环，但只作为“参考数据”
+
+* 决策：`knowledge/` 12 篇策展文档 + FTS5 检索 + `search_knowledge` 工具 + prompt 注入；
+  注入文本显式标注“非指令”，Guard 扫描注入内容。
+* 理由：符合赛事“skill/知识驱动 RSI”的主观分，同时避免把外部知识变成不可审计的隐式规则。
+* 证据：`docs/18_AGENT_KERNEL.md §10.4`（第 1 轮假设引用知识库、检索 1 次/3 hits）。
+
+## ADR-021：软目标 + 硬预算（mission goal 不进交付物）
+
+* 决策：交付运行时只有 advisory `goal_soft` 与硬预算；GoalLoop 的 done 判定只依赖轮次/预算，
+  soft target 未达成不影响收尾。Lead 的会话 goal 只用于组织开发工作。
+* 理由：用户 m03315 明确“goal 是工作方式，不是交付目标”；激进目标若阻断收尾反而造成 0 分。
+* 证据：`tests/test_goal_nonblocking.py` 4 passed；state v3 中 `goal_soft.note` 固定为
+  "soft target, non-blocking"。
+
+## ADR-022：decision.json 双写（扁平平台字段 + 嵌套调试记录）
+
+* 决策：每批决策同时写 `decision`（字符串，平台最可能使用的形状）、`round_index`、
+  parent/candidate/checkpoint sha256、`validation_metrics`，以及 `decision_detail` 嵌套记录。
+* 理由：平台真实 schema 未知（docs/19 U3），双写零成本、两种消费者都能用；contractlab 实测
+  两种实现 predictions 完全一致、decision 形状不一致。

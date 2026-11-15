@@ -19,7 +19,7 @@ rm -rf "$OVERLAY"
 mkdir -p "$APP" "$SITE" "$BIN"
 
 # 1. harness code and official data packages
-for item in rsi baselines config skills scripts docs extra datasets tasks; do
+for item in rsi baselines config skills knowledge scripts docs extra datasets tasks; do
     if [ -d "$item" ]; then
         mkdir -p "$APP/$item"
         rsync -a --exclude '__pycache__' --exclude '*.pyc' "$item/" "$APP/$item/"

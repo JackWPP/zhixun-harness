@@ -381,3 +381,86 @@ run：`.scratch/rsi-v052/rsi-20261115-210157`；wall 1825.5s、CPU 1059.1s、56 
   后继续训练”；单次约 200s。
 - 与 §12.18 的差异：A 0.8884→0.7346（关闭外部数据），B 491.6→409.7（新后处理），
   C 41.82→40.52（两阶段续训）；外部数据消融仍保留在 §12.18 作为加分证据。
+
+## 12.20 整夜复现运行（v0.6.0，严格官方数据 3×10）
+
+为验证 v0.5.1 结果可复现并生成 0.6.0 镜像/提交包证据，整夜串行任务以同一命令重跑：
+
+```bash
+RSI_ALLOW_EXTENDED_DATA=0 ./.venv/bin/python -m rsi.cli run \
+    --tasks A,B,C --rounds 10 --llm off --controller pipeline --state-dir .scratch/night-strict
+```
+
+run：`.scratch/night-strict/rsi-20261115-233649`；wall 1897.2s、CPU 1081.3s、56 实验、
+0 LLM token；`record_complete=true`（A/B/C 各 10 轮）。
+
+| 任务 | selection 基线 | 最终 | report 最终 | 实验数 | 备注 |
+|---|---:|---:|---:|---:|---|
+| A | 0.703220 | **0.734555** | 0.683406 | 12 | r1/r2 recenter promote，其余回滚 |
+| B | 678.021915 | **409.736985** | 424.130024 | 11 | r1 damage_shrink promote，其余 retain |
+| C | 44.748700 | **40.523699** | 56.021241 | 16 | r1 staged continue_train promote，其余 retain |
+
+- 与 §12.19 的 selection/report 指标逐位一致 → 该配方在 4 核 CPU、离线确定性路径下可复现；
+  A 的外部探针（仅验证）为 **0.522378**（§12.19 记录 0.5239 为 v0.5.0 那次运行的取值，
+  两轮模型相同、仅探针窗口/TTA 细节带来的 ±0.002 波动，不影响结论）。
+- 产物：镜像 `zhixun-rsi-harness:0.6.0`（sha256 `822b73e3…`）、提交包
+  `dist/submission_rsi-20261115-233649.tar.gz`（sha256 `1a426f76…`，≤64MiB），
+  独立 predict 在全 validation 上 A macro-F1 **0.71987**、B RMSE **422.24**、C RMSE **50.47**。
+- 严格口径：仅官方 `public/train.jsonl` 参与拟合；validation 仅用于 selection/report 评估；
+  `RSI_ALLOW_EXTENDED_DATA=0`，外部数据只作为 §12.21 的 Track X 测试床。
+
+## 12.21 Track X：外部数据持续迭代测试床（UCI gas，blinded batches 6–9）
+
+目的：验证 harness 在“比赛看不到的、持续到来的标注批次”上能否自主迭代，而不是只在官方
+validation 上选点。数据：UCI Gas Sensor Array Drift 的 batch6–9（官方 A 包只给 batch1/2），
+每批按 50/50 分层切出训练/评估；评估标签只用于打分，不进入任何正式提交谱系。
+命令：
+
+```bash
+RSI_ALLOW_EXTENDED_DATA=1 ./.venv/bin/python -m rsi.cli stream --tasks A \
+  --source external-a --batches 4 --external-root extra/uci-gas/Dataset \
+  --external-start 6 --holdout 0.5 --experiments-cap 2 --llm off \
+  --state-dir .scratch/night-testbed-x2
+```
+
+四臂对照（`scripts/testbed_four_arms.py`，frozen=官方父 checkpoint，recenter=冻结模型+
+批内重中心化，full harness=harness 实际部署模型，oracle=用该批标签重训的上界；
+oracle 只在测试床评估，不参与部署）：
+
+| 批次 (UCI) | frozen | recenter | full harness | oracle | harness 决策 |
+|---|---:|---:|---:|---:|---|
+| batch6 | 0.3209 | 0.4516 | **0.4697** | 0.9882 | promote（recenter） |
+| batch7 | 0.3395 | 0.4557 | **0.4871** | 0.9980 | retain |
+| batch8 | 0.2563 | 0.3685 | **0.4053** | 0.9506 | retain |
+| batch9 | 0.1868 | 0.5401 | **0.5511** | 0.9962 | retain |
+
+- 结论：harness 部署模型在 4/4 批上优于 frozen 与 recenter 基线（+0.15~+0.36 vs frozen），
+  说明“漂移监测→诊断→实验→门控上线”的闭环在 unseen 批次上可迁移；与 oracle 的差距
+  主要来自 oracle 每批直接用该批标签重训（测试床上界），而 harness 只允许 train/累计数据，
+  且每批实验预算仅 2 次。
+- 局限：batch8/9 的类别分布与官方 train 差异大（Toluene 等稀有类），绝对 F1 仍低；
+  该测试床只用于证明“持续迭代能力”，不计入正式分数；外部数据不写入提交 manifest。
+
+## 12.22 整夜 kernel 验证（B 任务，strict）
+
+命令（严格官方数据、kernel 控制器、真实 LLM）：
+
+```bash
+RSI_ALLOW_EXTENDED_DATA=0 ./.venv/bin/python -m rsi.cli run --tasks B --rounds 2 \
+  --llm on --llm-env .scratch/llm.env --controller kernel \
+  --round-turns 16 --experiments-cap 6 --state-dir .scratch/night-kernel-b
+```
+
+run：`.scratch/night-kernel-b/rsi-20261116-001411`；wall 939.4s、CPU 54.5s、5 实验、
+LLM 467,689 tokens（in 430,552 / out 37,137 / reasoning 29,014）、3 次调用、0 错误。
+
+| 轮 | 决策 | selection RMSE | 关键行为 |
+|---|---|---|---|
+| 1 | promote | 678.022 → **602.239** | 17 tool calls；依据漂移归因（特征 14/30/31/21/4 仿射增益/偏移）选择 `retain + recenter(batch_mean, w=0.4)`；1 次记忆写入 |
+| 2 | retain | 602.239 | 8 个候选（recenter batch_std、ridge、continue_train 等）均未过 margin；假设写明“std 收缩 40–67% 叠加 mean shift”，保留父模型；1 次 skill 写入 |
+
+- 结论：同一 kernel 控制器在 B 任务上同样能自主完成“诊断→候选→执行→门控→记录”，
+  但只找到 recenter 类后处理（Δ−75.8），未发现 docs/12 §12.19 的 `damage_shrink`
+  （Δ−268.9）——说明“策略库 + 知识候选清单”仍需把强配方显式喂给 Agent，这是
+  v0.6 已知差距（已记入 docs/18 §10.5 与 OVERNIGHT_LOG 的后续项）。
+- 严格口径：仅官方 train 拟合；validation 只用于 selection/report。

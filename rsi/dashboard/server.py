@@ -20,15 +20,18 @@ GET /api/events       -> 事件流，支持 limit / level / task / q
 GET /api/memory       -> 运行/任务记忆、lessons、策略统计、技能使用、记忆文件
 GET /api/agent        -> 自主内核统计、目标、每轮 agent 轨迹（?task=A 可只看单任务）
 GET /api/records/search -> 在 records.jsonl / rounds.jsonl 中做大小写不敏感子串搜索
+GET /api/goal         -> schema v3 软目标 / 批次时间线（GOAL 缺失时降级为空结构）
+GET /api/knowledge    -> schema v3 知识命中 / 技能使用 / lessons / 策略统计
 GET /api/health       -> 轻量健康检查
 其他                  -> 404（JSON）
 
-记忆/内核接口全部只读且容错：字段缺失、records 文件不存在、sqlite 打不开时
-返回空结构或降级说明，不会让页面报错。
+记忆/内核/软目标接口全部只读且容错：字段缺失、records 文件不存在、
+sqlite 打不开时返回空结构或降级说明（v1 / v2 state 同样可用），不会让页面报错。
 """
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import sys
 import threading
@@ -40,8 +43,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-VERSION = "1.1.0"
-SCHEMA_VERSION = 2
+VERSION = "1.2.0"
+SCHEMA_VERSION = 3
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {
@@ -60,6 +63,8 @@ MAX_SEARCH_LINES = 20_000
 MAX_MEMORY_FILE_BYTES = 1024 * 1024
 MAX_TRACE_DETAIL = 400
 DB_TIMEOUT_SECONDS = 0.35
+PROPOSAL_SOURCE_KEYS = ("seed", "agent", "knowledge", "panel")
+SOFT_GOAL_NOTE = "软目标，不阻塞完成"
 
 
 class StateUnavailable(Exception):
@@ -216,6 +221,211 @@ def _normalise_strategy_row(raw: object, fallback_task: str = "") -> dict | None
         "best_delta": raw.get("best_delta"),
         "win_rate": win_rate,
         "updated_at": _iso_or_empty(raw.get("updated_at")),
+    }
+
+
+# -- schema v3 归一化 helpers ------------------------------------------------
+def _as_float(value: object) -> float | None:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _normalise_metric_map(raw: object) -> dict:
+    """把 {metric: value} 归一为 float；非法值与非字符串键直接忽略。"""
+    result: dict[str, float] = {}
+    for key, value in _as_dict(raw).items():
+        number = _as_float(value)
+        if isinstance(key, str) and key.strip() and number is not None:
+            result[key.strip()] = number
+    return result
+
+
+def _normalise_docs(raw: object) -> list[dict]:
+    """归一知识文档：兼容字符串与 {title,path,hits}。"""
+    docs: list[dict] = []
+    for item in _as_list(raw):
+        if isinstance(item, str):
+            title = item.strip()
+            if title:
+                docs.append({"title": _truncate(title, 400), "path": "", "hits": 0})
+        elif isinstance(item, dict):
+            title = item.get("title") or item.get("name") or item.get("path") or item.get("doc")
+            if title is None:
+                continue
+            docs.append(
+                {
+                    "title": _truncate(title, 400),
+                    "path": _truncate(item.get("path") or item.get("file") or "", 600),
+                    "hits": _safe_int(item.get("hits") or item.get("uses") or item.get("count")),
+                }
+            )
+    return docs[:50]
+
+
+def _normalise_goal_soft(task: dict) -> dict:
+    """读取 task.goal_soft（兼容 task.goal / 平铺写法），缺字段时给出可展示的降级结构。"""
+    raw = _as_dict(task.get("goal_soft"))
+    goal = _as_dict(task.get("goal"))
+    metric = str(task.get("primary_metric") or "")
+    direction = str(task.get("direction") or "lower")
+    targets = _normalise_metric_map(raw.get("targets"))
+    current = _normalise_metric_map(raw.get("current"))
+
+    if not targets:
+        target = _as_float(raw.get("target"))
+        if target is not None and metric:
+            targets = {metric: target}
+    if not current:
+        value = _as_float(raw.get("current_value"))
+        if value is None:
+            value = _as_float(task.get("current"))
+        if value is not None and metric:
+            current = {metric: value}
+
+    gap = _as_float(raw.get("gap"))
+    gap_metric = metric or next(iter(targets), "") or next(iter(current), "")
+    if gap is None and gap_metric in targets and gap_metric in current:
+        # 统一约定：gap > 0 表示距软目标还有缺口（未达标）。
+        if direction == "higher":
+            gap = targets[gap_metric] - current[gap_metric]
+        else:
+            gap = current[gap_metric] - targets[gap_metric]
+    if gap is not None:
+        gap = round(gap, 6)
+
+    degraded_raw = raw.get("degraded")
+    if isinstance(degraded_raw, str):
+        degraded = degraded_raw.strip().lower() in {"1", "true", "yes", "degraded"}
+    else:
+        degraded = bool(degraded_raw) if degraded_raw is not None else False
+
+    verdict = raw.get("verdict") or goal.get("last_verdict") or ""
+    evidence = raw.get("evidence")
+    if isinstance(evidence, (dict, list)):
+        evidence_text = json.dumps(evidence, ensure_ascii=False)
+    else:
+        evidence_text = "" if evidence is None else str(evidence)
+
+    return {
+        "available": bool(raw) or bool(goal),
+        "targets": targets,
+        "current": current,
+        "gap": gap,
+        "metric": gap_metric,
+        "direction": direction,
+        "degraded": degraded,
+        "verdict": str(verdict or ""),
+        "evidence": _truncate(evidence_text, 600),
+        "note": SOFT_GOAL_NOTE,
+    }
+
+
+def _normalise_batches(data: dict) -> list[dict]:
+    """归一 state.batches（含批前/批后指标与决策），缺字段时返回空列表。"""
+    task_metrics = {
+        str(_as_dict(task).get("key") or ""): str(_as_dict(task).get("primary_metric") or "")
+        for task in _as_list(data.get("tasks"))
+    }
+    batches: list[dict] = []
+    for position, raw in enumerate(_as_list(data.get("batches"))):
+        item = _as_dict(raw)
+        task_key = str(item.get("task") or "").upper()
+        before = _normalise_metric_map(item.get("before_metrics"))
+        after = _normalise_metric_map(item.get("after_metrics"))
+        fallback_metric = task_metrics.get(task_key, "") or "metric"
+        if not before:
+            single = _as_float(item.get("before"))
+            if single is not None:
+                before = {fallback_metric: single}
+        if not after:
+            single = _as_float(item.get("after"))
+            if single is not None:
+                after = {fallback_metric: single}
+        batches.append(
+            {
+                "index": _safe_int(item.get("index"), position),
+                "task": task_key,
+                "before_metrics": before,
+                "after_metrics": after,
+                "decision": item.get("decision"),
+                "note": _truncate(item.get("note") or item.get("reason") or "", 300),
+            }
+        )
+    batches.sort(key=lambda entry: entry["index"])
+    return batches
+
+
+def _normalise_proposal_sources(raw: object) -> dict:
+    """归一 round.agent.proposal_sources；缺失时返回空 dict 供前端降级。"""
+    source = _as_dict(raw)
+    if not source:
+        return {}
+    return {key: _safe_int(source.get(key)) for key in PROPOSAL_SOURCE_KEYS}
+
+
+def _normalise_drift(task: dict) -> dict:
+    """合并 drift / drift_extra，输出雷达所需的数值与归因（缺失时全部降级）。"""
+    drift = _as_dict(task.get("drift"))
+    extra = _as_dict(task.get("drift_extra"))
+    merged = {**extra, **drift}
+    attribution = [str(item) for item in _as_list(merged.get("attribution")) if str(item).strip()][:12]
+    causes = [str(item) for item in _as_list(merged.get("causes")) if str(item).strip()][:12]
+    return {
+        "type": str(merged.get("type") or ""),
+        "severity": str(merged.get("severity") or "unknown"),
+        "score": _as_float(merged.get("score")),
+        "feature_shift": _as_float(merged.get("feature_shift")),
+        "ks_max": _as_float(merged.get("ks_max")),
+        "attribution": attribution,
+        "causes": causes,
+        "evidence": _truncate(merged.get("evidence") or "", 600),
+    }
+
+
+def _normalise_knowledge(data: dict, skill_rows: list[dict], memory_files: list[dict]) -> dict:
+    """合并 state.knowledge（hits/docs/skills_used）与 sqlite 技能统计。"""
+    raw = _as_dict(data.get("knowledge"))
+    hits_raw = raw.get("hits")
+    if isinstance(hits_raw, list):
+        hits = len(hits_raw)
+    elif isinstance(hits_raw, dict):
+        total = hits_raw.get("total")
+        hits = _safe_int(total) if total is not None else sum(_safe_int(value) for value in hits_raw.values())
+    else:
+        hits = _safe_int(hits_raw)
+
+    docs = _normalise_docs(raw.get("docs"))
+    if not docs:
+        docs = [{"title": item.get("name", ""), "path": item.get("path", ""), "hits": 0} for item in memory_files]
+
+    name_counts: dict[str, int] = {}
+    for item in _as_list(raw.get("skills_used")):
+        if isinstance(item, str):
+            name = item.strip()
+            if name:
+                name_counts[name] = name_counts.get(name, 0) + 1
+        elif isinstance(item, dict):
+            name = str(item.get("skill") or item.get("name") or "").strip()
+            if name:
+                name_counts[name] = name_counts.get(name, 0) + max(1, _safe_int(item.get("uses") or item.get("count"), 1))
+    for row in skill_rows:
+        name = str(_as_dict(row).get("skill") or "").strip()
+        if name and name not in name_counts:
+            name_counts[name] = _safe_int(_as_dict(row).get("uses"))
+
+    skills_used = [
+        {"skill": name, "uses": uses}
+        for name, uses in sorted(name_counts.items(), key=lambda pair: (-pair[1], pair[0]))
+    ]
+    return {
+        "available": bool(raw) or bool(docs) or bool(skills_used),
+        "hits": hits,
+        "docs": docs,
+        "skills_used": skills_used,
+        "hits_detail": _truncate(raw.get("hits_detail") or "", 600),
     }
 
 
@@ -700,6 +910,7 @@ class StateStore:
                             "latency": latency,
                             "tool_calls": _safe_int(agent.get("tool_calls")),
                             "trace": trace,
+                            "proposal_sources": _normalise_proposal_sources(agent.get("proposal_sources")),
                             "env": _as_dict(agent.get("env")),
                         },
                     }
@@ -837,6 +1048,86 @@ class StateStore:
             item.pop("_haystack", None)
         return {"items": selected, "total": total, "files": file_meta}
 
+    # -- schema v3：软目标 / 知识面板 ----------------------------------------
+    def goal_payload(self) -> dict:
+        """汇总每任务软目标（目标/当前/gap/degraded/verdict）与批次时间线。"""
+        data = self.read()
+        run = _as_dict(data.get("run"))
+        run_agent = _as_dict(run.get("agent"))
+        tasks_out: list[dict] = []
+        soft_count = 0
+        degraded_count = 0
+        for raw_task in _as_list(data.get("tasks")):
+            task = _as_dict(raw_task)
+            soft = _normalise_goal_soft(task)
+            if soft["available"]:
+                soft_count += 1
+            if soft["degraded"]:
+                degraded_count += 1
+            tasks_out.append(
+                {
+                    "key": str(task.get("key") or ""),
+                    "name": str(task.get("name") or task.get("name_en") or ""),
+                    "primary_metric": task.get("primary_metric"),
+                    "direction": task.get("direction") or soft["direction"],
+                    "baseline": task.get("baseline"),
+                    "best": task.get("best"),
+                    "current": task.get("current"),
+                    "status": task.get("status"),
+                    "round_index": task.get("round_index"),
+                    "rounds_total": task.get("rounds_total"),
+                    "controller": task.get("controller") or run_agent.get("controller") or "pipeline",
+                    "goal_soft": soft,
+                    "drift": _normalise_drift(task),
+                    "goal": _as_dict(task.get("goal")),
+                }
+            )
+
+        batches = _normalise_batches(data)
+        raw_batch_index = data.get("batch_index")
+        batch_index = _safe_int(raw_batch_index) if raw_batch_index is not None else len(batches)
+
+        return {
+            "ok": True,
+            "schema_version": data.get("schema_version", SCHEMA_VERSION),
+            "soft_goal_mode": True,
+            "note": SOFT_GOAL_NOTE,
+            "batch_index": batch_index,
+            "summary": {
+                "tasks": len(tasks_out),
+                "goal_soft": soft_count,
+                "degraded": degraded_count,
+                "batches": len(batches),
+            },
+            "tasks": tasks_out,
+            "batches": batches,
+            "generated_at": _utcnow_iso(),
+            "_meta": {"state_path": str(self.state_path)},
+        }
+
+    def knowledge_payload(self) -> dict:
+        """汇总知识命中 / 文档 / 技能使用 / lessons / 策略统计（复用 memory 读取）。"""
+        data = self.read()
+        memory = self.memory_payload()
+        knowledge = _normalise_knowledge(
+            data,
+            list(memory.get("skill_usage") or []),
+            list(memory.get("memory_files") or []),
+        )
+        return {
+            "ok": True,
+            "schema_version": memory.get("schema_version", SCHEMA_VERSION),
+            "knowledge": knowledge,
+            "skills_used": knowledge["skills_used"],
+            "lessons": memory.get("lessons", []),
+            "strategy_stats": memory.get("strategy_stats", []),
+            "skill_usage": memory.get("skill_usage", []),
+            "memory_files": memory.get("memory_files", []),
+            "db": memory.get("db", {}),
+            "generated_at": _utcnow_iso(),
+            "_meta": memory.get("_meta", {}),
+        }
+
 
 # --------------------------------------------------------------------------- #
 # HTTP handler
@@ -912,6 +1203,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/records/search":
             self._serve_records_search(query)
+            return
+        if path == "/api/goal":
+            self._serve_goal()
+            return
+        if path == "/api/knowledge":
+            self._serve_knowledge()
             return
         if path == "/api/health":
             self._serve_health()
@@ -1061,6 +1358,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "generated_at": _utcnow_iso(),
             },
         )
+
+    def _serve_goal(self) -> None:
+        try:
+            payload = self.store.goal_payload()
+        except StateUnavailable as exc:
+            self._send_error_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                exc.detail,
+                kind=exc.kind,
+                state_path=str(exc.path) if exc.path else None,
+                hint="软目标面板需要 state.json；旧 schema 会降级为空结构",
+            )
+            return
+        self._send_json(HTTPStatus.OK, payload)
+
+    def _serve_knowledge(self) -> None:
+        try:
+            payload = self.store.knowledge_payload()
+        except StateUnavailable as exc:
+            self._send_error_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                exc.detail,
+                kind=exc.kind,
+                state_path=str(exc.path) if exc.path else None,
+                hint="知识面板需要 state.json；缺少 knowledge 字段时会降级为空列表",
+            )
+            return
+        self._send_json(HTTPStatus.OK, payload)
 
     def _serve_health(self) -> None:
         base = {

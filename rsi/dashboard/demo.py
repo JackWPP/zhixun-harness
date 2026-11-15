@@ -24,13 +24,42 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_DEMO_STATE = ".scratch/demo_state.json"
 MEMORY_CAP_CHARS = 4000
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MOCK_SCRIPT = REPO_ROOT / "scripts" / "mock_state.py"
 
 CONTROLLER_BY_TASK = {"A": "kernel", "B": "kernel", "C": "pipeline"}
+
+# schema v3：软目标（仅用于展示，不阻塞完成）与批次 / 知识演示数据。
+SOFT_GOAL_TARGETS = {"A": 0.76, "B": 600.0, "C": 50.0}
+SOFT_GOAL_DEGRADED = {"A": True, "B": False, "C": False}
+SOFT_GOAL_EVIDENCE = {
+    "A": "Acetaldehyde 跨批次 F1=0，Toluene 验证样本仅 5 个；severe 漂移下软目标缺口主要来自这两类，未阻塞完成。",
+    "B": "验证集 90.2% 来自 Bearing3_4 单轴承，方差偏大；RMSE 仍高于软目标，按计划保留 rollback。",
+    "C": "同分布随机切分下已接近基线天花板，软目标仅作方向参考，shrink 后处理可能过度保守。",
+}
+DRIFT_TYPE = {"A": "covariate_shift", "B": "load_regime_shift", "C": "none"}
+DRIFT_ATTRIBUTION = {
+    "A": ["批次温湿度偏移", "传感器老化", "Acetaldehyde 跨批次不可分"],
+    "B": ["Bearing3_4 工况变化", "单轴承验证方差"],
+    "C": ["无显著漂移"],
+}
+KNOWLEDGE_DOCS = [
+    {"title": "漂移诊断手册 / batch covariate shift", "path": "docs/03-drift.md", "hits": 14},
+    {"title": "后处理策略对照（recenter / shrink）", "path": "docs/05-postprocess.md", "hits": 9},
+    {"title": "小验证集方差与分组重估", "path": "docs/04-validation.md", "hits": 7},
+    {"title": "SQLite lessons / strategy_stats schema", "path": "docs/ui_design.md#memory", "hits": 5},
+    {"title": "checkpoint 回滚与门控判据", "path": "docs/06-gating.md", "hits": 2},
+]
+PROPOSAL_SOURCES_SEQ = [
+    {"seed": 1, "agent": 0, "knowledge": 0, "panel": 0},
+    {"seed": 0, "agent": 2, "knowledge": 1, "panel": 0},
+    {"seed": 1, "agent": 1, "knowledge": 2, "panel": 1},
+    {"seed": 0, "agent": 1, "knowledge": 2, "panel": 2},
+    {"seed": 1, "agent": 2, "knowledge": 1, "panel": 1},
+]
 
 GOAL_TEXT = {
     "A": "把 A 气体传感器六类识别 macro-F1 从基线 0.7140 提升到 ≥0.740，并证明 batch 漂移处理可复现。",
@@ -221,6 +250,7 @@ def _task_rounds_agent(task: dict, controller: str, started_at: str, last_ts: st
             "latency": round(18.4 + index * 3.1 + (2.6 if controller == "kernel" else 0.8), 1),
             "tool_calls": len(trace),
             "trace": trace,
+            "proposal_sources": dict(PROPOSAL_SOURCES_SEQ[(index - 1) % len(PROPOSAL_SOURCES_SEQ)]),
             "env": {"controller": controller, "device": "cpu", "seed": 42 + index, "budget_left_tokens": max(0, 4000000 - 120000 * index)},
         }
     return rounds
@@ -252,6 +282,91 @@ def _task_goal(task: dict, run_id: str, started_at: str) -> dict:
             "done": bool(finished),
             "reason": "达到轮次目标并保留证据" if finished else "尚未达到目标，继续执行",
         },
+    }
+
+
+def _task_goal_soft(task: dict) -> dict:
+    """v3 软目标：目标 / 当前 / 缺口 / 降级标记 / verdict；仅展示，不阻塞完成。"""
+    key = str(task.get("key") or "")
+    metric = str(task.get("primary_metric") or "")
+    direction = str(task.get("direction") or "lower")
+    target = SOFT_GOAL_TARGETS.get(key)
+    current_value = task.get("current")
+    if current_value is None:
+        for rnd in reversed([r for r in task.get("rounds", []) if isinstance(r, dict)]):
+            metrics = rnd.get("metrics")
+            if isinstance(metrics, dict) and metrics.get(metric) is not None:
+                current_value = metrics.get(metric)
+                break
+    targets: dict[str, float] = {metric: target} if target is not None and metric else {}
+    current: dict[str, float] = (
+        {metric: round(float(current_value), 4)} if current_value is not None and metric else {}
+    )
+    gap = None
+    if target is not None and current_value is not None:
+        raw_gap = (target - float(current_value)) if direction == "higher" else (float(current_value) - target)
+        gap = round(max(0.0, raw_gap), 4)
+    if gap is None:
+        verdict = "unknown"
+    elif gap <= 0:
+        verdict = "met"
+    else:
+        verdict = "missed"
+    return {
+        "targets": targets,
+        "current": current,
+        "gap": gap,
+        "degraded": bool(SOFT_GOAL_DEGRADED.get(key, False)),
+        "verdict": verdict,
+        "evidence": SOFT_GOAL_EVIDENCE.get(key, ""),
+        "note": "软目标，不阻塞完成",
+    }
+
+
+def _demo_batches(tasks: list[dict]) -> list[dict]:
+    """构造 v3 批次时间线：每批记录前/后指标与决策。"""
+    batches: list[dict] = []
+    for task in tasks:
+        key = str(task.get("key") or "")
+        metric = str(task.get("primary_metric") or "")
+        if not metric:
+            continue
+        try:
+            previous = float(task.get("baseline"))
+        except (TypeError, ValueError):
+            previous = None
+        for rnd in task.get("rounds", []):
+            if not isinstance(rnd, dict) or rnd.get("status") != "done":
+                continue
+            metrics = rnd.get("metrics")
+            if not isinstance(metrics, dict) or metrics.get(metric) is None:
+                continue
+            try:
+                value = float(metrics[metric])
+            except (TypeError, ValueError):
+                continue
+            batches.append(
+                {
+                    "index": len(batches) + 1,
+                    "task": key,
+                    "before_metrics": {} if previous is None else {metric: round(previous, 4)},
+                    "after_metrics": {metric: round(value, 4)},
+                    "decision": rnd.get("decision"),
+                    "note": str(rnd.get("change_summary") or "")[:160],
+                }
+            )
+            if rnd.get("decision") == "promote":
+                previous = value
+    return batches
+
+
+def _demo_knowledge() -> dict:
+    lessons_hits = sum(int(lesson.get("uses") or 0) for lesson in LESSONS)
+    return {
+        "hits": sum(int(doc.get("hits") or 0) for doc in KNOWLEDGE_DOCS) + lessons_hits,
+        "hits_detail": f"知识库召回 {len(KNOWLEDGE_DOCS)} 篇文档 / lessons 引用 {lessons_hits} 次",
+        "docs": [dict(doc) for doc in KNOWLEDGE_DOCS],
+        "skills_used": [dict(item) for item in SKILL_USAGE],
     }
 
 
@@ -511,12 +626,12 @@ def _records_lines(state: dict) -> tuple[str, str]:
 # 组装与写出
 # --------------------------------------------------------------------------- #
 def build_demo_state(now: datetime | None = None) -> dict:
-    """v1 场景 → 叠加 v2 字段的完整 state（不写盘）。"""
+    """v1 场景 → 叠加 v2 内核字段与 v3 软目标/批次/知识字段的完整 state（不写盘）。"""
     mock = _load_mock_module()
     state = mock.build_state(now=now)
     state["schema_version"] = SCHEMA_VERSION
     state["_demo"] = True
-    state["_demo_schema"] = "v2"
+    state["_demo_schema"] = "v3"
 
     run = state["run"]
     run_id = str(run.get("run_id") or "")
@@ -536,6 +651,11 @@ def build_demo_state(now: datetime | None = None) -> dict:
         key = str(task.get("key") or "")
         controller = CONTROLLER_BY_TASK.get(key, "pipeline")
         task["controller"] = controller
+        drift = task.get("drift") if isinstance(task.get("drift"), dict) else {}
+        drift["type"] = DRIFT_TYPE.get(key, "unknown")
+        drift["attribution"] = list(DRIFT_ATTRIBUTION.get(key, []))
+        task["drift"] = drift
+        task["goal_soft"] = _task_goal_soft(task)
         rounds = _task_rounds_agent(task, controller, started_at, last_ts)
         task["rounds"] = rounds
         total_trace_tools += sum(len(rnd["agent"]["trace"]) for rnd in rounds)
@@ -566,6 +686,10 @@ def build_demo_state(now: datetime | None = None) -> dict:
                 "panels": len(panels),
                 "memory_writes": len(lessons_by_task.get(key, [])),
             }
+
+    state["knowledge"] = _demo_knowledge()
+    state["batches"] = _demo_batches(tasks)
+    state["batch_index"] = len(state["batches"])
 
     memory_texts = _memory_texts(lessons_by_task, tasks)
     total_chars = sum(len(text) for text in memory_texts.values())
@@ -606,7 +730,7 @@ def build_demo_state(now: datetime | None = None) -> dict:
 
 
 def write_demo_bundle(state_path: str | Path, *, include_db: bool = True) -> Path:
-    """生成完整 v2 演示包（state.json + records/rounds + memory/*.md + rsi_state.db），返回 state 路径。"""
+    """生成完整 v3 演示包（state.json + records/rounds + memory/*.md + rsi_state.db），返回 state 路径。"""
     state_path = Path(state_path).expanduser().resolve()
     root = state_path.parent
     root.mkdir(parents=True, exist_ok=True)

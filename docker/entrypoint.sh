@@ -76,6 +76,21 @@ case "$COMMAND" in
             echo "[harness] artifacts: $LATEST"
         fi
         ;;
+    stream)
+        # Batch-stream mode: every incoming batch is trained/evaluated/decided in
+        # turn, then predictions + decision are written for the platform to pick up.
+        SOURCE=${RSI_STREAM_SOURCE:-official}
+        BATCHES=${RSI_STREAM_BATCHES:-10}
+        TASKS=${RSI_TASKS:-A,B,C}
+        HOLDOUT=${RSI_STREAM_HOLDOUT:-0.3}
+        STREAM_DIR=${RSI_STREAM_DIR:-$STATE_DIR/stream}
+        EXTRA_ARGS=""
+        [ -n "${RSI_LLM_ENV:-}" ] && [ -f "${RSI_LLM_ENV}" ] && EXTRA_ARGS="--llm-env $RSI_LLM_ENV"
+        echo "[harness] stream source=$SOURCE batches=$BATCHES tasks=$TASKS state=$STREAM_DIR"
+        python -m rsi.cli stream --source "$SOURCE" --tasks "$TASKS" --batches "$BATCHES" \
+            --holdout "$HOLDOUT" --llm "${RSI_LLM:-off}" --controller "${RSI_CONTROLLER:-auto}" \
+            --state-dir "$STREAM_DIR" $EXTRA_ARGS "$@"
+        ;;
     predict)
         python -m rsi.predict "$@"
         ;;

@@ -176,7 +176,7 @@ def test_state_api_returns_canonical_schema(running_server: int) -> None:
 
     payload = json.loads(raw.decode("utf-8"))
     assert payload["ok"] is True
-    assert payload["schema_version"] in {1, 2}
+    assert payload["schema_version"] in {1, 2, 3}
     assert payload["run"]["run_id"]
     assert payload["run"]["status"] in {"running", "finished", "failed", "stopped"}
     assert payload["run"]["budget"]["tokens_cap"] > 0
@@ -213,7 +213,7 @@ def test_state_api_returns_canonical_schema(running_server: int) -> None:
 
     meta = payload["_meta"]
     assert meta["state_path"].endswith("state.json")
-    assert meta["schema_version"] in {1, 2}
+    assert meta["schema_version"] in {1, 2, 3}
     assert meta["records_available"] is True
     assert meta["records_events"] > 0
     assert meta["event_count"] == len(payload["events"])
@@ -302,7 +302,7 @@ def test_health_endpoint(running_server: int) -> None:
     payload = json.loads(raw.decode("utf-8"))
     assert payload["ok"] is True
     assert payload["state"] == "ready"
-    assert payload["schema_version"] in {1, 2}
+    assert payload["schema_version"] in {1, 2, 3}
     assert payload["run_status"] in {"running", "finished", "failed", "stopped"}
     assert payload["event_count"] >= 40
 
@@ -311,7 +311,7 @@ def test_health_endpoint(running_server: int) -> None:
 # schema v2：记忆 / 自主内核 / 记录检索
 # --------------------------------------------------------------------------- #
 def _build_demo_bundle(state_path: Path, include_db: bool = True) -> None:
-    """调用 rsi.dashboard.demo.write_demo_bundle 生成一份 v2 演示数据包。"""
+    """调用 rsi.dashboard.demo.write_demo_bundle 生成一份 v3 演示数据包。"""
     code = (
         "import sys\n"
         "from rsi.dashboard.demo import write_demo_bundle\n"
@@ -414,7 +414,7 @@ def test_memory_api_reads_v2_state_and_sqlite(v2_server: int) -> None:
     payload = json.loads(raw.decode("utf-8"))
 
     assert payload["ok"] is True
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] in {1, 2, 3}
     assert payload["controller"] in {"kernel", "pipeline"}
 
     run_agent = payload["run_agent"]
@@ -537,3 +537,149 @@ def test_records_search_api(v2_server: int) -> None:
     empty = json.loads(raw.decode("utf-8"))
     assert empty["items"] == []
     assert empty["total"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# schema v3：软目标 / 批次 / 漂移雷达 / 知识与提案来源
+# --------------------------------------------------------------------------- #
+@pytest.fixture(scope="module")
+def v3_server(tmp_path_factory: pytest.TempPathFactory) -> int:
+    tmp_dir = tmp_path_factory.mktemp("dashboard-v3")
+    state_path = tmp_dir / "state.json"
+    _build_demo_bundle(state_path, include_db=True)
+    proc, port = _start_dashboard(state_path)
+    try:
+        yield port
+    finally:
+        _stop_dashboard(proc)
+
+
+def test_state_api_exposes_v3_batches(v3_server: int) -> None:
+    status, _headers, raw = http_get(v3_server, "/api/state")
+    assert status == 200
+    payload = json.loads(raw.decode("utf-8"))
+
+    assert payload["schema_version"] == 3
+    batches = payload["batches"]
+    assert batches, "v3 state 应包含批次记录"
+    assert payload["batch_index"] == len(batches)
+    indexes = [item["index"] for item in batches]
+    assert indexes == sorted(indexes)
+    for batch in batches:
+        assert {"index", "before_metrics", "after_metrics", "decision"} <= set(batch)
+        assert batch["before_metrics"] and batch["after_metrics"]
+
+    task_a = next(task for task in payload["tasks"] if task["key"] == "A")
+    soft = task_a["goal_soft"]
+    assert soft["targets"], "A 任务应有软目标"
+    assert soft["current"] is not None
+    assert soft["note"] == "软目标，不阻塞完成"
+
+
+def test_goal_api_returns_soft_targets(v3_server: int) -> None:
+    status, headers, raw = http_get(v3_server, "/api/goal")
+    assert status == 200
+    assert "application/json" in headers.get("Content-Type", "")
+    payload = json.loads(raw.decode("utf-8"))
+
+    assert payload["ok"] is True
+    assert payload["soft_goal_mode"] is True
+    assert "不阻塞" in payload["note"]
+    assert payload["summary"]["tasks"] == 3
+    assert payload["summary"]["goal_soft"] == 3
+    assert payload["summary"]["degraded"] >= 1
+    assert payload["summary"]["batches"] == len(payload["batches"])
+
+    assert {task["key"] for task in payload["tasks"]} == {"A", "B", "C"}
+    for task in payload["tasks"]:
+        soft = task["goal_soft"]
+        assert soft["available"] is True
+        assert soft["targets"] and soft["current"]
+        assert soft["gap"] is not None
+        assert isinstance(soft["degraded"], bool)
+        assert soft["verdict"] in {"met", "missed", "unknown"}
+        assert soft["metric"] in {"macro_f1", "rmse"}
+        assert "不阻塞" in soft["note"]
+        assert task["drift"]["severity"] in {"stable", "mild", "moderate", "severe"}
+        assert task["drift"]["type"]
+
+    task_a = next(task for task in payload["tasks"] if task["key"] == "A")
+    assert task_a["goal_soft"]["degraded"] is True
+    assert task_a["goal_soft"]["verdict"] == "missed"
+    assert task_a["drift"]["type"] == "covariate_shift"
+    assert task_a["drift"]["attribution"], "A 任务漂移应有归因"
+
+
+def test_goal_and_knowledge_api_degrade_on_legacy_state(tmp_path: Path) -> None:
+    legacy = {
+        "schema_version": 2,
+        "run": {"run_id": "legacy-no-v3", "status": "finished", "llm": {}, "budget": {}},
+        "tasks": [],
+        "events": [],
+    }
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(legacy), encoding="utf-8")
+    proc, port = _start_dashboard(state_path)
+    try:
+        status, _headers, raw = http_get(port, "/api/goal")
+        assert status == 200, "v2 state 下 /api/goal 不应报错"
+        payload = json.loads(raw.decode("utf-8"))
+        assert payload["ok"] is True
+        assert payload["tasks"] == []
+        assert payload["batches"] == []
+        assert payload["summary"] == {"tasks": 0, "goal_soft": 0, "degraded": 0, "batches": 0}
+        assert "不阻塞" in payload["note"]
+
+        status, _headers, raw = http_get(port, "/api/knowledge")
+        assert status == 200, "v2 state 下 /api/knowledge 不应报错"
+        payload = json.loads(raw.decode("utf-8"))
+        assert payload["ok"] is True
+        assert payload["knowledge"]["available"] is False
+        assert payload["knowledge"]["hits"] == 0
+        assert payload["knowledge"]["docs"] == []
+        assert payload["knowledge"]["skills_used"] == []
+        assert payload["lessons"] == []
+    finally:
+        _stop_dashboard(proc)
+
+
+def test_knowledge_api_reports_hits_and_skills(v3_server: int) -> None:
+    status, headers, raw = http_get(v3_server, "/api/knowledge")
+    assert status == 200
+    assert "application/json" in headers.get("Content-Type", "")
+    payload = json.loads(raw.decode("utf-8"))
+
+    assert payload["ok"] is True
+    knowledge = payload["knowledge"]
+    assert knowledge["available"] is True
+    assert knowledge["hits"] >= 1
+    assert knowledge["docs"], "知识文档列表为空"
+    for doc in knowledge["docs"][:5]:
+        assert {"title", "hits"} <= set(doc)
+    assert knowledge["skills_used"], "技能使用列表为空"
+    for item in knowledge["skills_used"][:5]:
+        assert {"skill", "uses"} <= set(item)
+        assert item["skill"]
+    assert payload["lessons"], "lessons 为空"
+    assert payload["strategy_stats"], "strategy_stats 为空"
+    assert payload["_meta"]["db_available"] is True
+
+
+def test_agent_api_exposes_proposal_sources(v3_server: int) -> None:
+    status, _headers, raw = http_get(v3_server, "/api/agent")
+    assert status == 200
+    payload = json.loads(raw.decode("utf-8"))
+    assert payload["ok"] is True
+    assert {task["key"] for task in payload["tasks"]} == {"A", "B", "C"}
+
+    seen = 0
+    for task in payload["tasks"]:
+        for item in task["rounds"]:
+            sources = item["agent"].get("proposal_sources")
+            assert isinstance(sources, dict)
+            if not sources:
+                continue
+            seen += 1
+            assert set(sources) <= {"seed", "agent", "knowledge", "panel"}
+            assert all(isinstance(value, int) and value >= 0 for value in sources.values())
+    assert seen >= 1, "至少一轮应包含提案来源统计"

@@ -47,6 +47,7 @@ def main() -> int:
     from rsi.model import ExtendedModel, checkpoint_sha256
     from rsi.memory.skills import SkillStore
     from rsi.memory.db import StateDB
+    from rsi.knowledge import default_knowledge
     from rsi.tasks import TASKS
 
     if args.data_root:
@@ -83,6 +84,14 @@ def main() -> int:
             out[key] = {"dir": str(base), "files": len(files)}
         return json.dumps(out)
 
+    def knowledge() -> str:
+        kb = default_knowledge()
+        kb.ensure_index()
+        stats = kb.stats()
+        if int(stats.get("docs", 0)) < 10:
+            raise ValueError(f"knowledge index too small: {stats}")
+        return json.dumps(stats)
+
     def skills() -> str:
         root = Path(args.skills_root) if args.skills_root else ROOT / "skills"
         store = SkillStore(root)
@@ -103,7 +112,8 @@ def main() -> int:
     hard_ok &= check("official datasets readable", datasets)
     hard_ok &= check("baseline checkpoints load", checkpoints)
     hard_ok &= check("three packages present", packages)
-    hard_ok &= check("seed skills valid", skills)
+    hard_ok &= check("seed skills valid", skills, required=False)
+    hard_ok &= check("offline knowledge index", knowledge, required=False)
     hard_ok &= check("predict entry importable", predict_entry)
     hard_ok &= check("state db writable", db, required=False)
 

@@ -70,6 +70,55 @@ def cmd_run(args) -> int:
     return 0
 
 
+def cmd_stream(args) -> int:
+    """Batch-stream mode: labelled batches in, decision + predictions out."""
+    _register_specs(args)
+    if args.llm_env:
+        load_env_file(args.llm_env)
+    if args.token_cap is not None:
+        os.environ["RSI_TOKEN_CAP"] = str(int(args.token_cap))
+    keys = [item.strip().upper() for item in args.tasks.split(",") if item.strip()]
+    from rsi.stream import run_stream
+
+    report = run_stream(
+        keys=keys,
+        source=args.source,
+        n_batches=args.batches,
+        state_dir=args.state_dir,
+        controller=args.controller,
+        llm_mode=args.llm,
+        seed=args.seed,
+        parallel_tasks=args.parallel_tasks,
+        memory=not args.no_memory,
+        experiments_cap=args.experiments_cap,
+        batch_wall=args.batch_wall,
+        retention_every=args.retention_every,
+        round_turns=args.round_turns,
+        external_root=args.external_root or None,
+        external_start=args.external_start,
+        external_end=args.external_end,
+        holdout=args.holdout,
+    )
+    summary = {
+        "protocol": report["protocol"],
+        "source": report["source"],
+        "n_batches": report["n_batches"],
+        "report": str(Path(args.state_dir) / "stream_report.json"),
+        "tasks": {
+            key: {
+                "batches": task.get("final", {}).get("batches"),
+                "first_primary": task.get("final", {}).get("first_primary"),
+                "final_primary": task.get("final", {}).get("final_primary"),
+                "deployed": task.get("final", {}).get("deployed_batches"),
+                "errors": task.get("errors", []),
+            }
+            for key, task in report.get("tasks", {}).items()
+        },
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_predict(args) -> int:
     from rsi.predict import main as predict_main
 
@@ -208,6 +257,35 @@ def build_parser() -> argparse.ArgumentParser:
                      help="LLM token budget for the whole run (0 = unlimited, dev default)")
     run.add_argument("--no-judge", action="store_true", help="disable the deterministic goal judge")
     run.set_defaults(func=cmd_run)
+
+    stream = sub.add_parser("stream", help="batch-stream protocol (track S official / track X external)")
+    stream.add_argument("--task-spec", action="append", metavar="PATH",
+                        help="portable task.json (file or directory); repeatable")
+    stream.add_argument("--tasks", default="A")
+    stream.add_argument("--source", choices=("official", "external-a"), default="official")
+    stream.add_argument("--batches", type=int, default=6)
+    stream.add_argument("--state-dir", default=os.environ.get("RSI_STREAM_DIR", ".scratch/rsi-stream"))
+    stream.add_argument("--llm", choices=("auto", "on", "off"), default="off")
+    stream.add_argument("--llm-env", default=os.environ.get("RSI_LLM_ENV", ""))
+    stream.add_argument("--controller", choices=("auto", "kernel", "pipeline"),
+                        default=os.environ.get("RSI_CONTROLLER", "auto"))
+    stream.add_argument("--seed", type=int, default=42)
+    stream.add_argument("--parallel-tasks", type=int, default=1,
+                        help="run independent task streams in parallel threads")
+    stream.add_argument("--experiments-cap", type=int, default=int(os.environ.get("RSI_EXPERIMENTS_CAP", 40)))
+    stream.add_argument("--batch-wall", type=float, default=float(os.environ.get("RSI_BATCH_WALL", 1800)))
+    stream.add_argument("--retention-every", type=int, default=2,
+                        help="re-evaluate deployed model on all earlier batches every N batches (0=off)")
+    stream.add_argument("--round-turns", type=int, default=int(os.environ.get("RSI_ROUND_TURNS", 20)))
+    stream.add_argument("--token-cap", type=int, default=None)
+    stream.add_argument("--no-memory", action="store_true")
+    stream.add_argument("--external-root", default=os.environ.get("RSI_GAS_ROOT", ""),
+                        help="directory with UCI gas batch*.dat for --source external-a")
+    stream.add_argument("--external-start", type=int, default=3)
+    stream.add_argument("--external-end", type=int, default=10)
+    stream.add_argument("--holdout", type=float, default=0.3,
+                        help="fraction of an external batch used for evaluation (track X)")
+    stream.set_defaults(func=cmd_stream)
 
     predict = sub.add_parser("predict", help="official-compatible predictor (stdin JSONL)")
     predict.add_argument("predict_args", nargs=argparse.REMAINDER)

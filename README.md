@@ -113,9 +113,17 @@ planner，仍能完成全部 10 轮并产出合规记录——这是镜像在封
 
 | 任务 | 指标 | 官方基线 | 严格官方数据口径（selection） | report 切分 | 外部漂移探针（只验证，不进训练） |
 |---|---|---|---|---|---|
-| A 气体分类 | macro-F1 ↑ | 0.714030 | **0.734555**（10 轮，r1/r2 recenter promote，其后回滚） | 0.6864 → 0.6834 | 0.4253 → **0.5239**（UCI batch3–10） |
+| A 气体分类 | macro-F1 ↑ | 0.714030 | **0.734555**（10 轮，r1/r2 recenter promote，其后回滚） | 0.6864 → 0.6834 | 0.4253 → **0.5224**（UCI batch3–10，整夜复现） |
 | B 轴承 RUL | RMSE ↓ | 681.160 | **409.737**（1 次 promote：父 checkpoint + train-only `damage_shrink`） | 664.0 → 424.1 | —（轴承级留出，见 docs/12） |
 | C 发动机 RUL | RMSE ↓ | 52.869 | **40.524**（r1 `continue_train_staged` 1000+400 epoch，后 9 轮 retain） | 57.46 → 56.02 | —（单元级留出） |
+
+
+**Track X（外部数据测试床，不计入提交分数）**：UCI gas batch6–9 四批，harness 部署模型
+0.4697 / 0.4871 / 0.4053 / 0.5511，全部优于 frozen（0.3209 / 0.3395 / 0.2563 / 0.1868）
+与 recenter-only；oracle 上界 0.95–0.99。详见 docs/12 §12.21。
+
+**真实 LLM kernel 证据（strict）**：A 3 轮 0.7032→0.7207（panel 1 次、知识检索 1 次）；
+B 2 轮 0.6780→0.6022（未发现 damage_shrink，如实记录）。详见 docs/18 §10.4/§10.5。
 
 > 最终 strict canonical run `.scratch/rsi-v052/rsi-20261115-210157`：wall 1826s、
 > CPU 1059s、56 实验、0 LLM token；`RSI_ALLOW_EXTENDED_DATA=0`，只使用官方

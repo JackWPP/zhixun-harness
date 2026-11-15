@@ -48,6 +48,30 @@
     </section>
 
     <section class="section-head">
+      <h2>软目标与批次 <span class="section-en">SOFT GOALS &amp; BATCHES</span></h2>
+      <p class="section-hint">
+        软目标展示「目标值 / 当前值 / 缺口」，仅用于评估方向，<strong>不阻塞任务完成</strong>；
+        批次时间线按轮次记录指标 before → after 与门控决策。旧 schema 缺失字段时自动降级。
+      </p>
+    </section>
+
+    <section id="goal-panel" class="goal-panel" aria-label="软目标与批次时间线">
+      <p class="placeholder">软目标数据加载中…</p>
+    </section>
+
+    <section class="section-head">
+      <h2>漂移雷达与知识 <span class="section-en">DRIFT RADAR &amp; KNOWLEDGE</span></h2>
+      <p class="section-hint">
+        漂移雷达读取 drift.type / severity / attribution / evidence；知识面板汇总 knowledge 命中、
+        技能使用与 lessons；提案来源展示 seed / agent / knowledge / panel 的占比。缺失字段自动降级。
+      </p>
+    </section>
+
+    <section id="insight-panel" class="insight-panel" aria-label="漂移雷达、知识与提案来源">
+      <p class="placeholder">雷达与知识数据加载中…</p>
+    </section>
+
+    <section class="section-head">
       <h2>记忆与自主内核 <span class="section-en">MEMORY &amp; KERNEL</span></h2>
       <p class="section-hint">
         内核在每轮观测 / 诊断 / 实验之间读写记忆并派发 panel；下方同时提供 records / rounds 全文检索。
