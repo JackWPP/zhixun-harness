@@ -5,7 +5,8 @@
     rsi/dashboard/
       __init__.py     # 包入口，导出 VERSION / create_server / StateStore
       __main__.py     # `python -m rsi.dashboard` 命令行入口
-      server.py       # HTTP 服务端：/api/state、/api/events、静态资源
+      server.py       # HTTP 服务端：/api/state、/api/events、/api/memory、/api/agent、/api/records/search
+      demo.py         # schema v2 演示数据包生成器（state + records + rounds + memory/ + sqlite）
       static/
         index.html    # 页面骨架（中文 UI）
         app.js        # 手写 vanilla JS：轮询、渲染、过滤、详情抽屉
@@ -13,8 +14,8 @@
 
 快速开始::
 
-    ./.venv/bin/python scripts/mock_state.py --out .scratch/demo_state.json
-    ./.venv/bin/python -m rsi.dashboard --state .scratch/demo_state.json --port 7861
+    ./.venv/bin/python -m rsi.dashboard            # 首次运行自动生成 v2 演示包并启动
+    ./.venv/bin/python -m rsi.dashboard --state runs/state.json --port 7861
     # 浏览器打开 http://127.0.0.1:7861/
 """
 from __future__ import annotations

@@ -6,6 +6,8 @@
     python -m rsi.cli report  --run-dir .scratch/rsi-runs/<run-id>
     python -m rsi.cli serve   --state .scratch/rsi-runs/<run-id>/state.json --port 7861
     python -m rsi.cli selftest --task A
+    python -m rsi.cli probe  --task A --path <private.jsonl> --checkpoint <ckpt.npz>
+    python -m rsi.cli synth  --task A --batches 4 --output .scratch/synth/A.jsonl
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ import sys
 from pathlib import Path
 
 from rsi.runner import Runner
+from rsi.tasks import describe_tasks, register_task_specs
 
 
 def load_env_file(path: str) -> None:
@@ -32,13 +35,26 @@ def load_env_file(path: str) -> None:
         os.environ.setdefault(key.strip(), value)
 
 
+def _register_specs(args) -> None:
+    spec = getattr(args, "task_spec", None)
+    added = register_task_specs(spec)
+    if added:
+        print(f"[spec] registered tasks: {', '.join(added)}")
+
+
 def cmd_run(args) -> int:
+    _register_specs(args)
     if args.llm_env:
         load_env_file(args.llm_env)
+    if args.token_cap is not None:
+        os.environ["RSI_TOKEN_CAP"] = str(int(args.token_cap))
     keys = [item.strip().upper() for item in args.tasks.split(",") if item.strip()]
     runner = Runner(keys=keys, rounds=args.rounds, llm_mode=args.llm, seed=args.seed,
                     state_dir=args.state_dir, wall_cap=args.wall_cap, cpu_cap=args.cpu_cap,
-                    experiments_cap=args.experiments_cap, swanlab=args.swanlab)
+                    experiments_cap=args.experiments_cap, swanlab=args.swanlab,
+                    controller=args.controller, memory=not args.no_memory,
+                    memory_dir=args.memory_dir or None, db_path=args.db_path or None,
+                    round_turns=args.round_turns, judge=not args.no_judge)
     summary = runner.run()
     print(json.dumps({"run_id": summary["run_id"],
                       "run_dir": str(runner.run_dir),
@@ -91,6 +107,7 @@ def cmd_serve(args) -> int:
 
 
 def cmd_selftest(args) -> int:
+    _register_specs(args)
     """Quick offline verification: checkpoint loads, prediction matches, gate works."""
     from rsi.inference import apply_postprocess
     from rsi.metrics import from_predictions, primary
@@ -115,11 +132,58 @@ def cmd_selftest(args) -> int:
     return 0
 
 
+def cmd_probe(args) -> int:
+    _register_specs(args)
+    from rsi.adapters import evaluate_private_file, SchemaError
+    from rsi.tasks import resolve_tasks
+
+    config = resolve_tasks([args.task.upper()])[0]
+    checkpoint = args.checkpoint or str(config.checkpoint_path)
+    postprocess = {"type": "none"}
+    if args.postprocess:
+        raw = args.postprocess.strip()
+        if os.path.isfile(raw):
+            data = json.loads(Path(raw).read_text(encoding="utf-8"))
+            postprocess = data.get("postprocess", data)
+        else:
+            postprocess = json.loads(raw)
+    try:
+        report = evaluate_private_file(config, args.path, checkpoint, postprocess, args.output)
+    except SchemaError as exc:
+        print(json.dumps({"ok": False, "error": f"schema: {exc}"}, ensure_ascii=False, indent=2))
+        return 2
+    print(json.dumps({"ok": True, "primary": report["primary"],
+                      "metrics": report["metrics"],
+                      "rows": report["dataset"]["rows"],
+                      "groups": [{"group": row["group"], "rows": row["rows"], "primary": row["primary"]}
+                                 for row in report["per_group"]],
+                      "training_isolation": report["training_isolation"]},
+                     ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_synth(args) -> int:
+    _register_specs(args)
+    from rsi.adapters import synthesize, write_synthetic
+    from rsi.tasks import resolve_tasks
+
+    config = resolve_tasks([args.task.upper()])[0]
+    rows = synthesize(config, args.source or config.train_path, batches=args.batches,
+                      seed=args.seed, drift=args.drift, noise=args.noise)
+    output = write_synthetic(rows, args.output)
+    print(json.dumps({"ok": True, "output": str(output), "rows": len(rows),
+                      "batches": args.batches, "drift": args.drift, "noise": args.noise},
+                     ensure_ascii=False, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="rsi", description="zhixun RSI harness")
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="run the autonomous loop")
+    run.add_argument("--task-spec", action="append", metavar="PATH",
+                     help="portable task.json (file or directory); repeatable, also RSI_TASK_SPECS")
     run.add_argument("--tasks", default="A,B,C")
     run.add_argument("--rounds", type=int, default=10)
     run.add_argument("--llm", choices=("auto", "on", "off"), default="auto")
@@ -131,6 +195,18 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--experiments-cap", type=int, default=int(os.environ.get("RSI_EXPERIMENTS_CAP", 40)),
                      help="per-task experiment budget (total = cap x number of tasks)")
     run.add_argument("--swanlab", action="store_true")
+    run.add_argument("--controller", choices=("auto", "kernel", "pipeline"),
+                     default=os.environ.get("RSI_CONTROLLER", "auto"),
+                     help="auto: kernel when an LLM endpoint is available, else pipeline")
+    run.add_argument("--no-memory", action="store_true",
+                     help="disable persistent memory / sqlite index (ablation)")
+    run.add_argument("--memory-dir", default=os.environ.get("RSI_MEMORY_DIR", ""))
+    run.add_argument("--db-path", default=os.environ.get("RSI_DB_PATH", ""))
+    run.add_argument("--round-turns", type=int, default=int(os.environ.get("RSI_ROUND_TURNS", 20)),
+                     help="max PI agent turns inside one autonomous round")
+    run.add_argument("--token-cap", type=int, default=None,
+                     help="LLM token budget for the whole run (0 = unlimited, dev default)")
+    run.add_argument("--no-judge", action="store_true", help="disable the deterministic goal judge")
     run.set_defaults(func=cmd_run)
 
     predict = sub.add_parser("predict", help="official-compatible predictor (stdin JSONL)")
@@ -146,11 +222,42 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=7861)
     serve.set_defaults(func=cmd_serve)
 
+    probe = sub.add_parser("probe", help="evaluate a private/hidden-style JSONL probe")
+    probe.add_argument("--task-spec", action="append", metavar="PATH", help="portable task.json")
+    probe.add_argument("--task", required=True, choices=("A", "B", "C"))
+    probe.add_argument("--path", required=True, help="JSONL file following the official schema")
+    probe.add_argument("--checkpoint", default="", help="defaults to the official baseline checkpoint")
+    probe.add_argument("--postprocess", default="", help="JSON string or a JSON file with a postprocess key")
+    probe.add_argument("--output", default="", help="optional report path (json)")
+    probe.set_defaults(func=cmd_probe)
+
+    synth = sub.add_parser("synth", help="generate deterministic synthetic drift probes")
+    synth.add_argument("--task-spec", action="append", metavar="PATH", help="portable task.json")
+    synth.add_argument("--task", required=True, choices=("A", "B", "C"))
+    synth.add_argument("--batches", type=int, default=4)
+    synth.add_argument("--source", default="", help="source split; defaults to official public train")
+    synth.add_argument("--seed", type=int, default=42)
+    synth.add_argument("--drift", type=float, default=2.5)
+    synth.add_argument("--noise", type=float, default=0.25)
+    synth.add_argument("--output", required=True)
+    synth.set_defaults(func=cmd_synth)
+
     selftest = sub.add_parser("selftest", help="offline sanity checks")
+    selftest.add_argument("--task-spec", action="append", metavar="PATH", help="portable task.json")
     selftest.add_argument("--task", default="A", choices=("A", "B", "C"))
     selftest.add_argument("--state-dir", default=".scratch/rsi-selftest")
     selftest.set_defaults(func=cmd_selftest)
+
+    tasks = sub.add_parser("tasks", help="list registered tasks (built-in + task.json specs)")
+    tasks.add_argument("--task-spec", action="append", metavar="PATH", help="portable task.json")
+    tasks.set_defaults(func=cmd_tasks)
     return parser
+
+
+def cmd_tasks(args) -> int:
+    _register_specs(args)
+    print(describe_tasks())
+    return 0
 
 
 def main(argv=None) -> int:

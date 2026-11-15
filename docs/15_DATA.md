@@ -97,3 +97,42 @@
 
 仓库内 `extra/uci-gas/` 只包含 UCI 原始 `.dat`，不再分发官方赛事数据包之外的
 受限内容；官方包来自赛事平台，随镜像打包仅用于评测运行。
+
+## 15.5 私有/隐藏风格数据与合成漂移（v0.4）
+
+正式评测使用隐藏测试流，本地开发需要一个"看不到标签也能自证"的通道：
+
+1. **私有 JSONL 探针（`rsi/adapters/`）**
+   - `python -m rsi.cli probe --task A --path private.jsonl --checkpoint ...`
+   - 复用官方 `read_dataset` 的全部严格校验（唯一 id、数值特征、禁止
+     `rul/true_rul/total_snapshots` 等答案派生字段、非负 RUL）；
+   - 输出整体 primary + 按 group 分解的指标 + `training_isolation` 声明；
+   - 数据只进入推理，不进入 executor：Guard 的训练白名单只有
+     `train` / `train+calibration`，路径参数不可能被当作训练集。
+2. **合成漂移（`python -m rsi.cli synth`）**
+   - 从官方 train 出发，按维施加"增益 + 偏移 + 噪声"，逐批增强；
+   - 固定 seed，输出标准 JSONL（id 形如 `synbatch2_r00007_xjtu...`），
+     `answer` 保留，`meta.synthetic=true`；
+   - 默认 drift=2.5 / noise=0.25，对应 severe 漂移（baseline macro-F1≈0.72）；
+   - 用途：回归测试 harness 的漂移检测与恢复能力，不参与选型、不进训练。
+3. **外部独立验证（`scripts/external_validation.py`）**
+   - UCI Gas Drift batch1–10 逐批报告（0.4252→0.5281 微加权）；
+   - B/C 的 XJTU-SY / C-MAPSS 全量目录接口保留，开发机可选，镜像不含；
+   - 所有外部数据在 `manifest`/报告中标记 `used_for_training=false`。
+
+> 平台正式评测时，模型只通过 `predict.py` 读隐藏集 inputs；训练/选择阶段
+> 从未接触隐藏标签，也不需要接触。
+
+## 5. 外部预训练数据（任务 A，opt-in）
+
+- 文件：`extra/uci-gas/Dataset/batch3..7.dat`（随镜像打包，仓库内可见）。
+- 用途：仅作为任务 A 的**外部预训练**输入，`extended_pretrain` 策略先在其上
+  训练少量 epoch，再回到官方 `public/train.jsonl` 微调；不读取官方 val/hidden 标签。
+- 开关：`RSI_ALLOW_EXTENDED_DATA=1`（镜像 entrypoint 默认开）；未开启时策略目录
+  中的扩展计划会被 Guard 拒绝并回退到合法候选。
+- 隔离证明：`rsi/policy.py` 只允许 `train`/`extended` 两种训练数据；校验/隐藏
+  split 路径不进 executor；`workspace_report.json` 与 `docs/12` 记录实际用量。
+- 证据：官方 selection 0.7346→0.8645；外部逐批（见 docs/evidence/uci_gas_drift.md）
+  micro 0.4253→0.7515，其中**未参与预训练的 batch8–10** 加权 0.352→0.593。
+- 披露：UCI Gas Sensor Array Drift 数据集为公开学术数据（CC BY 4.0 兼容引用），
+  不是官方比赛数据；报告中明确标注 `used_for_training=true (pretrain only)`。

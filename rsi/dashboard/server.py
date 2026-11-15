@@ -15,25 +15,33 @@ GET /                 -> static/index.html
 GET /app.js           -> 前端脚本
 GET /style.css        -> 样式
 GET /favicon.svg      -> 图标
-GET /api/state        -> 完整 state（schema v1 + 附加 ``_meta``）
+GET /api/state        -> 完整 state（schema v2 + 附加 ``_meta``）
 GET /api/events       -> 事件流，支持 limit / level / task / q
+GET /api/memory       -> 运行/任务记忆、lessons、策略统计、技能使用、记忆文件
+GET /api/agent        -> 自主内核统计、目标、每轮 agent 轨迹（?task=A 可只看单任务）
+GET /api/records/search -> 在 records.jsonl / rounds.jsonl 中做大小写不敏感子串搜索
 GET /api/health       -> 轻量健康检查
 其他                  -> 404（JSON）
+
+记忆/内核接口全部只读且容错：字段缺失、records 文件不存在、sqlite 打不开时
+返回空结构或降级说明，不会让页面报错。
 """
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-VERSION = "1.0.0"
-SCHEMA_VERSION = 1
+VERSION = "1.1.0"
+SCHEMA_VERSION = 2
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {
@@ -46,6 +54,12 @@ VALID_LEVELS = ("info", "warn", "error")
 MAX_RECORDS_BYTES = 16 * 1024 * 1024
 DEFAULT_EVENTS_LIMIT = 50
 MAX_EVENTS_LIMIT = 500
+DEFAULT_SEARCH_LIMIT = 20
+MAX_SEARCH_LIMIT = 100
+MAX_SEARCH_LINES = 20_000
+MAX_MEMORY_FILE_BYTES = 1024 * 1024
+MAX_TRACE_DETAIL = 400
+DB_TIMEOUT_SECONDS = 0.35
 
 
 class StateUnavailable(Exception):
@@ -130,15 +144,94 @@ def _dedupe_events(events: list[dict]) -> list[dict]:
 
 
 # --------------------------------------------------------------------------- #
+# 记忆 / 内核数据归一化
+# --------------------------------------------------------------------------- #
+def _as_dict(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: object) -> list:
+    return value if isinstance(value, list) else []
+
+
+def _safe_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+def _truncate(text: object, limit: int) -> str:
+    value = "" if text is None else str(text)
+    return value if len(value) <= limit else value[: limit - 1] + "…"
+
+
+def _iso_or_empty(value: object) -> str:
+    return value if isinstance(value, str) else ("" if value is None else str(value))
+
+
+def _normalise_lesson(raw: object, *, source: str) -> dict | None:
+    """把 db 行 / state.review.lessons 归一成 {task,text,wins,...}。"""
+    if not isinstance(raw, dict):
+        return None
+    text = raw.get("text") or raw.get("lesson") or raw.get("message")
+    if not isinstance(text, str) or not text.strip():
+        return None
+    evidence = raw.get("evidence")
+    if isinstance(evidence, str):
+        try:
+            evidence = json.loads(evidence)
+        except json.JSONDecodeError:
+            pass
+    return {
+        "task": str(raw.get("task") or "").upper() or "—",
+        "scope": _truncate(raw.get("scope") or "", 120),
+        "text": _truncate(text.strip(), 1200),
+        "wins": _safe_int(raw.get("wins")),
+        "uses": _safe_int(raw.get("uses")),
+        "evidence": evidence if isinstance(evidence, (dict, list)) else (evidence if isinstance(evidence, str) else {}),
+        "source": source,
+    }
+
+
+def _normalise_strategy_row(raw: object, fallback_task: str = "") -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    trials = _safe_int(raw.get("trials"))
+    promotions = _safe_int(raw.get("promotions"))
+    win_rate = raw.get("win_rate")
+    try:
+        win_rate = float(win_rate)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        win_rate = (promotions / trials) if trials > 0 else None
+    if win_rate is not None:
+        win_rate = max(0.0, min(1.0, win_rate))
+    return {
+        "task": str(raw.get("task") or fallback_task).upper(),
+        "strategy": str(raw.get("strategy") or "unknown"),
+        "postprocess_type": str(raw.get("postprocess_type") or raw.get("postprocess") or "none"),
+        "trials": trials,
+        "promotions": promotions,
+        "mean_delta": raw.get("mean_delta"),
+        "best_delta": raw.get("best_delta"),
+        "win_rate": win_rate,
+        "updated_at": _iso_or_empty(raw.get("updated_at")),
+    }
+
+
+# --------------------------------------------------------------------------- #
 # state / records 读取（带 mtime 缓存）
 # --------------------------------------------------------------------------- #
 class StateStore:
     """线程安全地读取 state.json，并按 mtime 缓存解析结果。"""
 
-    def __init__(self, state_path: str | Path, records_path: str | Path | None = None):
+    def __init__(self, state_path: str | Path, records_path: str | Path | None = None,
+                 follow_dir: str | Path | None = None):
         self.state_path = Path(state_path).expanduser().resolve()
-        if records_path:
-            self.records_path = Path(records_path).expanduser().resolve()
+        self.follow_dir = Path(follow_dir).expanduser().resolve() if follow_dir else None
+        self._explicit_records = Path(records_path).expanduser().resolve() if records_path else None
+        if self._explicit_records:
+            self.records_path = self._explicit_records
         else:
             self.records_path = self.state_path.parent / "records.jsonl"
         self._lock = threading.Lock()
@@ -148,8 +241,46 @@ class StateStore:
         self._records_sig: tuple | None = None
         self._records_cache: list[dict] = []
         self._records_skipped: int = 0
+        # 搜索缓存：path -> (sig, items, skipped_lines, available)
+        self._search_lock = threading.Lock()
+        self._search_cache: dict[Path, tuple] = {}
+        # sqlite 缓存：(path, mtime, size) -> 解析结果
+        self._db_lock = threading.Lock()
+        self._db_sig: tuple | None = None
+        self._db_cache: dict | None = None
+        self._db_path_used: Path | None = None
 
     # -- 内部 ---------------------------------------------------------------
+    def _maybe_follow(self) -> None:
+        """实时跟随运行根目录下最新的 run（`<dir>/*/state.json`）。
+
+        harness 每次 run 会新建目录；看板常驻时自动切换到最新 run，
+        无需重启即可看到下一次实验的进度。
+        """
+        if self.follow_dir is None:
+            return
+        try:
+            candidates = sorted(
+                (p for p in self.follow_dir.glob("*/state.json") if p.is_file()),
+                key=lambda p: p.stat().st_mtime_ns,
+            )
+        except OSError:
+            return
+        if not candidates:
+            return
+        latest = candidates[-1].resolve()
+        if latest == self.state_path:
+            return
+        with self._lock:
+            self.state_path = latest
+            if self._explicit_records is None:
+                self.records_path = latest.parent / "records.jsonl"
+            self._state_sig = None
+            self._state_cache = None
+            self._records_sig = None
+            self._search_cache.clear()
+            print(f"[dashboard] follow -> {latest}")
+
     def _stat_sig(self, path: Path) -> tuple | None:
         try:
             info = path.stat()
@@ -204,6 +335,7 @@ class StateStore:
 
     # -- 对外 ---------------------------------------------------------------
     def read(self, force: bool = False) -> dict:
+        self._maybe_follow()
         with self._lock:
             state_sig = self._stat_sig(self.state_path)
             cache_hit = not force and state_sig is not None and state_sig == self._state_sig and self._state_cache
@@ -242,6 +374,26 @@ class StateStore:
         payload = dict(data)
         payload["events"] = events
         payload["ok"] = True
+        # 运行中的 run：按 wall clock 重算 elapsed，避免状态文件只在轮末刷新
+        # 时看板上的耗时"卡住"。只影响展示，不回写 state。
+        run = payload.get("run")
+        if isinstance(run, dict) and run.get("status") in {"running", "queued"}:
+            started = run.get("started_at")
+            if isinstance(started, str):
+                try:
+                    begin = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                    if begin.tzinfo is None:
+                        begin = begin.replace(tzinfo=timezone.utc)
+                    payload["run"] = dict(run)
+                    try:
+                        reported = float(run.get("elapsed_seconds") or 0.0)
+                    except (TypeError, ValueError):
+                        reported = 0.0
+                    payload["run"]["elapsed_seconds"] = round(
+                        max(reported,
+                            max(0.0, (datetime.now(timezone.utc) - begin).total_seconds())), 1)
+                except ValueError:
+                    pass
         mtime_ns = state_sig[0]
         stale = None
         if mtime_ns:
@@ -262,6 +414,428 @@ class StateStore:
         if error:
             payload["_meta"]["error"] = error
         return payload
+
+    # -- 路径解析 -----------------------------------------------------------
+    def _resolve_input_path(self, raw: object, *, want_dir: bool) -> Path | None:
+        """把 state 里的相对路径（相对 run 目录 / 上级 / 当前目录）解析成真实路径。"""
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        candidate = Path(raw).expanduser()
+        options: list[Path] = []
+        if candidate.is_absolute():
+            options.append(candidate)
+        else:
+            for base in (self.state_path.parent, self.state_path.parent.parent, Path.cwd()):
+                options.append(base / candidate)
+        for option in options:
+            try:
+                if option.is_dir() if want_dir else option.is_file():
+                    return option.resolve()
+            except OSError:
+                continue
+        return None
+
+    def _resolve_memory_db(self, data: dict) -> Path | None:
+        run = _as_dict(data.get("run"))
+        memory = _as_dict(run.get("memory"))
+        resolved = self._resolve_input_path(memory.get("db"), want_dir=False)
+        if resolved is not None:
+            return resolved
+        for candidate in (self.state_path.parent / "rsi_state.db", self.state_path.parent.parent / "rsi_state.db"):
+            try:
+                if candidate.is_file():
+                    return candidate.resolve()
+            except OSError:
+                continue
+        return None
+
+    def _memory_files(self, data: dict) -> list[dict]:
+        run = _as_dict(data.get("run"))
+        memory = _as_dict(run.get("memory"))
+        memory_dir = self._resolve_input_path(memory.get("dir"), want_dir=True)
+        if memory_dir is None:
+            for candidate in (self.state_path.parent / "memory", self.state_path.parent.parent / "memory"):
+                try:
+                    if candidate.is_dir():
+                        memory_dir = candidate.resolve()
+                        break
+                except OSError:
+                    continue
+        if memory_dir is None:
+            return []
+        try:
+            paths = sorted(p for p in memory_dir.glob("*.md") if p.is_file())
+        except OSError:
+            return []
+        files: list[dict] = []
+        for path in paths[:40]:
+            try:
+                raw = path.read_bytes()[:MAX_MEMORY_FILE_BYTES]
+            except OSError:
+                continue
+            text = raw.decode("utf-8", "replace")
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            bullets = [
+                line for line in lines
+                if line.startswith(("- ", "* "))
+                or (len(line) > 2 and line[0].isdigit() and line[1] in ".)")
+            ]
+            body = [line for line in lines if not line.startswith("#")]
+            entries = len(bullets) if bullets else len(body)
+            files.append(
+                {
+                    "name": path.name,
+                    "path": str(path),
+                    "entries": entries,
+                    "characters": len(text),
+                    "usage": f"{len(text):,} chars",
+                }
+            )
+        return files
+
+    # -- sqlite（只读 URI，失败降级为空）-----------------------------------
+    def _read_db(self, db_path: Path | None) -> dict:
+        empty = {"available": False, "error": "", "lessons": [], "strategy_stats": [], "skill_usage": []}
+        if db_path is None:
+            return dict(empty, error="未找到 rsi_state.db")
+        try:
+            info = db_path.stat()
+        except OSError as exc:
+            return dict(empty, error=f"db 文件不可读：{exc}")
+        sig = (str(db_path), info.st_mtime_ns, info.st_size)
+        with self._db_lock:
+            if sig == self._db_sig and self._db_cache is not None:
+                return self._db_cache
+            result = dict(empty)
+            try:
+                con = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True, timeout=DB_TIMEOUT_SECONDS)
+            except sqlite3.Error as exc:
+                result["error"] = f"sqlite 打不开：{exc}"
+            else:
+                try:
+                    con.row_factory = sqlite3.Row
+                    tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+
+                    def columns(table: str) -> set[str]:
+                        return {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
+
+                    if "lessons" in tables:
+                        cols = columns("lessons")
+                        wanted = [c for c in ("id", "task", "scope", "text", "evidence", "wins", "uses", "created_at", "updated_at") if c in cols]
+                        if "text" in cols and "task" in cols:
+                            sql = f"SELECT {', '.join(wanted)} FROM lessons ORDER BY wins DESC, id DESC LIMIT 300"
+                            for row in con.execute(sql):
+                                lesson = _normalise_lesson({key: row[key] for key in row.keys()}, source="db")
+                                if lesson:
+                                    result["lessons"].append(lesson)
+                    if "strategy_stats" in tables:
+                        cols = columns("strategy_stats")
+                        wanted = [c for c in ("task", "strategy", "postprocess_type", "trials", "promotions", "mean_delta", "best_delta", "updated_at") if c in cols]
+                        if "task" in cols and "strategy" in cols:
+                            sql = f"SELECT {', '.join(wanted)} FROM strategy_stats ORDER BY trials DESC LIMIT 300"
+                            for row in con.execute(sql):
+                                item = _normalise_strategy_row({key: row[key] for key in row.keys()})
+                                if item:
+                                    result["strategy_stats"].append(item)
+                    if "skill_usage" in tables:
+                        cols = columns("skill_usage")
+                        if "skill" in cols and "uses" in cols:
+                            last = ", MAX(last_used) AS last_used" if "last_used" in cols else ""
+                            sql = f"SELECT skill, SUM(uses) AS uses{last} FROM skill_usage GROUP BY skill ORDER BY uses DESC LIMIT 30"
+                            for row in con.execute(sql):
+                                result["skill_usage"].append(
+                                    {
+                                        "skill": str(row["skill"]),
+                                        "uses": _safe_int(row["uses"]),
+                                        "last_used": _iso_or_empty(row["last_used"]) if "last_used" in row.keys() else "",
+                                    }
+                                )
+                    result["available"] = True
+                except sqlite3.Error as exc:
+                    result["error"] = f"sqlite 读取失败：{exc}"
+                finally:
+                    con.close()
+            self._db_sig = sig
+            self._db_cache = result
+            self._db_path_used = db_path
+            return result
+
+    # -- 聚合接口 -----------------------------------------------------------
+    def memory_payload(self) -> dict:
+        data = self.read()
+        run = _as_dict(data.get("run"))
+        run_agent = _as_dict(run.get("agent"))
+        run_memory = _as_dict(run.get("memory"))
+        db_path = self._resolve_memory_db(data)
+        db = self._read_db(db_path)
+
+        tasks_out: list[dict] = []
+        fallback_lessons: list[dict] = []
+        state_strategy: list[dict] = []
+        for raw_task in _as_list(data.get("tasks")):
+            task = _as_dict(raw_task)
+            key = str(task.get("key") or "")
+            memory = _as_dict(task.get("memory"))
+            goal = _as_dict(task.get("goal"))
+            rows: list[dict] = []
+            for raw_row in _as_list(task.get("strategy_stats")):
+                row = _normalise_strategy_row(raw_row, key)
+                if row:
+                    rows.append(row)
+                    state_strategy.append(row)
+            review = _as_dict(memory.get("review"))
+            for raw_lesson in _as_list(review.get("lessons")):
+                lesson = _normalise_lesson(raw_lesson, source="state")
+                if lesson:
+                    fallback_lessons.append(lesson)
+            tasks_out.append(
+                {
+                    "key": key,
+                    "name": str(task.get("name") or task.get("name_en") or key),
+                    "controller": task.get("controller") or run_agent.get("controller") or "pipeline",
+                    "status": task.get("status"),
+                    "round_index": task.get("round_index"),
+                    "rounds_total": task.get("rounds_total"),
+                    "memory": memory,
+                    "goal": goal,
+                    "agent": _as_dict(task.get("agent")),
+                    "strategy_stats": rows,
+                }
+            )
+
+        lessons: list[dict] = []
+        seen: set[str] = set()
+        for lesson in list(db.get("lessons") or []) + fallback_lessons:
+            fingerprint = lesson["text"].strip()
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            lessons.append(lesson)
+
+        strategy_stats = state_strategy or list(db.get("strategy_stats") or [])
+        memory_files = self._memory_files(data)
+
+        memory = {
+            "enabled": run_memory.get("enabled", True),
+            "dir": run_memory.get("dir") or (str(self.state_path.parent / "memory")),
+            "db": run_memory.get("db") or (str(db_path) if db_path else ""),
+            "entries": _safe_int(run_memory.get("entries")),
+            "usage": run_memory.get("usage"),
+        }
+        if not memory["usage"]:
+            total_chars = sum(_safe_int(item.get("characters")) for item in memory_files)
+            memory["usage"] = f"{total_chars:,} chars" if memory_files else "—"
+
+        return {
+            "ok": True,
+            "schema_version": data.get("schema_version", SCHEMA_VERSION),
+            "controller": run_agent.get("controller") or "pipeline",
+            "run_agent": run_agent,
+            "memory": memory,
+            "tasks": tasks_out,
+            "memory_files": memory_files,
+            "lessons": lessons[:200],
+            "strategy_stats": strategy_stats[:200],
+            "skill_usage": list(db.get("skill_usage") or []),
+            "db": {
+                "path": str(db_path) if db_path else None,
+                "available": bool(db.get("available")),
+                "error": db.get("error") or None,
+            },
+            "generated_at": _utcnow_iso(),
+            "_meta": {
+                "state_path": str(self.state_path),
+                "db_path": str(db_path) if db_path else None,
+                "db_available": bool(db.get("available")),
+            },
+        }
+
+    def agent_payload(self, task_key: str | None = None) -> dict | None:
+        data = self.read()
+        run = _as_dict(data.get("run"))
+        run_agent = _as_dict(run.get("agent"))
+        entries: list[dict] = []
+        for raw_task in _as_list(data.get("tasks")):
+            task = _as_dict(raw_task)
+            key = str(task.get("key") or "")
+            rounds: list[dict] = []
+            for raw_round in _as_list(task.get("rounds")):
+                round_item = _as_dict(raw_round)
+                agent = _as_dict(round_item.get("agent"))
+                usage = _as_dict(agent.get("usage"))
+                trace: list[dict] = []
+                for raw_step in _as_list(agent.get("trace")):
+                    step = _as_dict(raw_step)
+                    ok = step.get("ok")
+                    trace.append(
+                        {
+                            "tool": _truncate(step.get("tool") or step.get("name") or "?", 120),
+                            "ok": ok if isinstance(ok, bool) else None,
+                            "detail": _truncate(step.get("detail") or step.get("message") or "", MAX_TRACE_DETAIL),
+                            "at": _iso_or_empty(step.get("at") or step.get("ts")),
+                        }
+                    )
+                latency = agent.get("latency")
+                try:
+                    latency = float(latency)  # type: ignore[arg-type]
+                except (TypeError, ValueError):
+                    latency = None
+                rounds.append(
+                    {
+                        "index": _safe_int(round_item.get("index")),
+                        "id": str(round_item.get("id") or ""),
+                        "status": str(round_item.get("status") or ""),
+                        "decision": round_item.get("decision"),
+                        "agent": {
+                            "ok": agent.get("ok"),
+                            "fallback": bool(agent.get("fallback")),
+                            "error": _truncate(agent.get("error") or "", 400),
+                            "decision": agent.get("decision"),
+                            "finished": bool(agent.get("finished")),
+                            "usage": {
+                                "input": _safe_int(usage.get("input")),
+                                "output": _safe_int(usage.get("output")),
+                                "reasoning": _safe_int(usage.get("reasoning")),
+                            },
+                            "latency": latency,
+                            "tool_calls": _safe_int(agent.get("tool_calls")),
+                            "trace": trace,
+                            "env": _as_dict(agent.get("env")),
+                        },
+                    }
+                )
+            entries.append(
+                {
+                    "key": key,
+                    "name": str(task.get("name") or task.get("name_en") or key),
+                    "controller": task.get("controller") or run_agent.get("controller") or "pipeline",
+                    "goal": _as_dict(task.get("goal")),
+                    "agent": _as_dict(task.get("agent")),
+                    "rounds": rounds,
+                }
+            )
+
+        if task_key:
+            wanted = task_key.strip().upper()
+            found = next((entry for entry in entries if entry["key"].upper() == wanted), None)
+            if found is None:
+                return None
+            return {
+                "ok": True,
+                "run_agent": run_agent,
+                "task": found["key"],
+                "task_agent": found["agent"],
+                "goal": found["goal"],
+                "controller": found["controller"],
+                "rounds": found["rounds"],
+                "generated_at": _utcnow_iso(),
+            }
+        return {"ok": True, "run_agent": run_agent, "tasks": entries, "generated_at": _utcnow_iso()}
+
+    # -- records / rounds 搜索 ---------------------------------------------
+    def _load_search_file(self, path: Path) -> tuple[list[dict], int, bool]:
+        sig = self._stat_sig(path)
+        with self._search_lock:
+            cached = self._search_cache.get(path)
+            if cached is not None and cached[0] == sig:
+                return cached[1], cached[2], cached[3]
+            items: list[dict] = []
+            skipped = 0
+            available = sig is not None and sig[1] <= MAX_RECORDS_BYTES
+            if available:
+                try:
+                    with path.open("r", encoding="utf-8", errors="replace") as fh:
+                        lines = deque(fh, maxlen=MAX_SEARCH_LINES)
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            raw = json.loads(line)
+                        except json.JSONDecodeError:
+                            skipped += 1
+                            continue
+                        if isinstance(raw, dict):
+                            items.append(raw)
+                except OSError:
+                    available = False
+                    items = []
+            self._search_cache[path] = (sig, items, skipped, available)
+            return items, skipped, available
+
+    @staticmethod
+    def _search_item(raw: dict, file_name: str) -> dict:
+        rtype = str(raw.get("type") or raw.get("kind") or ("round" if file_name == "rounds.jsonl" else "event"))
+        ts = _iso_or_empty(raw.get("ts") or raw.get("created_at") or raw.get("timestamp"))
+        task = str(raw.get("task") or raw.get("task_key") or "")
+        if task == "-":
+            task = ""
+        round_no = raw.get("round_index", raw.get("index", raw.get("round")))
+        try:
+            round_no = int(round_no) if round_no is not None else None
+        except (TypeError, ValueError):
+            round_no = None
+        message = raw.get("message") or raw.get("change_summary") or raw.get("hypothesis") or raw.get("detail") or raw.get("summary")
+        if not isinstance(message, str) or not message.strip():
+            if rtype in ("round", "decision"):
+                bits = [f"第 {round_no} 轮" if round_no is not None else "轮次"]
+                if raw.get("decision"):
+                    bits.append(f"决策 {raw['decision']}")
+                if raw.get("strategy"):
+                    bits.append(f"策略 {raw['strategy']}")
+                message = " · ".join(bits)
+            elif rtype in ("llm_call", "llm"):
+                message = f"LLM 调用 role={raw.get('role', '?')} ok={raw.get('ok', '?')}"
+            elif rtype == "panel":
+                message = f"panel 讨论 verdict={raw.get('verdict', '?')}"
+            else:
+                message = f"{rtype} 记录"
+        try:
+            haystack = json.dumps(raw, ensure_ascii=False, default=str).lower()
+        except (TypeError, ValueError):
+            haystack = str(raw).lower()
+        return {
+            "ts": ts,
+            "type": rtype,
+            "task": task,
+            "message": _truncate(message.strip(), 600),
+            "round": round_no,
+            "source": file_name,
+            "_haystack": haystack,
+        }
+
+    def search_records(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> dict:
+        needle = (query or "").strip().lower()
+        files = [self.records_path, self.state_path.parent / "rounds.jsonl"]
+        items: list[dict] = []
+        seen: set[tuple] = set()
+        file_meta: list[dict] = []
+        for path in files:
+            raws, skipped, available = self._load_search_file(path)
+            file_meta.append(
+                {
+                    "name": path.name,
+                    "path": str(path),
+                    "available": available,
+                    "records": len(raws),
+                    "skipped_lines": skipped,
+                }
+            )
+            for raw in raws:
+                item = self._search_item(raw, path.name)
+                if needle and needle not in item["_haystack"]:
+                    continue
+                fingerprint = (item["ts"], item["type"], item["task"], item["message"], item["round"])
+                if fingerprint in seen:
+                    continue
+                seen.add(fingerprint)
+                items.append(item)
+        items.sort(key=lambda item: _ts_sort_key(item.get("ts")), reverse=True)
+        total = len(items)
+        selected = items[: max(1, limit)]
+        for item in selected:
+            item.pop("_haystack", None)
+        return {"items": selected, "total": total, "files": file_meta}
 
 
 # --------------------------------------------------------------------------- #
@@ -329,6 +903,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/events":
             self._serve_events(query)
+            return
+        if path == "/api/memory":
+            self._serve_memory()
+            return
+        if path == "/api/agent":
+            self._serve_agent(query)
+            return
+        if path == "/api/records/search":
+            self._serve_records_search(query)
             return
         if path == "/api/health":
             self._serve_health()
@@ -416,6 +999,69 @@ class DashboardHandler(BaseHTTPRequestHandler):
             },
         )
 
+    def _serve_memory(self) -> None:
+        try:
+            payload = self.store.memory_payload()
+        except StateUnavailable as exc:
+            self._send_error_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                exc.detail,
+                kind=exc.kind,
+                state_path=str(exc.path) if exc.path else None,
+                hint="记忆面板需要 state.json；数据库缺失时会自动降级为空列表",
+            )
+            return
+        self._send_json(HTTPStatus.OK, payload)
+
+    def _serve_agent(self, query: dict) -> None:
+        task = (query.get("task") or [""])[0].strip()
+        try:
+            payload = self.store.agent_payload(task or None)
+        except StateUnavailable as exc:
+            self._send_error_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                exc.detail,
+                kind=exc.kind,
+                state_path=str(exc.path) if exc.path else None,
+            )
+            return
+        if payload is None:
+            self._send_error_json(
+                HTTPStatus.BAD_REQUEST,
+                f"未知任务：{task}（可选 A / B / C）",
+                task=task,
+                valid_tasks=["A", "B", "C"],
+            )
+            return
+        self._send_json(HTTPStatus.OK, payload)
+
+    def _serve_records_search(self, query: dict) -> None:
+        needle = (query.get("q") or [""])[0].strip()
+        raw_limit = (query.get("limit") or [""])[0]
+        try:
+            limit = int(raw_limit) if raw_limit != "" else DEFAULT_SEARCH_LIMIT
+        except ValueError:
+            limit = DEFAULT_SEARCH_LIMIT
+        limit = max(1, min(limit, MAX_SEARCH_LIMIT))
+        try:
+            result = self.store.search_records(needle, limit)
+        except OSError as exc:  # 文件被占用等极端情况
+            self._send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, f"搜索失败：{exc}")
+            return
+        self._send_json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "query": needle,
+                "limit": limit,
+                "items": result["items"],
+                "total": result["total"],
+                "returned": len(result["items"]),
+                "files": result["files"],
+                "generated_at": _utcnow_iso(),
+            },
+        )
+
     def _serve_health(self) -> None:
         base = {
             "ok": True,
@@ -471,8 +1117,9 @@ def create_server(
     port: int = 7861,
     records_path: str | Path | None = None,
     quiet: bool = False,
+    follow_dir: str | Path | None = None,
 ) -> DashboardServer:
-    store = StateStore(state_path, records_path=records_path)
+    store = StateStore(state_path, records_path=records_path, follow_dir=follow_dir)
     return DashboardServer((host, int(port)), store, quiet=quiet)
 
 

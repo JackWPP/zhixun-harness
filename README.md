@@ -15,14 +15,17 @@ checkpoint**，不改变网络结构、不改变归一化协议，保证与平�
 | 交付物 | 位置 | 说明 |
 |---|---|---|
 | Harness 镜像 | `docker/` + `scripts/build_image_tar.py` | 单个 `linux/amd64`、`docker save` 兼容的未压缩 tar（`harness.tar`），`docker load` 已验证 |
-| Agent 核心 | `rsi/agent/` | 基于 pi-agent-core-lc 的 PI 运行时适配、6 角色编排、工具契约、Hook 预算闸门 |
-| 自主闭环 | `rsi/runner.py` | 3 任务 × 10 轮，诊断/实验/评审/裁决/门控/记录/回滚 |
+| Agent 核心 | `rsi/agent/` | 基于 pi-agent-core-lc 的 PI 运行时、**自主内核（kernel）** 主循环、自主工具、Guard 安全边界、goal loop、多角色 delegate |
+| 记忆与技能 | `rsi/memory/` + `skills/` | 有界策展 MEMORY/TASK 文件、SKILL.md 渐进披露、SQLite+FTS5 经验库、每任务 Review/Curator |
+| 数据适配 | `rsi/adapters/` | 私有/隐藏风格 JSONL 探针、合成漂移生成、严格 schema 复用 |
+| 提交包 | `scripts/make_submission.py` | 从完成的 run 导出 ≤64MiB 提交包（checkpoint + postprocess + 独立 predict + lineage manifest） |
+| 自主闭环 | `rsi/runner.py` | 3 任务 × 10 轮；kernel 模式由 Agent 决策，pipeline 模式确定性兜底 |
 | 实验沙箱 | `rsi/executor.py` + `rsi/worker.py` | 每个候选在独立子进程执行，资源/超时/参数范围强约束 |
 | 策略库 | `rsi/strategies.py` | retain / continue_train / ridge_last_layer / SWA × 推理期 recenter/shrink 校准 |
 | 推理入口 | `rsi/predict.py` | 官方兼容 stdin/stdout 逐行预测，另提供 `rsi-predict` 容器入口 |
 | 实时看板 | `rsi/dashboard/` | 零依赖 WebUI，轮次时间线、漂移仪表、Panel 讨论、sha256 证据抽屉 |
 | 实验记录 | `<run>/records.jsonl`、`rounds.jsonl`、`summary.json`、`workspace_report.json` | 与平台 `workspace_report` schema 对齐 |
-| 文档 | `docs/10_*.md` … `docs/16_*.md` | 架构、合规映射、实验报告、运行手册、Agent 设计、数据与决策记录 |
+| 文档 | `docs/10_*.md` … `docs/18_*.md` | 架构、合规映射、实验报告、运行手册、Agent 设计、数据、决策、记忆、自主内核 |
 
 ---
 
@@ -75,6 +78,15 @@ docker load -i harness.tar && docker images | grep zhixun
 
 ## 4. 系统做了什么（一句话版本）
 
+**kernel 模式（默认，有 LLM 端点时）**：每个任务每一轮，Agent 拿到漂移报告、
+父模型指标、最近 5 轮、记忆快照、lessons、策略胜率和技能索引，自己决定
+"先看什么、做什么假设、跑哪些实验、用哪个结果、是否 promote、写什么记忆"。
+它只能调用 18 个受限工具（只读上下文 / propose / run / compare / decide /
+delegate / panel / memory / skill / finish），所有动作经 Guard 检查并写审计。
+忘记收口时 supervisor 用确定性门控兜底；连续失败自动降级 pipeline。
+
+**pipeline 模式（兜底/消融）**：确定性六步：
+
 每个任务每一轮：
 
 1. **诊断**（Diagnostician）：读取漂移报告（特征均值/方差偏移、KS、相关性、
@@ -99,11 +111,22 @@ planner，仍能完成全部 10 轮并产出合规记录——这是镜像在封
 
 ## 5. 实验证据（本地 6h 预算内的真实运行）
 
-| 任务 | 指标 | 官方基线 | 官方验证集 | 本轮闭环最终（selection 切分） | 外部漂移探针（UCI batch3–10） |
+| 任务 | 指标 | 官方基线 | 本轮闭环最终（selection 切分） | report 切分 | 外部漂移探针 |
 |---|---|---|---|---|---|
-| A 气体分类 | macro-F1 ↑ | 0.714030 | 0.714030 | **0.843359**（10 轮，4 次 promote） | 0.4054 → **0.5239**（基线→最终，含 recenter） |
-| B 轴承 RUL | RMSE ↓ | 681.160 | 681.160 | **462.454**（shrink 校准，1 轮提升后收敛） | —（轴承级留出，见 docs/12） |
-| C 发动机 RUL | RMSE ↓ | 52.869 | 52.869 | **41.816**（3 轮 continue_train 后收敛；report 切分 57.46→56.28） | —（单元级留出） |
+| A 气体分类 | macro-F1 ↑ | 0.714030 | **0.888398**（10 轮，4 次 promote；含 extended_pretrain） | 0.6864 → 0.8646 | 0.4253 → **0.7462**（batch3–10）；**未参与预训练的 b8–b10：0.3519 → 0.5781** |
+| B 轴承 RUL | RMSE ↓ | 681.160 | **491.638**（3 轮 shrink α=0→0.3 后收敛） | 664.0 → 489.6 | —（轴承级留出，见 docs/12） |
+| C 发动机 RUL | RMSE ↓ | 52.869 | **41.816**（3 轮 continue_train 后收敛） | 57.46 → 56.28 | —（单元级留出） |
+
+> v0.5 canonical run `.scratch/rsi-v05/rsi-20261115-193347`：wall 1390s、CPU 752s、
+> 52 实验、0 LLM token；A 的外部预训练默认开启（`RSI_ALLOW_EXTENDED_DATA=1`），
+> 只用 UCI batch3–7 且从不拟合验证/隐藏标签；score 口径与合规说明见
+> `docs/11_COMPLIANCE.md` §11.9 与 `docs/12_EXPERIMENTS.md` §12.18。
+
+**Agent Kernel 真实 LLM 验证**：架构验证轮（A 3 轮，`--controller kernel`）曾达到
+0.7032→0.9256→0.9373，每轮 14–18 次工具调用、轨迹含读技能/查 lessons/比较候选/
+写记忆；但该轮发生在 P0 合规修复前、使用了 `train+calibration`，数字**已作废**，
+仅保留为“Agent 自主闭环可跑通”的架构证据。合规口径的 kernel 复验见
+`docs/12_EXPERIMENTS.md`（修复后重跑，score 数字以 v0.5 canonical 为准）。
 
 > 表中的 selection/report 是官方验证集按任务语义切出的**互不重叠**评测子集
 > （A 按类别分层、B 轴承内行切分、C 整发动机单元切分），用于门控/报告；
@@ -115,8 +138,11 @@ planner，仍能完成全部 10 轮并产出合规记录——这是镜像在封
 
 - **模型层**：所有候选都从官方 baseline checkpoint 续训（`--from-baseline` 语义，
   `contest.cpu-mlp.v1` 格式/归一化/结构不变），提交时保留父 checkpoint sha256 链；
-- **策略层**：LLM 只能在白名单策略 + 参数区间内选择，执行器二次校验；预算
-  （6h wall / 每任务 40 实验 / 2M token / CPU 秒）硬上限；无隐藏标签访问；
+- **策略层**：LLM 只能在白名单策略 + 参数区间内选择，执行器二次校验；Guard
+  强制训练数据仅 `train`/`train+calibration`、每轮 ≤3 实验、每任务 ≤40，
+  promote 必须通过统计门控重算；预算（6h wall / token / CPU 秒）硬上限；无隐藏标签访问；
+- **记忆层**：记忆是纯文本+SQLite，有界、去重、注入扫描、外部漂移备份；
+  任务开始时冻结快照，跨 run 共享，可 `--no-memory` 消融；
 - **实验记录**：每轮记录假设、修改、指标、父子 sha、调用用量，字段与平台
   `workspace_report` 对齐，可一键导出 SwanLab 离线记录；
 - **离线**：镜像不依赖外网；LLM 可选，缺失时确定性降级；不写系统目录，不拉
@@ -136,10 +162,12 @@ rsi/                    新 harness（本仓库主角）
   strategies.py         白名单策略库（模型层 + 推理期校准）
   inference.py          recenter / shrink / 流式因果校准
   selection.py          门控（promote / retain / rollback）
-  records.py            JSONL + state.json 记录器
-  dashboard/            零依赖实时看板
+  records.py            JSONL + state.json 记录器（接 SQLite）
+  memory/               记忆/技能/经验库（Hermes 风格）
+  adapters/             私有数据探针、合成漂移
+  dashboard/            零依赖实时看板（v2：记忆/内核面板）
   predict.py            官方兼容预测入口
-  cli.py                run / predict / report / serve / selftest
+  cli.py                run / predict / probe / synth / report / serve / selftest
 docker/                 Dockerfile、requirements、容器入口
 scripts/                镜像构建（无 Docker daemon 亦可产出 docker save tar）
 datasets/               官方三任务数据包（A/B/C，含 baseline checkpoint）
@@ -147,7 +175,8 @@ extra/uci-gas/          扩展验证数据（UCI Gas Sensor Drift，CC BY 4.0）
 harness/                （历史）旧原型：确定性规则引擎，仅作审计留档
 audit/                  （历史）对旧原型的 10 项独立审计
 docs/01–09              （历史）旧原型的移交文档与风险清单
-docs/10–16              新系统的架构/合规/实验/运行/Agent/数据/决策文档
+docs/10–18              新系统的架构/合规/实验/运行/Agent/数据/决策/记忆/内核文档
+dist/submission_*       ≤64MiB 提交包（本地生成，上传需人工确认）
 demo/harness-runs/      （历史）旧原型三次演示留痕
 ```
 
@@ -172,7 +201,10 @@ Agent/RSI：6 个硬编码配方、lr 恒为父模型 0.3×、卡住直接 `brea
 - B 只有 3 个验证轴承，行级切分无法完全消除轴承内泄漏，已在 `docs/12` 中如实
   披露并用 LOBO 实验给出保守结论；
 - SwanLab 默认离线，`SWANLAB_API_KEY` 设置后可 `--swanlab` 同步；
-- 镜像当前 366 MB（`docker load` 验证通过），可进一步裁剪 PI/langchain 依赖。
+- kernel 路径依赖外部 LLM 端点（OpenAI 兼容）；端点不可用时自动降级 pipeline；
+  单轮 LLM 耗时约 2–4 分钟，3×10 全 kernel 运行需数小时，已实现时间感知降级；
+- 记忆收益的消融实验仍在进行（`docs/12` §12.16），未确认前不宣称因果收益；
+- 镜像当前约 370 MB（`docker load` 验证通过），可进一步裁剪 PI/langchain 依赖。
 
 ---
 

@@ -44,6 +44,12 @@
     arbiter: { label: "仲裁者", cls: "is-arbiter" },
   };
   const TASK_UNIT = { A: "", B: "分钟", C: "循环" };
+  const CONTROLLER = {
+    kernel: { label: "自主内核", en: "KERNEL", cls: "is-kernel" },
+    pipeline: { label: "流水线", en: "PIPELINE", cls: "is-pipeline" },
+  };
+  const RECORD_TYPE = { event: "事件", round: "轮次", decision: "决策", panel: "Panel", llm_call: "LLM" };
+  const GOAL_STATUS = { running: "进行中", done: "已完成", failed: "失败", blocked: "受阻", pending: "待开始" };
 
   const ui = {
     payload: null,
@@ -59,6 +65,9 @@
     pollOk: false,
     timer: null,
     lastError: "",
+    memory: null,
+    agent: null,
+    search: { query: "", items: null, total: 0, busy: false, error: "", done: false },
   };
 
   const $ = (id) => document.getElementById(id);
@@ -595,7 +604,10 @@
             <h3>${esc(task.name || task.name_en || key)}</h3>
             <p>${esc(task.name_en || "")} · ${esc(task.task || "")} · ${esc(metric)} ${esc(directionText)}</p>
           </div>
-          ${statusChip(task.status)}
+          <div class="card-head-right">
+            ${controllerBadge(task.controller || "pipeline")}
+            ${statusChip(task.status)}
+          </div>
         </header>
 
         <div class="metric-row">
@@ -653,6 +665,284 @@
       return;
     }
     grid.innerHTML = data.tasks.map(taskCardHtml).join("");
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 渲染：记忆与自主内核                                                */
+  /* ------------------------------------------------------------------ */
+  function controllerBadge(controller) {
+    const ctrl = CONTROLLER[String(controller || "pipeline").toLowerCase()] || CONTROLLER.pipeline;
+    return `<span class="controller-chip ${ctrl.cls}" title="controller = ${esc(controller || "pipeline")}"><i aria-hidden="true"></i>${ctrl.en}</span>`;
+  }
+
+  function parsePercent(text) {
+    const match = String(text || "").match(/(\d+(?:\.\d+)?)\s*%/);
+    return match ? Math.max(0, Math.min(100, Number(match[1]))) : null;
+  }
+
+  function aggregateStrategies(rows) {
+    const map = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      const key = `${row.strategy || "unknown"}|${row.postprocess_type || "none"}`;
+      const item = map.get(key) || {
+        strategy: row.strategy || "unknown",
+        postprocess_type: row.postprocess_type || "none",
+        trials: 0,
+        promotions: 0,
+        deltas: [],
+      };
+      const trials = num(row.trials);
+      const promotions = num(row.promotions);
+      item.trials += trials === null ? 0 : trials;
+      item.promotions += promotions === null ? 0 : promotions;
+      const mean = num(row.mean_delta);
+      if (mean !== null) item.deltas.push(mean);
+      map.set(key, item);
+    });
+    return [...map.values()]
+      .map((item) => ({
+        strategy: item.strategy,
+        postprocess_type: item.postprocess_type,
+        trials: item.trials,
+        promotions: item.promotions,
+        win_rate: item.trials ? item.promotions / item.trials : 0,
+        mean_delta: item.deltas.length ? item.deltas.reduce((a, b) => a + b, 0) / item.deltas.length : null,
+      }))
+      .sort((a, b) => b.win_rate - a.win_rate || b.trials - a.trials)
+      .slice(0, 8);
+  }
+
+  function findRoundAgent(taskKey, roundIndex) {
+    const payload = ui.agent;
+    if (!payload || !Array.isArray(payload.tasks)) return null;
+    const task = payload.tasks.find((item) => String(item.key) === String(taskKey));
+    if (!task) return null;
+    return (Array.isArray(task.rounds) ? task.rounds : []).find(
+      (row) => String(row.index) === String(roundIndex)
+    ) || null;
+  }
+
+  function searchResultsHtml() {
+    const search = ui.search;
+    if (search.busy) return '<div class="search-state">正在检索 records / rounds…</div>';
+    if (search.error) return `<div class="search-state is-bad">检索失败：${esc(search.error)}</div>`;
+    if (!search.done) return "";
+    const items = Array.isArray(search.items) ? search.items : [];
+    const head = `
+      <div class="search-results-head">
+        <span>检索 <b class="mono">${esc(search.query || "（最近记录）")}</b> · 命中 <b class="mono">${fmtInt(search.total)}</b> 条，显示 ${items.length} 条</span>
+        <button type="button" class="search-clear" data-action="search-clear">清除结果</button>
+      </div>`;
+    if (!items.length) return `<div class="search-results">${head}<div class="search-state">没有匹配的记录</div></div>`;
+    const rows = items.map((item) => {
+      const type = RECORD_TYPE[item.type] || item.type || "记录";
+      const task = item.task ? `<span class="task-badge mini">${esc(item.task)}</span>` : "";
+      const round = num(item.round) === null ? "" : `<span class="round-chip mono">R${esc(item.round)}</span>`;
+      return `
+        <div class="search-hit">
+          <span class="search-hit-time mono">${esc(fmtDateTime(item.ts))}</span>
+          <span class="record-type">${esc(type)}</span>
+          ${task}${round}
+          <span class="search-hit-msg" title="${esc(item.message)}">${esc(item.message)}</span>
+          <span class="search-hit-src mono">${esc(item.source || "")}</span>
+        </div>`;
+    }).join("");
+    return `<div class="search-results">${head}<div class="search-hit-list">${rows}</div></div>`;
+  }
+
+  function kernelPanelHtml(data) {
+    const runAgent = data.run_agent || ((ui.payload && ui.payload.run && ui.payload.run.agent) || {});
+    const controller = String(runAgent.controller || data.controller || "pipeline").toLowerCase();
+    const memory = data.memory || {};
+    const memTasks = Array.isArray(data.tasks) ? data.tasks : [];
+    const lessons = Array.isArray(data.lessons) ? data.lessons : [];
+    const strategies = aggregateStrategies(data.strategy_stats);
+    const skills = Array.isArray(data.skill_usage) ? data.skill_usage : [];
+    const files = Array.isArray(data.memory_files) ? data.memory_files : [];
+    const usagePct = parsePercent(memory.usage);
+    const failures = num(runAgent.kernel_failures);
+    const counters = [
+      ["内核轮次", runAgent.kernel_rounds],
+      ["派发", runAgent.delegates],
+      ["Panel", runAgent.panels],
+      ["记忆写入", runAgent.memory_writes],
+      ["技能写入", runAgent.skill_writes],
+      ["Kernel tokens", fmtCompact(runAgent.kernel_tokens)],
+    ];
+    const db = data.db || {};
+    const dbChip = db.available
+      ? '<span class="db-chip is-ok">sqlite 已连接</span>'
+      : `<span class="db-chip is-warn" title="${esc(db.error || "")}">sqlite 未连接 · 回退 state 快照</span>`;
+
+    const fileRows = files.length
+      ? files.map((file) => `
+          <li class="memory-file">
+            <span class="memory-file-name mono">${esc(file.name)}</span>
+            <span class="memory-file-meta">${fmtInt(file.entries)} 条 · ${esc(file.usage || "")}</span>
+          </li>`).join("")
+      : '<li class="empty mini">memory/ 目录暂无 Markdown 快照</li>';
+
+    const taskRows = memTasks.map((task) => {
+      const goal = task.goal || {};
+      const tmem = task.memory || {};
+      const rounds = num(goal.rounds_done);
+      const target = num(goal.rounds_target);
+      return `
+        <li class="memory-task">
+          <span class="task-badge mini">${esc(task.key)}</span>
+          <span class="memory-task-metrics">${fmtInt(tmem.entries)} 条 · ${fmtInt(tmem.snapshot_chars)} chars</span>
+          <span class="memory-task-goal mono">${rounds === null ? "—" : `${esc(rounds)}/${esc(target === null ? "?" : target)}`}</span>
+        </li>`;
+    }).join("");
+
+    const lessonRows = lessons.length
+      ? lessons.map((lesson) => `
+          <li class="lesson">
+            <span class="task-badge mini">${esc(lesson.task || "?")}</span>
+            <p class="lesson-text">${esc(lesson.text || "")}</p>
+            <span class="lesson-wins mono" title="该经验被复用并带来提升的次数">+${fmtInt(lesson.wins)}</span>
+          </li>`).join("")
+      : '<li class="empty mini">暂无经验条目（等待首轮决策或数据库生成）</li>';
+
+    const strategyRows = strategies.length
+      ? strategies.map((row) => {
+          const pct = Math.max(0, Math.min(1, row.win_rate)) * 100;
+          const delta = row.mean_delta === null ? "" : `${row.mean_delta > 0 ? "+" : ""}${row.mean_delta.toFixed(3)}`;
+          return `
+            <li class="strategy-row">
+              <span class="strategy-name mono" title="${esc(row.strategy)} / ${esc(row.postprocess_type)}">${esc(row.strategy)} <em>${esc(row.postprocess_type)}</em></span>
+              <span class="strategy-bar"><i style="width:${pct.toFixed(1)}%"></i></span>
+              <span class="strategy-rate mono">${pct.toFixed(0)}%</span>
+              <span class="strategy-trials mono" title="promotions / trials">${fmtInt(row.promotions)}/${fmtInt(row.trials)}</span>
+              <span class="strategy-delta mono ${Number(delta) > 0 ? "is-good" : ""}">${esc(delta)}</span>
+            </li>`;
+        }).join("")
+      : '<li class="empty mini">暂无策略统计</li>';
+
+    const maxSkillUses = skills.reduce((max, item) => Math.max(max, num(item.uses) || 0), 0) || 1;
+    const skillRows = skills.length
+      ? skills.map((item) => {
+          const pct = (Math.max(0, num(item.uses) || 0) / maxSkillUses) * 100;
+          return `
+            <li class="skill-row">
+              <span class="skill-name mono">${esc(item.skill || "?")}</span>
+              <span class="skill-bar"><i style="width:${pct.toFixed(1)}%"></i></span>
+              <span class="skill-uses mono">${fmtInt(item.uses)}</span>
+            </li>`;
+        }).join("")
+      : '<li class="empty mini">暂无技能使用记录</li>';
+
+    return `
+      <div class="kernel-head">
+        <div class="kernel-ident">
+          <span class="kernel-kicker">AUTONOMOUS KERNEL</span>
+          <div class="kernel-controller">
+            ${controllerBadge(controller)}
+            <span class="kernel-controller-label">${esc((CONTROLLER[controller] || CONTROLLER.pipeline).label)}</span>
+            ${failures ? `<span class="warn-chip" title="内核失败 / fallback 次数">失败 ${fmtInt(failures)}</span>` : ""}
+          </div>
+        </div>
+        <div class="kernel-counters">
+          ${counters.map(([label, value]) => `
+            <span class="kernel-counter"><i>${esc(label)}</i><b class="mono">${value == null || value === "" ? "—" : (typeof value === "string" ? esc(value) : fmtInt(value))}</b></span>`).join("")}
+        </div>
+        <form id="kernel-search-form" class="kernel-search" role="search">
+          <input id="kernel-search-input" type="search" name="q" value="${esc(ui.search.query)}"
+            placeholder="搜索 records / rounds（Enter）" autocomplete="off" aria-label="搜索运行记录">
+          <button type="submit" class="search-btn">检索</button>
+          ${ui.search.done ? '<button type="button" class="search-btn is-ghost" data-action="search-clear">清除</button>' : ""}
+        </form>
+      </div>
+
+      <div class="kernel-grid">
+        <section class="kernel-card memory-card">
+          <div class="kernel-card-head">
+            <h3>MEMORY <span>记忆库</span></h3>
+            <span class="kernel-entries mono">${fmtInt(memory.entries)} 条</span>
+          </div>
+          <div class="memory-usage">
+            <div class="memory-bar" role="img" aria-label="记忆占用 ${usagePct === null ? "未知" : usagePct.toFixed(0) + "%"}">
+              <i style="width:${usagePct === null ? 0 : usagePct.toFixed(1)}%"></i>
+            </div>
+            <span class="memory-usage-text mono">${esc(memory.usage || (usagePct === null ? "—" : usagePct.toFixed(0) + "%"))}</span>
+          </div>
+          <div class="memory-meta">
+            <span>目录 <code class="mono" title="${esc(memory.dir || "")}">${esc(memory.dir || "—")}</code></span>
+            ${dbChip}
+          </div>
+          <ul class="memory-files">${fileRows}</ul>
+          <ul class="memory-tasks">${taskRows || '<li class="empty mini">暂无任务级记忆</li>'}</ul>
+        </section>
+
+        <section class="kernel-card lessons-card">
+          <div class="kernel-card-head">
+            <h3>LESSONS <span>经验回溯</span></h3>
+            <span class="kernel-entries mono">${lessons.length} 条</span>
+          </div>
+          <ol class="lesson-list">${lessonRows}</ol>
+        </section>
+
+        <section class="kernel-card strategy-card">
+          <div class="kernel-card-head">
+            <h3>STRATEGY <span>策略胜率</span></h3>
+            <span class="kernel-entries mono">${strategies.length} 组</span>
+          </div>
+          <ul class="strategy-list">${strategyRows}</ul>
+          <div class="skills-head"><span>技能使用 <i>SKILLS</i></span><span class="mono">${skills.length}</span></div>
+          <ul class="skill-list">${skillRows}</ul>
+        </section>
+      </div>
+
+      ${searchResultsHtml()}`;
+  }
+
+  function renderKernel() {
+    const panel = $("kernel-panel");
+    if (!panel) return;
+    if (!ui.memory) {
+      panel.innerHTML = '<p class="placeholder">暂无记忆 / 内核数据（/api/memory 不可用时会自动降级）</p>';
+      return;
+    }
+    const focusInput = document.activeElement && document.activeElement.id === "kernel-search-input";
+    const caret = focusInput ? document.activeElement.selectionStart : null;
+    panel.innerHTML = kernelPanelHtml(ui.memory);
+    if (focusInput) {
+      const input = $("kernel-search-input");
+      if (input) {
+        input.focus();
+        if (caret !== null) {
+          try { input.setSelectionRange(caret, caret); } catch (error) { /* ignore */ }
+        }
+      }
+    }
+  }
+
+  async function performSearch() {
+    const input = $("kernel-search-input");
+    const query = input ? input.value.trim() : ui.search.query;
+    ui.search.query = query;
+    ui.search.busy = true;
+    ui.search.error = "";
+    ui.search.done = false;
+    renderKernel();
+    try {
+      const result = await fetchJSON(`/api/records/search?q=${encodeURIComponent(query)}&limit=20`, 6000);
+      if (result.status !== 200 || !result.body || result.body.ok === false) {
+        const detail = (result.body && (result.body.error || result.body.detail)) || `HTTP ${result.status}`;
+        throw new Error(detail);
+      }
+      ui.search.items = Array.isArray(result.body.items) ? result.body.items : [];
+      ui.search.total = num(result.body.total) || 0;
+      ui.search.done = true;
+    } catch (error) {
+      ui.search.items = [];
+      ui.search.total = 0;
+      ui.search.error = error && error.message ? error.message : String(error);
+      ui.search.done = true;
+    } finally {
+      ui.search.busy = false;
+      renderKernel();
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -815,6 +1105,12 @@
     const decision = DECISION[round.decision] || null;
     const panel = (Array.isArray(task.panel) ? task.panel : []).find((p) => Number(p.round_index) === Number(round.index));
     const panelVerdict = panel ? DECISION[panel.verdict] : null;
+    const goal = task.goal && typeof task.goal === "object" ? task.goal : {};
+    const subgoals = Array.isArray(goal.subgoals) ? goal.subgoals : [];
+    const agentInfo = findRoundAgent(task.key, round.index);
+    const agent = agentInfo && agentInfo.agent ? agentInfo.agent : null;
+    const trace = agent && Array.isArray(agent.trace) ? agent.trace : [];
+    const agentUsage = (agent && agent.usage) || {};
     const shaParent = String(round.parent_checkpoint_sha256 || "");
     const shaCandidate = String(round.candidate_checkpoint_sha256 || "");
     const statusLabel = round.status === "running" ? "进行中" : round.status === "failed" ? "失败" : "已完成";
@@ -846,6 +1142,38 @@
         <section class="drawer-section">
           <h4>本轮指标 <i>METRICS</i></h4>
           ${metricTable(metrics)}
+        </section>
+        ${goal && (goal.goal || goal.rounds_target) ? `
+        <section class="drawer-section">
+          <h4>任务目标 <i>GOAL</i></h4>
+          <p>${esc(goal.goal || "（未记录目标）")}</p>
+          <div class="goal-meta mono">
+            <span>轮次 <b>${esc(goal.rounds_done == null ? "—" : goal.rounds_done)} / ${esc(goal.rounds_target == null ? "—" : goal.rounds_target)}</b></span>
+            <span>状态 <b>${esc(GOAL_STATUS[goal.status] || goal.status || "—")}</b></span>
+            <span>verdict <b>${esc(goal.last_verdict || "—")}</b></span>
+            <span>turns <b>${esc(goal.turns_used == null ? "—" : goal.turns_used)} / ${esc(goal.max_turns == null ? "—" : goal.max_turns)}</b></span>
+          </div>
+          ${subgoals.length ? `<ul class="goal-subgoals">${subgoals.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>` : ""}
+        </section>` : ""}
+        <section class="drawer-section">
+          <h4>内核轨迹 <i>KERNEL TRACE</i></h4>
+          ${agent ? `
+          <div class="agent-stats">
+            <span>usage <b class="mono">${fmtInt(agentUsage.input)} in / ${fmtInt(agentUsage.output)} out / ${fmtInt(agentUsage.reasoning)} reason</b></span>
+            <span>latency <b class="mono">${agent.latency == null ? "—" : Number(agent.latency).toFixed(1) + "s"}</b></span>
+            <span>tools <b class="mono">${fmtInt(agent.tool_calls)}</b></span>
+            ${agent.fallback ? '<span class="warn-chip">fallback</span>' : ""}
+            ${agent.finished === false ? '<span class="chip">未完成</span>' : ""}
+          </div>
+          ${agent.error ? `<p class="agent-error">${esc(agent.error)}</p>` : ""}
+          ${trace.length ? `<ol class="trace-list">${trace.map((step) => `
+            <li class="trace-item ${step.ok === false ? "is-bad" : ""}">
+              <span class="trace-dot" aria-hidden="true"></span>
+              <span class="trace-tool mono">${esc(step.tool || "?")}</span>
+              <span class="trace-detail">${esc(step.detail || "")}</span>
+              <span class="trace-at mono">${esc(fmtClock(step.at))}</span>
+            </li>`).join("")}</ol>` : '<p class="empty mini">本轮未记录工具轨迹（pipeline 模式或尚未开始）</p>'}
+          ` : '<p class="empty mini">本轮无内核数据（round.agent 为空时会等待 /api/agent）</p>'}
         </section>
         ${panel ? `
         <section class="drawer-section">
@@ -923,6 +1251,7 @@
     renderHeader();
     renderBudget();
     renderTasks();
+    renderKernel();
     renderEvents();
     renderSummary();
     renderFooter();
@@ -946,6 +1275,15 @@
   /* ------------------------------------------------------------------ */
   /* 数据获取                                                            */
   /* ------------------------------------------------------------------ */
+  function hashString(text) {
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
   function signatureOf(data) {
     if (!data) return "";
     const meta = data._meta || {};
@@ -1002,9 +1340,11 @@
       return;
     }
     try {
-      const [stateResult, eventsResult] = await Promise.allSettled([
+      const [stateResult, eventsResult, memoryResult, agentResult] = await Promise.allSettled([
         fetchJSON("/api/state"),
         fetchJSON(`/api/events?limit=${EVENTS_LIMIT}`),
+        fetchJSON("/api/memory", 6000),
+        fetchJSON("/api/agent", 6000),
       ]);
       if (stateResult.status === "rejected") {
         throw new Error(stateResult.reason && stateResult.reason.name === "AbortError" ? "请求超时" : String(stateResult.reason));
@@ -1027,12 +1367,19 @@
         ui.events = Array.isArray(data.events) ? data.events.slice() : [];
         ui.eventsTotal = ui.events.length;
       }
+      if (memoryResult.status === "fulfilled" && memoryResult.value.status === 200 && memoryResult.value.body && memoryResult.value.body.ok !== false) {
+        ui.memory = memoryResult.value.body;
+      }
+      if (agentResult.status === "fulfilled" && agentResult.value.status === 200 && agentResult.value.body && agentResult.value.body.ok !== false) {
+        ui.agent = agentResult.value.body;
+      }
       if (data._meta && data._meta.error) {
         showBanner(`数据源降级：${data._meta.error}`, "warn");
       } else {
         hideBanner();
       }
-      const signature = signatureOf(data) + `|${ui.events.length}|${ui.events[0] ? ui.events[0].ts : ""}`;
+      const kernelSignature = `${ui.memory ? JSON.stringify(ui.memory) : ""}|${ui.agent ? JSON.stringify(ui.agent) : ""}`;
+      const signature = signatureOf(data) + `|${ui.events.length}|${ui.events[0] ? ui.events[0].ts : ""}|${hashString(kernelSignature)}`;
       if (signature !== ui.signature) {
         ui.signature = signature;
         renderAll();
@@ -1082,6 +1429,13 @@
         if (closeBtn) closeBtn.focus();
         break;
       }
+      case "search-clear": {
+        ui.search = { query: "", items: null, total: 0, busy: false, error: "", done: false };
+        renderKernel();
+        const input = $("kernel-search-input");
+        if (input) input.focus();
+        break;
+      }
       case "close-drawer":
         closeDrawer();
         break;
@@ -1111,8 +1465,22 @@
     }
   });
 
+  document.addEventListener("submit", (event) => {
+    if (event.target && event.target.id === "kernel-search-form") {
+      event.preventDefault();
+      performSearch();
+    }
+  });
+
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && ui.drawer) closeDrawer();
+    if (event.key === "Escape" && ui.drawer) {
+      closeDrawer();
+      return;
+    }
+    if (event.key === "Escape" && ui.search.done) {
+      ui.search = { query: "", items: null, total: 0, busy: false, error: "", done: false };
+      renderKernel();
+    }
   });
 
   $("drawer-backdrop").addEventListener("click", closeDrawer);

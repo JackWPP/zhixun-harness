@@ -138,7 +138,7 @@ class Executor:
         self.cpu_seconds = 0.0
 
     def run(self, parent_checkpoint, proposal, *, calibration, selection, report, train,
-            drift=None, drift_probe=None, seed=42):
+            drift=None, drift_probe=None, extended_train=None, seed=42):
         proposal = validate_proposal(proposal, self.task)
         self.experiments += 1
         experiment_id = f"exp-{self.experiments:04d}"
@@ -157,6 +157,7 @@ class Executor:
             "selection": str(selection),
             "report": str(report),
             "drift_probe": str(drift_probe) if drift_probe else None,
+            "extended_train": str(extended_train) if extended_train else None,
             "seed": int(seed),
             "proposal": {
                 "strategy": proposal.strategy,

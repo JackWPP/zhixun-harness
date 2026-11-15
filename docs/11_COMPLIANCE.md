@@ -8,8 +8,8 @@
 
 | 门槛 | 规则要求 | 本系统如何满足 | 证据 |
 |---|---|---|---|
-| G1 无人干预完成全部阶段 | 指定设备、统一离线环境、隐藏测试集上自动运行并输出 | `docker run` 单命令启动；`runner.py` 自动完成 3 任务 × 10 轮；LLM 缺失自动降级；无交互式输入 | `docker/entrypoint.sh`、`rsi/runner.py`、`docs/13_RUNBOOK.md` |
-| G2 实验记录完整 | 全部实验按《实验记录规范》在 SwanLab 云端留存 | 每轮写 `rounds.jsonl`（假设/变更/指标/父子 sha/用量）；`summary.json` 与 `workspace_report.json` 对齐平台 schema；`--swanlab` 可离线记录并 `swanlab sync` | `rsi/records.py`、`rsi/runner.py::_record_round`、`docs/12_EXPERIMENTS.md` |
+| G1 无人干预完成全部阶段 | 指定设备、统一离线环境、隐藏测试集上自动运行并输出 | `docker run` 单命令启动；默认 kernel 控制器由 LLM 自主决策，LLM 缺失/超时自动降级 pipeline；启动先跑资产自检；无交互式输入 | `docker/entrypoint.sh`、`rsi/runner.py`、`rsi/agent/kernel.py`、`scripts/verify_assets.py`、`docs/13_RUNBOOK.md` |
+| G2 实验记录完整 | 全部实验按《实验记录规范》在 SwanLab 云端留存 | 每轮写 `rounds.jsonl`（假设/变更/指标/父子 sha/agent trace/记忆用量）；同时落 SQLite（rounds/experiments/llm_calls/lessons/strategy_stats），JSONL 为审计真源、DB 可重建；`summary.json` 与 `workspace_report.json` 对齐平台 schema；`--swanlab` 可离线记录并 `swanlab sync` | `rsi/records.py`、`rsi/memory/db.py`、`rsi/runner.py::_record_round`、`docs/12_EXPERIMENTS.md`、`docs/17_MEMORY.md` |
 | G3 综合性能不低于静态基线 | 封闭评测不低于 baseline | A：selection 0.7032→0.8434，report 0.6864→0.8126，外部探针 0.4054→0.5239；B：678.02→462.45；C：44.75→41.82（report 57.46→56.28）；且门控保证最终 checkout 是"历史最优"而非最后一轮 | `summary.json`、`docs/12_EXPERIMENTS.md` §12.4 |
 
 ## 11.2 客观分（35 分）
@@ -28,24 +28,29 @@
 
 | rubric 项 | 分值 | 本系统对应实现 |
 |---|---|---|
-| autonomous_decision_and_improvement | 10 | 6 角色 LLM 编排：诊断→实验设计→评审→裁决；工具白名单；确定性降级保证不断链 |
+| autonomous_decision_and_improvement | 10 | Agent Kernel 持有目标+18 个受限工具，自己看结果、改计划、跨轮写记忆；6 角色可 delegate/panel；Guard 确定性边界；LLM 缺失自动降级 pipeline。证据：A 任务 3 轮 18/14/14 工具调用、promote→promote→retain（`docs/18` §10.1） |
 | drift_detection | 8 | `rsi/drift.py`：均值/方差偏移、KS、相关性、标签分布 JS、窗口性能跌幅、severity、causes、top features |
 | route_selection | 6 | 策略库分"模型层"（续训/ridge/SWA）与"推理期"（recenter/shrink）；Diagnostician 归因 + Experimenter 选路线 + Critic 审查 |
 | safety_controls | 6 | Agent 无 shell/文件/网络工具；执行器二次校验；预算 tripwire；rollback；隐藏标签不可见；镜像离线 |
-| system_quality | 6 | 19 项 pytest；模块分层；原子状态；重新加载 checker；文档齐全 |
+| system_quality | 6 | 57 项 pytest（核心/记忆/看板/适配器/提交包）；模块分层；原子状态；checkpoint 重加载校验；docs/10–18 齐全 |
 | technical_report | 6 | `docs/12_EXPERIMENTS.md` + `README.md` + 架构文档 |
 | controlled_experiments | 5 | 三层互斥切分 + 噪声阈值 margin + 固定 seed + 单变量策略库 + 失败实验留痕 |
 | experiment_records | 5 | `records.jsonl` / `rounds.jsonl` / `state.json` / `workspace_report.json` / SwanLab 可选 |
 | record_based_analysis | 5 | `summary.json` 的 narrative 由 Reporter 生成，引用具体轮次/指标/sha |
-| industrial_constraints | 4 | 仅 CPU、NumPy、6h 预算、无外网、无 GPU、镜像 366MB、依赖固定 |
+| industrial_constraints | 4 | 仅 CPU、NumPy、6h 预算、无外网、无 GPU、镜像约 370MB、依赖固定；时间感知降级保证慢机器也能出 10 轮 |
 | defense | 4 | 文档 + 看板证据抽屉 + 每实验可复现目录 |
 
 ## 11.4 加分项
 
 - **extended_data_validation（5）**：A 任务用 UCI Gas Sensor Array Drift 全部 10 批
   构建外部漂移探针（13,910 行，batch3–10 为漂移段），**仅用于验证、绝不训练**；
-  最终模型 probe macro-F1 0.5239 vs 基线 0.4054。代码路径与训练完全分离，探针
-  数据不进入 `train`/`calibration`。
+  微加权 macro-F1 0.4252→0.5281（逐批等权 0.4054→0.5239）。脚本
+  `scripts/external_validation.py` 可复现，报告 `docs/evidence/uci_gas_drift.md`；
+  另有 `probe`/`synth` 子命令支持任意私有 JSONL 与合成漂移探针。
+- **记忆与技能（申报 technical_innovation 的一部分）**：Hermes 风格的有界
+  MEMORY/TASK 文件 + SKILL.md 渐进披露 + SQLite 经验库；跨 run 复用有实测证据
+  （第二次运行首轮工具调用 18→13，直接复用已验证配置，见 `docs/18` §10.2）；
+  记忆有注入扫描、漂移备份、容量上限，且可 `--no-memory` 消融。
 - **technical_innovation（5）**：①受控 RSI：LLM 只能在白名单策略与参数区间内做
   选择，执行器二次校验，Critic 有 veto；②推理期 recenter 校准作为"零 checkpoint
   字节"的自适应机制，在漂移批次上带来 +0.10–0.12 而不改变模型文件；③确定性
@@ -66,9 +71,27 @@
 
 1. **模型配置**：最终 `checkpoint.npz` + `postprocess.json`（推理期校准参数）+ 父
    checkpoint sha256 链（在 `workspace_report.json` 的 `rounds[].parent_checkpoint_sha256`）；
-2. **Harness 镜像**：`harness.tar`（`zhixun-rsi-harness:0.3.0`，amd64）；
+2. **Harness 镜像**：`harness.tar`（`zhixun-rsi-harness:0.5.0`，amd64）；
 3. **云端实验记录**：`workspace_report.json` / `rounds.jsonl`，可一键导入 SwanLab；
-4. **运行说明**：`docs/13_RUNBOOK.md`（评测方按此启动即可）。
+4. **运行说明**：`docs/13_RUNBOOK.md`（评测方按此启动即可）；
+5. **提交包**：`scripts/make_submission.py` 从完成的 run 导出 `dist/submission_<run>/`
+   （每任务 checkpoint + postprocess + 独立 predict + manifest，≤64MiB），
+   `predict.py` 已在包内独立跑通 A/B/C 样例。
 
 > 平台当前 `blockers: 正式评测暂未开放，请等待赛事通知`；镜像上传接口
 > `POST /api/v1/image-archives` 已确认（Content-Type: application/x-tar）。
+
+## 11.9 外部数据与模型兼容披露（v0.5）
+
+**模型兼容**：官方 `TRAINING_GUIDE.md` 明确允许修改代码/超参；改变结构、输入维
+度或任务时必须显式实现兼容的权重迁移，且不得把新模型声明为原模型续训。当前
+v0.5 的 `extended_pretrain` 只做**同结构续训**（复制父权重后在外部数据上预训练、
+再回到官方 train 微调），不改 width/classes/task，参考加载器可直接接受；
+结构变更/宽层迁移在 v0.5 中**未启用**；如后续启用，必须记录父/候选参数 sha 并在 predict 入口保留 strict 回退。
+
+**外部数据**：任务 A 的 `extended_pretrain` 使用 UCI Gas Sensor Array Drift 的
+batch3–7（公开数据，随镜像 `extra/uci-gas/` 打包）。该策略默认开启
+（`RSI_ALLOW_EXTENDED_DATA=1`，可用 0 关闭），仅用于预训练工业模型权重；
+验证集/隐藏测试/校准 split 的标签在任何阶段都不参与拟合（`rsi/policy.py` 与
+Guard 双重强制）。报告与 `workspace_report.json` 会标注外部数据的用途、批次与
+隔离说明；关闭开关后流程仍完整可跑（仅性能不同）。

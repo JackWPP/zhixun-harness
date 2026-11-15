@@ -20,7 +20,6 @@ from rsi.data import load_jsonl_dataset
 from rsi.inference import apply_postprocess, resolve_postprocess
 from rsi.model import ExtendedModel, checkpoint_sha256, code_sha256
 from rsi.strategies import ExperimentContext, run_strategy
-from rsi.tasks import TASKS
 
 
 def evaluate(task, model, postprocess, dataset, classes):
@@ -60,7 +59,6 @@ def main(argv=None):
         task_key = job["task_key"]
         task = job["task"]
         classes = tuple(job["classes"])
-        config = TASKS[task_key]
         proposal = job["proposal"]
         parent = ExtendedModel.from_checkpoint(job["parent_checkpoint"])
         if parent.meta["task"] != task or list(parent.meta.get("classes", ())) != list(classes):
@@ -77,11 +75,16 @@ def main(argv=None):
             if probe_path.is_file():
                 probe = load_jsonl_dataset(probe_path, task, classes, parent.meta["paths"])
 
+        extended = None
+        if job.get("extended_train"):
+            extended_path = Path(job["extended_train"])
+            if extended_path.is_file():
+                extended = load_jsonl_dataset(extended_path, task, classes, parent.meta["paths"])
         context = ExperimentContext(
             task_key=task_key, task=task, parent=parent, train=train,
             calibration=calibration, selection=selection, report=report,
-            drift=job.get("drift"), drift_probe=probe, seed=int(job.get("seed", 42)),
-            classes=classes,
+            drift=job.get("drift"), drift_probe=probe, extended=extended,
+            seed=int(job.get("seed", 42)), classes=classes,
         )
         candidate = run_strategy(context, proposal["strategy"], proposal["params"])
         model = candidate.model

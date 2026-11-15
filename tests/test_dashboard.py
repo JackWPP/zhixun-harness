@@ -134,7 +134,7 @@ def test_index_page_renders_chinese_shell(running_server: int) -> None:
     assert "charset=utf-8" in content_type.lower()
 
     html = raw.decode("utf-8")
-    for text in ("智训引擎", "RSI 控制台", "任务矩阵", "全局事件流", "决策与运行摘要"):
+    for text in ("智训引擎", "RSI 控制台", "任务矩阵", "全局事件流", "决策与运行摘要", "记忆与自主内核", "MEMORY"):
         assert text in html, f"页面缺少关键中文：{text}"
     assert 'href="/style.css"' in html
     assert 'src="/app.js"' in html
@@ -176,7 +176,7 @@ def test_state_api_returns_canonical_schema(running_server: int) -> None:
 
     payload = json.loads(raw.decode("utf-8"))
     assert payload["ok"] is True
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] in {1, 2}
     assert payload["run"]["run_id"]
     assert payload["run"]["status"] in {"running", "finished", "failed", "stopped"}
     assert payload["run"]["budget"]["tokens_cap"] > 0
@@ -213,7 +213,7 @@ def test_state_api_returns_canonical_schema(running_server: int) -> None:
 
     meta = payload["_meta"]
     assert meta["state_path"].endswith("state.json")
-    assert meta["schema_version"] == 1
+    assert meta["schema_version"] in {1, 2}
     assert meta["records_available"] is True
     assert meta["records_events"] > 0
     assert meta["event_count"] == len(payload["events"])
@@ -302,6 +302,238 @@ def test_health_endpoint(running_server: int) -> None:
     payload = json.loads(raw.decode("utf-8"))
     assert payload["ok"] is True
     assert payload["state"] == "ready"
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] in {1, 2}
     assert payload["run_status"] in {"running", "finished", "failed", "stopped"}
     assert payload["event_count"] >= 40
+
+
+# --------------------------------------------------------------------------- #
+# schema v2：记忆 / 自主内核 / 记录检索
+# --------------------------------------------------------------------------- #
+def _build_demo_bundle(state_path: Path, include_db: bool = True) -> None:
+    """调用 rsi.dashboard.demo.write_demo_bundle 生成一份 v2 演示数据包。"""
+    code = (
+        "import sys\n"
+        "from rsi.dashboard.demo import write_demo_bundle\n"
+        "write_demo_bundle(sys.argv[1], include_db=sys.argv[2] == '1')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code, str(state_path), "1" if include_db else "0"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert result.returncode == 0, f"demo 数据包生成失败：{result.stderr}\n{result.stdout}"
+    assert state_path.is_file(), "demo 数据包缺少 state.json"
+    assert (state_path.parent / "records.jsonl").is_file(), "demo 数据包缺少 records.jsonl"
+    assert (state_path.parent / "rounds.jsonl").is_file(), "demo 数据包缺少 rounds.jsonl"
+    assert (state_path.parent / "memory").is_dir(), "demo 数据包缺少 memory/"
+
+
+def _start_dashboard(state_path: Path, records_path: Path | None = None) -> tuple[subprocess.Popen, int]:
+    port = _free_port()
+    cmd = [
+        sys.executable,
+        "-m",
+        "rsi.dashboard",
+        "--state",
+        str(state_path),
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
+        "--quiet",
+    ]
+    if records_path is not None:
+        cmd.extend(["--records", str(records_path)])
+    proc = subprocess.Popen(
+        cmd,
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    try:
+        _wait_until_listening(proc, port)
+    except BaseException:
+        if proc.poll() is None:
+            proc.kill()
+        raise
+    return proc, port
+
+
+def _stop_dashboard(proc: subprocess.Popen) -> None:
+    if proc.poll() is None:
+        proc.terminate()
+    try:
+        proc.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=8)
+    if proc.stdout:
+        proc.stdout.close()
+
+
+@pytest.fixture(scope="module")
+def v2_bundle(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
+    tmp_dir = tmp_path_factory.mktemp("dashboard-v2")
+    state_path = tmp_dir / "state.json"
+    _build_demo_bundle(state_path, include_db=True)
+    return tmp_dir, state_path
+
+
+@pytest.fixture(scope="module")
+def v2_server(v2_bundle: tuple[Path, Path]) -> int:
+    _tmp_dir, state_path = v2_bundle
+    proc, port = _start_dashboard(state_path)
+    try:
+        yield port
+    finally:
+        _stop_dashboard(proc)
+
+
+@pytest.fixture(scope="module")
+def v2_nodb_server(tmp_path_factory: pytest.TempPathFactory) -> int:
+    tmp_dir = tmp_path_factory.mktemp("dashboard-v2-nodb")
+    state_path = tmp_dir / "state.json"
+    _build_demo_bundle(state_path, include_db=False)
+    proc, port = _start_dashboard(state_path)
+    try:
+        yield port
+    finally:
+        _stop_dashboard(proc)
+
+
+def test_memory_api_reads_v2_state_and_sqlite(v2_server: int) -> None:
+    status, headers, raw = http_get(v2_server, "/api/memory")
+    assert status == 200
+    assert "application/json" in headers.get("Content-Type", "")
+    payload = json.loads(raw.decode("utf-8"))
+
+    assert payload["ok"] is True
+    assert payload["schema_version"] == 2
+    assert payload["controller"] in {"kernel", "pipeline"}
+
+    run_agent = payload["run_agent"]
+    assert run_agent["controller"] == payload["controller"]
+    assert run_agent["kernel_rounds"] >= 1
+    assert run_agent["kernel_tokens"] >= 0
+
+    memory = payload["memory"]
+    assert memory["enabled"] is True
+    assert "%" in str(memory["usage"]), "MEMORY 用量应包含百分比"
+    assert memory["dir"]
+
+    assert {task["key"] for task in payload["tasks"]} == {"A", "B", "C"}
+    task_a = next(task for task in payload["tasks"] if task["key"] == "A")
+    assert task_a["goal"]["rounds_done"] >= 6
+    assert task_a["goal"]["subgoals"]
+
+    assert payload["db"]["available"] is True, "演示包应包含可读的 rsi_state.db"
+    assert payload["_meta"]["db_available"] is True
+
+    lessons = payload["lessons"]
+    assert lessons, "应从 sqlite 读取 lessons"
+    assert any(lesson.get("source") == "db" for lesson in lessons)
+    for lesson in lessons[:5]:
+        assert {"task", "text", "wins"} <= set(lesson)
+        assert lesson["text"]
+
+    strategies = payload["strategy_stats"]
+    assert strategies, "策略统计为空"
+    for row in strategies[:5]:
+        assert {"strategy", "trials", "promotions", "win_rate"} <= set(row)
+        assert 0.0 <= float(row["win_rate"]) <= 1.0
+
+    assert payload["skill_usage"], "技能使用统计为空"
+    assert payload["memory_files"], "memory/ 目录快照为空"
+    assert any(item["name"] == "MEMORY.md" for item in payload["memory_files"])
+
+
+def test_memory_api_degrades_without_sqlite(v2_nodb_server: int) -> None:
+    status, _headers, raw = http_get(v2_nodb_server, "/api/memory")
+    assert status == 200
+    payload = json.loads(raw.decode("utf-8"))
+    assert payload["ok"] is True
+    assert payload["db"]["available"] is False
+    # 数据库缺失时，lessons 应回退到 state.json 中的经验快照而不是直接为空。
+    assert payload["lessons"], "无 sqlite 时应从 state.json 回退 lessons"
+    assert all(lesson.get("source") == "state" for lesson in payload["lessons"])
+    assert payload["tasks"], "降级时任务记忆仍应可用"
+
+
+def test_agent_api_exposes_kernel_trace(v2_server: int) -> None:
+    status, headers, raw = http_get(v2_server, "/api/agent?task=A")
+    assert status == 200
+    assert "application/json" in headers.get("Content-Type", "")
+    payload = json.loads(raw.decode("utf-8"))
+
+    assert payload["ok"] is True
+    assert payload["task"] == "A"
+    assert payload["controller"] in {"kernel", "pipeline"}
+    goal = payload["goal"]
+    assert goal["goal"]
+    assert {"rounds_done", "rounds_target", "subgoals"} <= set(goal)
+
+    rounds = payload["rounds"]
+    assert len(rounds) >= 6, "任务 A 应有 6 个已完成轮次"
+    traced = [item for item in rounds if item["agent"]["trace"]]
+    assert traced, "至少一轮应包含内核工具轨迹"
+    for item in rounds:
+        assert {"index", "status", "decision", "agent"} <= set(item)
+        agent = item["agent"]
+        assert {"ok", "usage", "latency", "tool_calls", "trace"} <= set(agent)
+        assert {"input", "output", "reasoning"} <= set(agent["usage"])
+    step = traced[0]["agent"]["trace"][0]
+    assert {"tool", "ok", "detail", "at"} <= set(step)
+
+    status, _headers, raw = http_get(v2_server, "/api/agent")
+    assert status == 200
+    everything = json.loads(raw.decode("utf-8"))
+    assert {task["key"] for task in everything["tasks"]} == {"A", "B", "C"}
+
+    status, _headers, raw = http_get(v2_server, "/api/agent?task=Z")
+    assert status == 400
+    error = json.loads(raw.decode("utf-8"))
+    assert error["ok"] is False
+    assert "未知任务" in error["error"]
+
+
+def test_records_search_api(v2_server: int) -> None:
+    status, headers, raw = http_get(v2_server, "/api/records/search?q=promote&limit=5")
+    assert status == 200
+    assert "application/json" in headers.get("Content-Type", "")
+    payload = json.loads(raw.decode("utf-8"))
+
+    assert payload["ok"] is True
+    items = payload["items"]
+    assert 1 <= len(items) <= 5
+    assert payload["total"] >= len(items)
+    timestamps = [item["ts"] for item in items]
+    assert timestamps == sorted(timestamps, reverse=True), "检索结果应按时间倒序"
+    for item in items:
+        assert {"ts", "type", "task", "message"} <= set(item)
+        assert "_haystack" not in item, "内部检索字段不应泄漏"
+    file_names = {item.get("name") for item in payload["files"]}
+    assert "records.jsonl" in file_names
+    assert "rounds.jsonl" in file_names
+
+    # 空 q：返回最近记录（最多 20 条）。
+    status, _headers, raw = http_get(v2_server, "/api/records/search")
+    assert status == 200
+    recent = json.loads(raw.decode("utf-8"))
+    assert 1 <= len(recent["items"]) <= 20
+
+    # 大小写不敏感。
+    _status, _headers, raw = http_get(v2_server, "/api/records/search?q=PROMOTE&limit=5")
+    assert json.loads(raw.decode("utf-8"))["total"] == payload["total"]
+
+    # 无匹配。
+    status, _headers, raw = http_get(v2_server, "/api/records/search?q=no-such-keyword-xyz")
+    assert status == 200
+    empty = json.loads(raw.decode("utf-8"))
+    assert empty["items"] == []
+    assert empty["total"] == 0

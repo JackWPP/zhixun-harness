@@ -1,0 +1,35 @@
+{
+  "key": "A",
+  "name": "气体传感器漂移分类",
+  "name_en": "Gas Sensor Array Drift Classification",
+  "task": "classification",
+  "classes": [
+    "Ethanol",
+    "Ethylene",
+    "Ammonia",
+    "Acetaldehyde",
+    "Acetone",
+    "Toluene"
+  ],
+  "package": "cpu-a-guide-20261110-v1",
+  "data_root": "../../datasets",
+  "primary_metric": "macro_f1",
+  "direction": "higher",
+  "baseline_primary": 0.7140297220788709,
+  "margin": 0.004,
+  "rounds": 10,
+  "split_strategy": "stratified",
+  "probe": "uci_gas",
+  "description": "Official contest package (editable task.json; see docs/PORTING.md).",
+  "extended": {
+    "kind": "uci_gas",
+    "batches": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "note": "UCI gas archive batches 3-7 (not in the official package); opt-in external pretraining, RSI_ALLOW_EXTENDED_DATA=1"
+  }
+}

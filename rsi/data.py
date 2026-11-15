@@ -154,3 +154,30 @@ def load_drift_probe(task_key: str, root: Path | None) -> Dataset | None:
         groups.extend(part.groups)
     paths = parts[0].paths
     return Dataset("drift_probe", ids, np.vstack(x), np.concatenate(y), paths, "sha256:multi", groups)
+
+
+def write_uci_gas_jsonl(batches, root, out_path, classes) -> Dataset:
+    """Materialise selected UCI gas batches as official-schema JSONL (opt-in)."""
+    root = Path(root)
+    rows, labels, ids, groups = [], [], [], []
+    for batch in batches:
+        path = root / f"batch{batch}.dat"
+        if not path.is_file():
+            raise FileNotFoundError(f"extended gas batch missing: {path}")
+        part = read_uci_gas_dat(path)
+        y = [int(value) for value in part.y]
+        for index, (vector, label) in enumerate(zip(part.x, y)):
+            rows.append(vector)
+            labels.append(label)
+            ids.append(f"ext_{path.stem}_{index:06d}")
+            groups.append(path.stem)
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as handle:
+        for identity, vector, label in zip(ids, rows, labels):
+            record = {"id": identity, "inputs": {"features": [round(float(v), 6) for v in vector]},
+                      "answer": classes[label]}
+            handle.write(json.dumps(record, separators=(",", ":")) + "\n")
+    x = np.asarray(rows, dtype=np.float64)
+    y = np.asarray(labels, dtype=np.int64)
+    return Dataset("extended_train", ids, x, y, [], "sha256:multi", groups)

@@ -122,3 +122,60 @@
 | 种子集成 | A 有小幅收益，但实验/时间成本翻倍，优先保交付 |
 | nohup 后台跑长任务 | DSH 工具会清理进程组；改用工具自带后台任务 |
 | 在镜像内装 Docker | 评测环境不一定有特权；手工 tar 已满足要求 |
+
+## ADR-013 Agent Kernel 取代固定六步循环
+
+- **背景**：v0.3 的 pipeline 是确定性状态机，自主性只停留在"LLM 选策略"，
+  Agent 看不到实验结果、不能决定下一步，无法称之为 RSI harness。
+- **决策**：新增 kernel 控制器。Agent 持有目标 + 18 个受限工具，在 PI loop 内
+  自主观察/假设/实验/评估/决策/写记忆；Guard 在工具边界做确定性校验；
+  supervisor 只负责预算、切分、记录、promote 应用与兜底。
+- **后果**：A 任务 3 轮实测 18/14/14 次工具调用、决策非模板；LLM 不可用或
+  连续失败自动降级 pipeline（同一套记录与门控）。kernel 单轮 2–4 分钟，
+  3×10 全 kernel 需数小时，故保留时间感知降级。
+
+## ADR-014 记忆分三层：冻结快照 / 有界文件 / SQLite 经验库
+
+- **背景**：需要跨轮、跨 run 的经验复用，且不能破坏 prefix cache、不能无限膨胀。
+- **决策**：参考 Hermes：①session 开始时冻结快照（MEMORY 4000 + TASK 2000 chars）
+  注入提示词；②写入立即落盘但当前 prompt 不可见；③结构化经验（rounds/experiments/
+  lessons/strategy_stats）落 SQLite(WAL/FTS5)，JSONL 仍是审计真源，可重建；
+  ④每任务一次 Review 提炼 lessons，Curator 归档长期未用技能。
+- **后果**：跨 run 实测首轮工具调用 18→13、直接复用已验证配置；记忆可 `--no-memory`
+  消融；注入扫描 + 漂移 `.bak` 拒写 + 容量上限防止污染/膨胀。
+
+## ADR-015 Guard 放在工具边界，而不是提示词里
+
+- **背景**：仅靠 system prompt 约束 LLM 不可靠，且答辩需要可审计证据。
+- **决策**：每个动作在工具执行前由 Guard 校验：策略白名单与参数范围、训练数据
+  白名单、每轮/每任务实验上限、decide 必须用 selection+margin 重算门控、
+  promote 必须有成功候选、记忆/技能文本注入扫描、所有动作写 trace。
+- **后果**：实测拒绝第三方训练数据、第 4 个实验、无依据 promote；Agent 仍保有
+  "在合法空间内自由行动"的自主性；Guard 拒绝会作为观察反馈给 Agent。
+
+## ADR-016 数据适配只做验证，绝不做训练
+
+- **背景**：赛题只允许平台数据 + 官方 parent checkpoint 续训；混入第三方数据
+  有合规风险，且隐藏测试不可见。
+- **决策**：私有 JSONL 只推理；UCI 全量只做外部验证；合成漂移只做回归测试；
+  显式 `used_for_training=false` 与 `training_isolation` 报告。
+- **后果**：扩展数据验证加分项可复现；训练路径与验证路径物理隔离，答辩可自证。
+
+### ADR-013 外部预训练只做 opt-in，且与验证/隐藏严格隔离
+
+- **背景**：A 赛道官方 train 仅 batch1（445 行），真实漂移批次上泛化极差；
+  UCI 数据集其余 batch 公开可得，规则未禁止，且外部数据验证本身是加分项。
+- **决策**：只允许通过 `extended_pretrain` 在“外部预训练 + 官方 train 微调”
+  中使用；使用 `RSI_ALLOW_EXTENDED_DATA` 显式开启；验证/隐藏/校准永不拟合。
+- **后果**：A 选择集 0.7346→0.8645，诚实留出 b8–10 0.352→0.593；代价是依赖
+  公开外部数据，必须在报告与 workspace_report 中披露，关闭开关即可回到纯官方数据。
+
+### ADR-014 用 task.json 契约封装“可复用 RSI 运行时”
+
+- **背景**：用户要求把 RSI 流程封装好，能在官方平台/新数据集上复用，而不是
+  写死 A/B/C。
+- **决策**：任务 = `task.json`（data_root/package/split_strategy/probe/extended/
+  metrics/direction/baseline/margin），splits 策略通用化（stratified|group|units），
+  planner 对未知任务提供 generic 策略库，`--task-spec`/`RSI_TASK_SPECS` 注册。
+- **后果**：`scripts/make_demo_task.py` + `tests/test_portable.py` 证明第 4 个任务
+  可无代码改动跑通；平台隐藏流只需换包与 task.json。

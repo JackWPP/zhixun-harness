@@ -42,7 +42,7 @@ run() {
           --dev /dev --proc /proc --tmpfs /tmp \
           --bind "$WORK" /work \
           --setenv RSI_STATE_DIR /work/rsi-runs \
-          --chdir / "$@"
+          --chdir /opt/zhixun/app "$@"
 }
 
 echo "[verify] selftest A"

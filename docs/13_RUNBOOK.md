@@ -7,9 +7,9 @@
 
 ```bash
 docker load -i harness.tar
-# 期望：Loaded image: zhixun-rsi-harness:0.3.0
+# 期望：Loaded image: zhixun-rsi-harness:0.4.0
 docker images | grep zhixun-rsi-harness
-docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixun-rsi-harness:0.3.0
+docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixun-rsi-harness:0.4.0
 # 期望：amd64 linux [/opt/zhixun/bin/entrypoint.sh]
 ```
 
@@ -20,7 +20,7 @@ docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixu
 
 ```bash
 mkdir -p /host/work
-docker run --rm -v /host/work:/work zhixun-rsi-harness:0.3.0
+docker run --rm -v /host/work:/work zhixun-rsi-harness:0.4.0
 ```
 
 等价于：
@@ -28,7 +28,7 @@ docker run --rm -v /host/work:/work zhixun-rsi-harness:0.3.0
 ```bash
 docker run --rm -v /host/work:/work \
   -e RSI_TASKS=A,B,C -e RSI_ROUNDS=10 -e RSI_LLM=auto \
-  zhixun-rsi-harness:0.3.0 run
+  zhixun-rsi-harness:0.4.0 run
 ```
 
 完成后在宿主机可见：
@@ -46,6 +46,9 @@ docker run --rm -v /host/work:/work \
     experiments/exp-NNNN/{job.json,candidate.npz,result.json,worker.log}
 /host/work/summary.json          # 固定路径副本
 /host/work/workspace_report.json # 固定路径副本
+/host/work/rsi-runs/assets-check.json  # 启动自检结果
+<state-dir>/memory/               # 跨 run 记忆（MEMORY.md + TASK_*.md）
+<state-dir>/rsi_state.db          # 跨 run SQLite（rounds/experiments/lessons/strategies）
 ```
 
 ## 13.3 环境变量
@@ -61,7 +64,10 @@ docker run --rm -v /host/work:/work \
 | `RSI_SEED` | `42` | 切分/漂移窗口/实验种子 |
 | `RSI_SWANLAB` | `0` | `1` 时启用 SwanLab 离线记录（`SWANLAB_API_KEY` 另给） |
 | `RSI_EXPERIMENT_TIMEOUT` | `1800` | 单实验秒数上限 |
-| `RSI_TOKEN_CAP` | `2000000` | LLM token 上限 |
+| `RSI_CONTROLLER` | `auto` | `auto`：有 LLM 用 kernel，否则 pipeline；`kernel` 强制自主内核；`pipeline` 确定性 |
+| `RSI_VERIFY_ASSETS` | `1` | 启动前自检数据集/checkpoint/技能/predict 入口（失败即退出） |
+| `RSI_ROUND_TURNS` | `20` | kernel 单轮 PI loop 最大 turn 数 |
+| `RSI_TOKEN_CAP` | `2000000` | LLM token 上限（开发期可用 `--token-cap 0` 不限） |
 
 预算硬上限在代码中：wall 21600s、CPU 36000s、每任务实验 40（合计 ≤120）、Panel 2 次；容器内无法通过
 环境变量突破这些安全值。
@@ -71,16 +77,42 @@ docker run --rm -v /host/work:/work \
 ```bash
 # 单任务，2 轮，离线
 docker run --rm -v /host/work:/work -e RSI_TASKS=A -e RSI_ROUNDS=2 -e RSI_LLM=off \
-  zhixun-rsi-harness:0.3.0 run
+  zhixun-rsi-harness:0.4.0 run
 
 # 自检：加载 checkpoint，复算三层切分与探针的主指标
-docker run --rm zhixun-rsi-harness:0.3.0 selftest A
+docker run --rm zhixun-rsi-harness:0.4.0 selftest A
+```
+
+## 13.4b v0.4 新增命令
+
+```bash
+# Agent 自主内核（需要可用 OpenAI 兼容端点；单轮 2-4 分钟）
+docker run --rm -v /host/work:/work -e RSI_LLM=on -e RSI_LLM_ENV=/work/llm.env \
+  -e RSI_CONTROLLER=kernel -e RSI_TASKS=A -e RSI_ROUNDS=3 \
+  zhixun-rsi-harness:0.4.0 run
+
+# 私有/隐藏风格 JSONL 探针（只推理，不训练）
+python -m rsi.cli probe --task A --path private.jsonl --checkpoint <ckpt> --output probe.json
+
+# 合成漂移探针（开发/回归用）
+python -m rsi.cli synth --task A --batches 4 --output .scratch/synth_a.jsonl
+
+# 外部独立验证（UCI 逐批）
+python scripts/external_validation.py --checkpoint <ckpt> --summary <summary.json> \
+  --output docs/evidence/uci_gas_drift.md
+
+# 交付前自检与提交包
+python scripts/verify_assets.py --json-out .scratch/assets.json
+python scripts/make_submission.py --run-dir .scratch/rsi-canonical/<run-id>   # -> dist/submission_<run>/ + tar.gz
+
+# 完整彩排（构建镜像 -> 解包 -> 镜像内 2 轮；--full 额外 3x10）
+bash scripts/rehearse.sh --skip-build
 ```
 
 ## 13.5 预测入口（平台 quote 用）
 
 ```bash
-docker run --rm -i -v /host/work:/work zhixun-rsi-harness:0.3.0 \
+docker run --rm -i -v /host/work:/work zhixun-rsi-harness:0.4.0 \
   predict --checkpoint /work/A/checkpoint.npz \
           --postprocess /work/A/postprocess.json --mode batch < /host/inputs.jsonl
 ```
@@ -95,7 +127,7 @@ docker run --rm -i -v /host/work:/work zhixun-rsi-harness:0.3.0 \
 
 ```bash
 docker run --rm -p 7861:7861 -v /host/work:/work \
-  zhixun-rsi-harness:0.3.0 serve /work/rsi-runs/latest/state.json 7861
+  zhixun-rsi-harness:0.4.0 serve /work/rsi-runs/latest/state.json 7861
 ```
 
 浏览器打开 `http://<host>:7861`。看板纯静态 + 标准库，无外网依赖；只读
@@ -106,7 +138,7 @@ docker run --rm -p 7861:7861 -v /host/work:/work \
 | 场景 | 本机实测 | 评测机预期 |
 |---|---|---|
 | 单任务 10 轮（离线确定性） | A ≈ 3–5 min；B/C ≈ 10–15 min | 同量级（CPU 单线程） |
-| 3 任务 × 10 轮（离线） | ≈ 25–35 min | < 1h，远低于 6h |
+| 3 任务 × 10 轮（离线） | ≈ 20–25 min（v0.5：1390s、52 实验、CPU 752s） | < 1h，远低于 6h |
 | 3 任务 × 10 轮（LLM on） | ≈ 1.5–2.5h（每次调用 15–110s） | 建议预留 3h；预算不足自动降级 |
 | 镜像大小 | 366 MB（load 后） | 上传要求未压缩 tar ≈ 375 MB |
 | 磁盘写入 | 每实验 < 2 MB；全量 < 200 MB | 建议 `/work` ≥ 2 GB |
@@ -128,3 +160,26 @@ docker run --rm -p 7861:7861 -v /host/work:/work \
 2. `workspace_report.json` + `records.jsonl` → 云端实验记录；
 3. 本手册 + `docs/12_EXPERIMENTS.md` → 系统运行说明 / 技术报告素材；
 4. 最终模型 `checkpoint.npz` + `postprocess.json` + 父 sha 链 → 模型配置。
+
+## 13.10 v0.5 新增接口（可复用运行时 / 数据能力）
+
+```bash
+# 列出全部已注册任务（内置 + tasks/*/task.json + --task-spec）
+python -m rsi.cli tasks
+
+# 用外部 task.json 跑一个新数据集（包契约见 docs/PORTING.md）
+python -m rsi.cli run --tasks D --task-spec path/to/task.json --rounds 3 --llm off
+
+# 私有/隐藏风格数据只做推理评估（不进训练）
+python -m rsi.cli probe --task A --path private/validation.jsonl \
+    --checkpoint datasets/cpu-a-guide-20261110-v1/checkpoint.npz
+
+# 合成漂移数据（固定种子，可复现）
+python -m rsi.cli synth --task A --batches 3 --drift 2.5 --noise 0.25 \
+    --output .scratch/synthetic/a.jsonl
+```
+
+外部预训练（任务 A 的 UCI batch3–7）默认由镜像 entrypoint 打开
+（`RSI_ALLOW_EXTENDED_DATA=1`）；本地严格官方数据运行用
+`RSI_ALLOW_EXTENDED_DATA=0` 或单次 `--no-extended` 语义等价（不设该 env 即关闭）。
+验证/隐藏标签永不参与拟合；训练隔离由 Guard 与 `rsi/policy.py` 双重强制。

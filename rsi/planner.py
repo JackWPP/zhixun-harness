@@ -10,8 +10,9 @@ This module provides two things:
 
 The seeded plans encode what we actually measured before building the harness:
 A needs inference-time recentring (weights 0.3-0.5), B's baseline is dominated
-by a target-level bias (shrink toward the calibration centre), C only takes a
-small, short continuation gain.
+by a target-level bias (shrink toward the checkpoint train-target mean), C only
+takes a small, short continuation gain. All seeded plans fit the official
+``train`` split only: validation-derived splits are never used as training data.
 """
 from __future__ import annotations
 
@@ -81,16 +82,24 @@ SEEDED = {
                       "class_balance": True, "augment": False}, _recenter(0.40),
               "Weight averaging across short balanced continuations reduces variance without changing the architecture.",
               "val macro_f1 +0.002..0.006", "multiple epochs on 445 rows can memorise batch 1"),
+        _plan("extended_pretrain", {"external_epochs": 4, "external_learning_rate": 0.002,
+                                    "epochs": 10, "learning_rate": 0.0005, "data": "extended",
+                                    "class_balance": True}, {"type": "recenter", "mode": "batch_mean", "weight": 0.4},
+              "The official batch-1-only representation is weak on later drifted batches; "
+              "opt-in external pretraining on UCI batches 3-7 then fine-tuning on the official "
+              "train split should learn drift-robust sensor features without changing the structure.",
+              "val macro_f1 +0.02..0.04, drift probe +0.07 (requires RSI_ALLOW_EXTENDED_DATA=1)",
+              "external data is not part of the official package; opt-in and disclosed"),
         _plan("retain", {}, _recenter(0.30),
               "Lower blend weight to verify the calibration curve and avoid over-correction.",
               "val macro_f1 +0.004..0.010, probe +0.08", "possible neutral result"),
-        _plan("continue_train", {"learning_rate": 0.0001, "epochs": 10, "data": "train+calibration",
+        _plan("continue_train", {"learning_rate": 0.0001, "epochs": 10, "data": "train",
                                  "class_balance": True, "augment": True}, _recenter(0.45),
-              "Gain/offset augmentation plus calibration rows teaches gain-drift invariance explicitly.",
+              "Gain/offset augmentation on the official train split teaches gain-drift invariance without fitting validation.",
               "val macro_f1 +0.004, probe +0.05", "augmentation may distort in-distribution accuracy"),
-        _plan("ridge_last_layer", {"alpha": 10.0, "data": "train+calibration"}, _recenter(0.35),
-              "Refit the output head on train+calibration to widen class coverage, then calibrate at inference.",
-              "val macro_f1 +0.003", "calibration rows are few (373) and class-skewed"),
+        _plan("ridge_last_layer", {"alpha": 10.0, "data": "train"}, _recenter(0.35),
+              "Refit the output head on official train only, then calibrate at inference; tests head-vs-representation bottleneck.",
+              "val macro_f1 +0.003", "frozen hidden features may not separate drifted classes"),
         _plan("retain", {}, _recenter(0.20, mode="batch_std"),
               "Test whether standard-deviation recentring helps the strongly shifted batches where mean-only recentring saturates.",
               "probe +0.03, val neutral", "std recentring hurt the official batch in our probe"),
@@ -100,38 +109,38 @@ SEEDED = {
     ],
     "B": [
         _plan("retain", {}, _shrink(0.0),
-              "The baseline is anti-correlated with the held-out bearing targets; predicting the calibration target centre removes the bias with the lowest variance.",
-              "val rmse 681 -> ~466", "constant prediction ignores signal and may look unsophisticated"),
+              "The baseline is anti-correlated with the held-out bearing targets; predicting the train-target centre removes the bias with the lowest variance (no validation labels used).",
+              "val rmse 681 -> ~536 (train-mean constant; compliant)", "constant prediction ignores signal and may look unsophisticated"),
         _plan("retain", {}, _shrink(0.10),
-              "A small signal component on top of the shrunk centre keeps ordering while correcting the scale bias.",
-              "val rmse ~475", "bias reappears if alpha is too high"),
+              "A small signal component on top of the shrunk train centre keeps ordering while correcting the scale bias.",
+              "val rmse ~540", "bias reappears if alpha is too high"),
         _plan("retain", {}, _shrink(0.30),
               "Probe the shrink curve to document where signal content starts to hurt.",
-              "val rmse ~520-560", "still far from the constant baseline"),
+              "val rmse ~550-620", "still far from the constant baseline"),
         _plan("continue_train", {"learning_rate": 0.0003, "epochs": 15, "data": "train",
                                  "class_balance": False, "augment": False}, _shrink(0.0),
-              "Retraining may fix the output scale, after which the constant centre can be relaxed.",
-              "val rmse 630-660 -> shrink to 466", "continuation did not beat the constant in our offline probe"),
+              "Retraining may fix the output scale, after which the train-mean centre can be relaxed.",
+              "val rmse 630-660 -> shrink to ~536", "continuation did not beat the constant in our offline probe"),
         _plan("ridge_last_layer", {"alpha": 1000.0, "data": "train"}, _shrink(0.0),
-              "Closed-form head tests whether only the output layer is misscaled.",
-              "val rmse ~605 -> shrink 466", "frozen features likely insufficient"),
+              "Closed-form head on official train tests whether only the output layer is misscaled.",
+              "val rmse ~605 -> shrink ~536", "frozen features likely insufficient"),
         _plan("swa", {"learning_rate": 0.0002, "epochs": 5, "snapshots": 3,
                       "class_balance": False, "augment": False}, _shrink(0.10),
               "Averaging short continuations reduces variance; shrink keeps the bias correction.",
-              "val rmse ~470", "averaged weights remain under-fit"),
+              "val rmse ~540", "averaged weights remain under-fit"),
         _plan("retain", {}, _shrink(0.05),
               "Fine-grained shrink sweep to pick the least aggressive bias correction that passes the gate.",
-              "val rmse ~466-470", "marginal difference"),
-        _plan("continue_train", {"learning_rate": 0.0001, "epochs": 10, "data": "train+calibration",
-                                 "class_balance": False, "augment": False}, _shrink(0.0),
-              "Use calibration bearings as extra training signal, then shrink.",
-              "val rmse ~640 -> 466", "calibration rows are few"),
-        _plan("ridge_last_layer", {"alpha": 100.0, "data": "train+calibration"}, _shrink(0.10),
-              "Ridge with calibration rows may recover a usable scale, then shrink lightly.",
-              "val rmse 600 -> ~470", "leakage of calibration into head fit is intentional and recorded"),
+              "val rmse ~536-545", "marginal difference"),
+        _plan("continue_train", {"learning_rate": 0.0005, "epochs": 10, "data": "train",
+                                 "class_balance": False, "augment": False}, _shrink(0.10),
+              "Short official-train continuation changes the output scale; shrink then corrects the residual bias.",
+              "val rmse ~600 -> 536-560", "continuation may not change the scale on this data"),
+        _plan("ridge_last_layer", {"alpha": 10.0, "data": "train"}, _shrink(0.10),
+              "Ridge head fitted on official train only; diagnostics for head-vs-representation bottleneck.",
+              "val rmse ~600 -> ~540", "frozen features may be uninformative"),
         _plan("retain", {}, _shrink(0.0),
-              "Final consolidation: keep the strongest safe deployment (constant centre) for the hidden stream.",
-              "val rmse stable ~466", "none (safe action)"),
+              "Final consolidation: keep the strongest safe deployment (train-mean constant + light shrink) for the hidden stream.",
+              "val rmse stable ~536", "none (safe action)"),
     ],
     "C": [
         _plan("continue_train", {"learning_rate": 0.001, "epochs": 40, "data": "train",
@@ -175,18 +184,92 @@ SEEDED = {
 }
 
 
-def default_plans(task_key: str, round_index: int) -> list[ExperimentProposal]:
-    """Deterministic plan list for one round (1-based round index)."""
-    plans = SEEDED[task_key]
-    index = max(0, min(len(plans) - 1, round_index - 1))
-    return [plans[index]]
+def _stat_key(strategy: str, postprocess: dict | None) -> tuple[str, str]:
+    kind = (postprocess or {}).get("type", "none")
+    return strategy, "recenter" if kind == "recenter_blend" else kind
+
+
+def rank_proposals(plans: list[ExperimentProposal], stats: list[dict] | None,
+                   epsilon: float = 0.25) -> list[ExperimentProposal]:
+    """Order plans by historical win rate, with a deterministic epsilon exploration.
+
+    ``stats`` comes from ``StateDB.strategy_stats(task)``.  Plans whose strategy /
+    postprocess pair has a history are ordered by win rate; a plan with no history
+    is left in front only when it was the first (seeded) plan, which preserves
+    deterministic epsilon exploration without ever dropping the seeded action.
+    """
+    if not stats:
+        return list(plans)
+    by_key: dict[tuple[str, str], float] = {}
+    for row in stats:
+        try:
+            by_key[(row.get("strategy"), row.get("postprocess_type", "none"))] = float(
+                row.get("win_rate") or 0.0)
+        except (TypeError, ValueError):
+            continue
+    if not by_key:
+        return list(plans)
+
+    def score(index_plan):
+        index, plan = index_plan
+        wins = by_key.get(_stat_key(plan.strategy, plan.postprocess), 0.0)
+        return (-wins, index)
+
+    ordered = [plan for _, plan in sorted(enumerate(plans), key=score)]
+    # Keep a stable, deterministic exploration slot: the caller passes plans of
+    # length >= 1; we never drop the round's seeded plan.
+    if epsilon > 0 and len(ordered) > 1 and not by_key.get(
+            _stat_key(plans[0].strategy, plans[0].postprocess)):
+        ordered = [plans[0]] + [p for p in ordered if p is not plans[0]]
+    return ordered
+
+
+def _generic_bank(task_key: str) -> list[ExperimentProposal]:
+    """Fallback policy for an onboarded task with no measured history yet."""
+    from rsi.tasks import TASKS
+    config = TASKS.get(task_key)
+    regression = config is None or config.task == "regression"
+    bank = [
+        _plan("retain", {}, _recenter(0.4),
+              "Inference-time recentring should absorb a mean/scale shift caused by "
+              "sensor/environment drift without touching the checkpoint.",
+              "Improve macro-F1/RMSE on the public selection split if drift is covariate.",
+              "May hurt if the split is in-distribution or labels shifted."),
+        _plan("continue_train",
+              {"learning_rate": 5e-4, "epochs": 20, "data": "train"},
+              {"type": "none"},
+              "A short, small-learning-rate continuation on the official train split "
+              "may adapt the head to the current drift regime.",
+              "Small primary improvement; bounded by the tiny model capacity.",
+              "Overfits train if run too long; validation data must never be fitted."),
+    ]
+    if regression:
+        bank.append(_plan("retain", {}, {"type": "shrink", "alpha": 0.2},
+                          "Shrink predictions toward the frozen train-target mean to "
+                          "reduce variance when the baseline is under-confident.",
+                          "Large RMSE drop if the parent's target level is biased.",
+                          "Underfits genuinely informative predictions."))
+    bank.append(_plan("retain", {}, {"type": "none"},
+                      "Consolidate the current parent unchanged.",
+                      "No regression; keeps the best model.",
+                      "Misses any available gain."))
+    return bank
 
 
 def _plan_bank(task_key: str):
-    return list(SEEDED[task_key])
+    return list(SEEDED.get(task_key) or _generic_bank(task_key))
 
 
-def fallback_proposals(task_key: str, round_index: int) -> list[ExperimentProposal]:
+def default_plans(task_key: str, round_index: int,
+                  stats: list[dict] | None = None) -> list[ExperimentProposal]:
+    """Deterministic plan list for one round (1-based round index)."""
+    plans = _plan_bank(task_key)
+    index = max(0, min(len(plans) - 1, round_index - 1))
+    return rank_proposals([plans[index]], stats)
+
+
+def fallback_proposals(task_key: str, round_index: int,
+                       stats: list[dict] | None = None) -> list[ExperimentProposal]:
     """Two safe proposals: the seeded plan plus the final consolidation plan."""
     bank = _plan_bank(task_key)
     primary = bank[max(0, min(len(bank) - 1, round_index - 1))]
@@ -194,4 +277,4 @@ def fallback_proposals(task_key: str, round_index: int) -> list[ExperimentPropos
     proposals = [primary]
     if primary.strategy != safe.strategy or primary.postprocess != safe.postprocess:
         proposals.append(safe)
-    return proposals
+    return rank_proposals(proposals, stats)

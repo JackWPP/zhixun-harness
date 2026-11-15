@@ -1,5 +1,5 @@
 # ============================================================================
-#  智训引擎 RSI Harness —— 工程入口（v0.3.0）
+#  智训引擎 RSI Harness —— 工程入口（v0.5.0）
 #  新 harness 在 rsi/；harness/ 与 audit/ 是旧原型的审计留档（legacy-* 目标）。
 # ============================================================================
 SHELL := /bin/bash
@@ -10,8 +10,9 @@ STATE ?= .scratch/rsi-runs
 TASKS ?= A,B,C
 ROUNDS ?= 10
 
-.PHONY: help venv test test-all selftest run run-offline run-llm predict \
-        dashboard image image-stage image-tar image-verify clean distclean \
+.PHONY: help venv test test-all selftest run run-offline run-llm run-kernel predict \
+        dashboard probe synth external assets submission rehearse \
+        image image-stage image-tar image-verify clean distclean \
         legacy-test legacy-run audit
 
 help:                     ## 显示所有命令
@@ -46,9 +47,31 @@ run-llm:                  ## 接真实 LLM 端点（LLM_ENV 默认 .scratch/llm.
 	$(PY) -m rsi.cli run --tasks $(TASKS) --rounds $(ROUNDS) --llm on \
 		--llm-env $${LLM_ENV:-.scratch/llm.env} --state-dir $(STATE)
 
+run-kernel:               ## 强制 Agent Kernel 控制器（需可用 LLM 端点）
+	$(PY) -m rsi.cli run --tasks $(TASKS) --rounds $(ROUNDS) --llm on \
+		--llm-env $${LLM_ENV:-.scratch/llm.env} --controller kernel --state-dir $(STATE)
+
 predict:                  ## 官方兼容预测入口（CHECKPOINT=... POSTPROCESS=...）
 	$(PY) -m rsi.predict --checkpoint $${CHECKPOINT:?set CHECKPOINT} \
 		$${POSTPROCESS:+--postprocess $$POSTPROCESS} --mode $${MODE:-batch}
+
+probe:                    ## 私有/隐藏风格 JSONL 外部评测（TASK=A PATH=... [CKPT=...]）
+	$(PY) -m rsi.cli probe --task $${TASK:-A} --path $${PATH:?set PATH} \
+		$${CKPT:+--checkpoint $$CKPT} $${OUTPUT:+--output $$OUTPUT}
+
+synth:                    ## 生成合成漂移探针（TASK=A BATCHES=4 OUT=...）
+	$(PY) -m rsi.cli synth --task $${TASK:-A} --batches $${BATCHES:-4} \
+		--output $${OUT:?set OUT}
+
+external:                 ## UCI 气体漂移逐批外部验证（CKPT=... [SUMMARY=...]）
+	$(PY) scripts/external_validation.py --checkpoint $${CKPT:?set CKPT} \
+		$${SUMMARY:+--postprocess $$SUMMARY} --output docs/evidence/uci_gas_drift.md
+
+assets:                   ## 交付前资产自检（数据/checkpoint/技能/入口/DB）
+	$(PY) scripts/verify_assets.py --json-out .scratch/assets.json
+
+submission:               ## 从完成的 run 生成 <=64MiB 提交包（RUN_DIR=...）
+	$(PY) scripts/make_submission.py --run-dir $${RUN_DIR:?set RUN_DIR}
 
 dashboard:                ## 启动实时看板（STATE_JSON=... 或自动取最新 run）
 	$(PY) -m rsi.dashboard --state $${STATE_JSON:-$$(ls -dt $(STATE)/*/state.json | head -n1)} \
@@ -65,6 +88,9 @@ image-tar:                ## 生成 docker save 兼容 tar
 
 image-verify:             ## 解包 tar 并做镜像内 selftest（bwrap）
 	bash scripts/verify_image.sh
+
+rehearse:                 ## 完整彩排：构建镜像 + 解包 + 镜像内 2 轮闭环
+	bash scripts/rehearse.sh
 
 clean:                    ## 清理运行产物（保留 .venv 与 datasets）
 	rm -rf runs/ .scratch/rsi-runs/ __pycache__ 2>/dev/null || true

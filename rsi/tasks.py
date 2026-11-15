@@ -6,8 +6,9 @@ Hidden labels are never referenced anywhere in this file.
 """
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -26,23 +27,44 @@ class TaskConfig:
     baseline_primary: float
     margin: float
     rounds: int = 10
+    # Portable-runtime fields: a task is fully described by its task.json, so a
+    # new dataset/package can be onboarded without touching this module.
+    data_root: str = ""
+    train_file: str = "public/train.jsonl"
+    validation_file: str = "public/validation.jsonl"
+    checkpoint_file: str = "checkpoint.npz"
+    split_strategy: str = "auto"   # auto | stratified | group | units
+    probe: str = "auto"            # auto | uci_gas | none
+    extended: dict = field(default_factory=dict)  # opt-in external pretrain source
+    description: str = ""
 
     @property
     def package_dir(self) -> Path:
+        if self.package:
+            package = Path(self.package)
+            if package.is_absolute():
+                return package
+        else:
+            package = Path(".")
+        if self.data_root:
+            root = Path(self.data_root)
+            if not root.is_absolute():
+                root = (REPO_ROOT / root)
+            return root / package
         root = Path(os.environ.get("RSI_DATA_ROOT", REPO_ROOT / "datasets"))
-        return root / self.package
+        return root / package
 
     @property
     def checkpoint_path(self) -> Path:
-        return self.package_dir / "checkpoint.npz"
+        return self.package_dir / self.checkpoint_file
 
     @property
     def train_path(self) -> Path:
-        return self.package_dir / "public" / "train.jsonl"
+        return self.package_dir / self.train_file
 
     @property
     def validation_path(self) -> Path:
-        return self.package_dir / "public" / "validation.jsonl"
+        return self.package_dir / self.validation_file
 
 
 TASKS = {
@@ -103,3 +125,93 @@ def resolve_tasks(keys):
             raise SystemExit(f"unknown task {key!r}; choose from {sorted(TASKS)}")
         result.append(TASKS[key])
     return result
+
+
+# ---------------------------------------------------------------------------
+# Portable task specs
+# ---------------------------------------------------------------------------
+def _spec_paths(raw: str | None = None) -> list[Path]:
+    """Resolve task-spec sources: explicit paths, RSI_TASK_SPECS, repo tasks/."""
+    candidates: list[Path] = []
+    if raw:
+        parts = raw if isinstance(raw, (list, tuple)) else raw.split(os.pathsep)
+        candidates.extend(Path(part) for part in parts if part)
+    env = os.environ.get("RSI_TASK_SPECS")
+    if env:
+        candidates.extend(Path(part) for part in env.split(os.pathsep) if part)
+    repo_tasks = REPO_ROOT / "tasks"
+    if repo_tasks.is_dir():
+        candidates.append(repo_tasks)
+    found: list[Path] = []
+    for candidate in candidates:
+        if candidate.is_dir():
+            found.extend(sorted(candidate.glob("*.json")))
+            found.extend(sorted(candidate.glob("*/task.json")))
+        elif candidate.is_file():
+            found.append(candidate)
+    seen, unique = set(), []
+    for path in found:
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(resolved)
+    return unique
+
+
+def load_task_spec(path) -> TaskConfig:
+    """Load a single portable ``task.json`` (paths resolve relative to the spec)."""
+    path = Path(path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if "key" not in data:
+        raise SystemExit(f"task spec {path} is missing 'key'")
+    data_root = data.get("data_root", ".")
+    if not Path(data_root).is_absolute():
+        data_root = str((path.parent / data_root).resolve())
+    classes = tuple(data.get("classes") or ())
+    if data.get("task") == "classification" and not classes:
+        raise SystemExit(f"classification spec {path} needs non-empty 'classes'")
+    return TaskConfig(
+        key=str(data["key"]).upper(),
+        name=data.get("name", data["key"]),
+        name_en=data.get("name_en", data.get("name", data["key"])),
+        task=data.get("task", "classification"),
+        package=data.get("package", "."),
+        classes=classes,
+        primary_metric=data.get("primary_metric", "macro_f1"),
+        direction=data.get("direction", "higher"),
+        baseline_primary=float(data.get("baseline_primary", 0.0)),
+        margin=float(data.get("margin", 0.0)),
+        rounds=int(data.get("rounds", 10)),
+        data_root=data_root,
+        train_file=data.get("train_file", "public/train.jsonl"),
+        validation_file=data.get("validation_file", "public/validation.jsonl"),
+        checkpoint_file=data.get("checkpoint_file", "checkpoint.npz"),
+        split_strategy=data.get("split_strategy", "auto"),
+        probe=data.get("probe", "auto"),
+        extended=dict(data.get("extended") or {}),
+        description=data.get("description", ""),
+    )
+
+
+def register_task_specs(spec: str | None = None, *, replace: bool = True) -> list[str]:
+    """Register every discoverable task spec into ``TASKS``; returns keys added."""
+    added = []
+    for path in _spec_paths(spec):
+        try:
+            config = load_task_spec(path)
+        except (OSError, ValueError, KeyError) as exc:  # pragma: no cover - diagnostics
+            raise SystemExit(f"invalid task spec {path}: {exc}") from exc
+        if config.key in TASKS and not replace:
+            continue
+        TASKS[config.key] = config
+        added.append(config.key)
+    return added
+
+
+def describe_tasks() -> str:
+    lines = []
+    for key in sorted(TASKS):
+        cfg = TASKS[key]
+        lines.append(f"{key}: {cfg.name} [{cfg.task}/{cfg.primary_metric} {cfg.direction}] "
+                     f"package={cfg.package_dir}")
+    return "\n".join(lines)

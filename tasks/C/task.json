@@ -1,0 +1,17 @@
+{
+  "key": "C",
+  "name": "涡扇发动机剩余寿命预测",
+  "name_en": "Turbofan Engine RUL",
+  "task": "regression",
+  "classes": [],
+  "package": "cpu-c-guide-20261110-v1",
+  "data_root": "../../datasets",
+  "primary_metric": "rmse",
+  "direction": "lower",
+  "baseline_primary": 52.86857256611151,
+  "margin": 0.3,
+  "rounds": 10,
+  "split_strategy": "units",
+  "probe": "none",
+  "description": "Official contest package (editable task.json; see docs/PORTING.md)."
+}

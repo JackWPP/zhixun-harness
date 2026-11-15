@@ -5,9 +5,9 @@ hidden evaluation. It is split once, deterministically, into three disjoint
 roles and never re-split between rounds:
 
 calibration
-    labels may be used to fit a postprocess (e.g. the shrink centre); optional
-    training use is recorded in the proposal but reduces the honest calibration
-    sample size.
+    held-out labels only. Never used for fitting: the competition rule forbids
+    fitting validation data. (Regression shrink (if chosen) uses the checkpoint's
+    frozen train-target mean, not these labels.)
 selection
     the gate: candidate deployments are compared with the current parent on
     this split only.
@@ -27,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 
-from rsi.data import Dataset, load_jsonl_dataset, split_by_groups
+from rsi.data import Dataset, load_jsonl_dataset, split_by_groups, write_uci_gas_jsonl
 from rsi.tasks import TaskConfig, gas_probe_root
 
 
@@ -95,7 +95,8 @@ def _write_subset(src_path: Path, ids, out_path: Path) -> str:
 def _write_probe(config: TaskConfig, out_path: Path) -> Dataset | None:
     """Build the optional external UCI gas drift probe (development evidence only)."""
     root = gas_probe_root()
-    if config.key != "A" or root is None:
+    wanted = config.probe == "uci_gas" or (config.probe == "auto" and config.key == "A")
+    if not wanted or root is None:
         return None
     rows, labels, ids = [], [], []
     batch_files = sorted(Path(root).glob("batch*.dat"))
@@ -132,11 +133,22 @@ def build_splits(config: TaskConfig, state_dir: Path, seed: int = 42) -> dict:
     split_dir.mkdir(parents=True, exist_ok=True)
     train = load_jsonl_dataset(config.train_path, config.task, config.classes)
     validation = load_jsonl_dataset(config.validation_path, config.task, config.classes)
-    if config.key == "C":
+    strategy = config.split_strategy
+    if strategy == "auto":
+        unique_groups = len(set(validation.groups))
+        if config.task == "classification":
+            strategy = "stratified"
+        elif unique_groups >= 10:
+            strategy = "units"
+        elif unique_groups >= 2:
+            strategy = "group"
+        else:
+            strategy = "stratified"
+    if strategy == "units":
         calibration, rest = split_by_groups(validation, 0.30, seed)
         selection, report = split_by_groups(rest, 0.50, seed + 1)
         parts = [calibration, selection, report]
-    elif config.key == "B":
+    elif strategy in {"group", "bearing"}:
         parts = partition_rows(validation, (0.30, 0.35, 0.35), seed, stratify="group")
     else:
         parts = partition_rows(validation, (0.30, 0.35, 0.35), seed, stratify="label")
@@ -149,9 +161,23 @@ def build_splits(config: TaskConfig, state_dir: Path, seed: int = 42) -> dict:
         paths[name] = out_path
         dataset.sha256 = files[name]
 
+    extended = None
+    extended_path = None
+    extended_spec = getattr(config, "extended", None) or {}
+    if extended_spec.get("batches"):
+        from rsi.policy import extended_enabled
+        if extended_enabled():
+            root = gas_probe_root()
+            if root is not None:
+                extended_path = split_dir / "extended_train.jsonl"
+                extended = write_uci_gas_jsonl(extended_spec.get("batches", [1, 3, 4, 5, 6, 7]),
+                                               root, extended_path, config.classes)
+                paths["extended"] = extended_path
+                files["extended"] = sha256_file(extended_path)
+
     probe = None
     probe_path = None
-    if config.key == "A":
+    if config.probe == "uci_gas" or (config.probe == "auto" and config.key == "A"):
         probe_path = split_dir / "probe.jsonl"
         probe = _write_probe(config, probe_path)
         if probe is not None:
@@ -168,18 +194,25 @@ def build_splits(config: TaskConfig, state_dir: Path, seed: int = 42) -> dict:
         "splits": {name: {"rows": len(dataset), "sha256": files[name]}
                    for name, dataset in zip(("calibration", "selection", "report"), parts)},
         "probe": ({"rows": len(probe), "sha256": files["probe"]} if probe is not None else None),
+        "extended": ({"rows": len(extended), "sha256": files["extended"], "batches": extended_spec.get("batches")}
+                     if extended is not None else None),
         "protocol": {
-            "calibration": "labels may fit postprocess only; optional training use is recorded",
+            "split_strategy": strategy,
+            "calibration": "held-out labels only; never fitted",
             "selection": "gate only; never used for fitting or reporting",
             "report": "documentation only; never used for accept/reject",
             "b_stratify": "rows split within bearings (3 validation bearings only)",
             "a_stratify": "class-stratified rows of the single validation batch",
             "c_stratify": "whole engine units (no unit crosses splits)",
+            "portable": "strategy from task.json; auto = stratified for classification, units when >=10 groups, else within-group rows",
             "probe": "external UCI batch3-10, unlabelled for scoring; development evidence only",
+            "extended": ("opt-in external pretraining data (RSI_ALLOW_EXTENDED_DATA=1); "
+                         "never part of the official package"),
         },
     }
     (split_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return {"paths": paths, "train": train, "validation": validation,
             "calibration": parts[0], "selection": parts[1], "report": parts[2],
-            "probe": probe, "probe_path": probe_path, "manifest": manifest,
+            "probe": probe, "probe_path": probe_path,
+            "extended": extended, "extended_path": extended_path, "manifest": manifest,
             "manifest_path": split_dir / "manifest.json", "split_dir": split_dir}

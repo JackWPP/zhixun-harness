@@ -47,9 +47,21 @@ case "$COMMAND" in
         if [ "${RSI_SWANLAB:-0}" = "1" ]; then
             EXTRA_ARGS="$EXTRA_ARGS --swanlab"
         fi
-        echo "[harness] tasks=$TASKS rounds=$ROUNDS llm=$LLM state=$STATE_DIR"
+        if [ "${RSI_VERIFY_ASSETS:-1}" = "1" ]; then
+            echo "[harness] self-check: datasets, checkpoints, skills, predict entry"
+            python "$APP_HOME/scripts/verify_assets.py" --json-out "$STATE_DIR/assets-check.json"
+        fi
+        CONTROLLER=${RSI_CONTROLLER:-auto}
+        # Competitive default: the image bundles the public UCI gas archive
+        # (batches 3-7) and allows opt-in external pretraining for task A.
+        # This never touches validation/hidden labels. Set 0 for an official
+        # package-only run (docs/11_COMPLIANCE.md, docs/15_DATA.md).
+        export RSI_ALLOW_EXTENDED_DATA="${RSI_ALLOW_EXTENDED_DATA:-1}"
+        TOKEN_CAP=${RSI_TOKEN_CAP:-}
+        [ -n "$TOKEN_CAP" ] && EXTRA_ARGS="$EXTRA_ARGS --token-cap $TOKEN_CAP"
+        echo "[harness] tasks=$TASKS rounds=$ROUNDS llm=$LLM controller=$CONTROLLER state=$STATE_DIR"
         python -m rsi.cli run --tasks "$TASKS" --rounds "$ROUNDS" --llm "$LLM" \
-            --seed "$SEED" --state-dir "$STATE_DIR" $EXTRA_ARGS "$@"
+            --controller "$CONTROLLER" --seed "$SEED" --state-dir "$STATE_DIR" $EXTRA_ARGS "$@"
         # Publish the latest run in a fixed location for automated collection.
         LATEST=$(ls -dt "$STATE_DIR"/*/ 2>/dev/null | head -n 1 || true)
         if [ -n "$LATEST" ]; then

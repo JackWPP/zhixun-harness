@@ -44,10 +44,15 @@ class Recorder:
     def __init__(self, state_dir, run_id: str):
         self.state_dir = Path(state_dir)
         self.run_id = run_id
+        self.db = None
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.records_path = self.state_dir / "records.jsonl"
         self.state_path = self.state_dir / "state.json"
         self.rounds_path = self.state_dir / "rounds.jsonl"
+
+    def attach_db(self, db) -> None:
+        """Optional SQLite index; JSONL stays the audit source of truth."""
+        self.db = db
 
     # -- event / record stream -------------------------------------------------
     def _append(self, record: dict) -> dict:
@@ -57,8 +62,14 @@ class Recorder:
         return record
 
     def event(self, level: str, task: str, message: str, **extra) -> dict:
-        return self._append({"type": "event", "run_id": self.run_id, "level": level,
-                             "task": task, "message": message, **extra})
+        record = self._append({"type": "event", "run_id": self.run_id, "level": level,
+                               "task": task, "message": message, **extra})
+        if self.db is not None:
+            try:
+                self.db.add_event(self.run_id, task, level, message)
+            except Exception:
+                pass
+        return record
 
     def round(self, record: dict) -> dict:
         record = {"type": "round", "run_id": self.run_id, **record}
@@ -68,8 +79,18 @@ class Recorder:
         return saved
 
     def llm_call(self, task: str, role: str, usage: dict, **extra) -> dict:
-        return self._append({"type": "llm_call", "run_id": self.run_id, "task": task,
-                             "role": role, "usage": usage, **extra})
+        record = self._append({"type": "llm_call", "run_id": self.run_id, "task": task,
+                               "role": role, "usage": usage, **extra})
+        if self.db is not None:
+            try:
+                self.db.add_llm_call(
+                    run_id=self.run_id, task=task, role=role,
+                    ok=bool(extra.get("ok", True)), usage=usage,
+                    latency=float(extra.get("latency") or 0.0),
+                    error=extra.get("error"))
+            except Exception:
+                pass
+        return record
 
     def panel(self, task: str, entries, **extra) -> dict:
         return self._append({"type": "panel", "run_id": self.run_id, "task": task,

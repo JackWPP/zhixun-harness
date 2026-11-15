@@ -17,7 +17,9 @@ recenter (or recenter_blend)
     ``out = (1 - weight) * raw + weight * calibrated``.
 shrink
     Regression output calibration: ``y = alpha * prediction + (1 - alpha) * center``
-    with ``center`` estimated from public calibration labels only.
+    with ``center`` = the checkpoint's frozen train-target mean. Validation labels
+    are intentionally NOT used: fitting the calibration centre on validation would
+    violate the competition rule that validation/hidden data must not be fitted.
 """
 from __future__ import annotations
 
@@ -48,14 +50,9 @@ def resolve_postprocess(spec, model, calibration=None):
         alpha = float(spec.get("alpha", 0.5))
         if not 0.0 <= alpha <= 1.0:
             raise ValueError("shrink alpha must be within [0, 1]")
-        rows = 0
-        if calibration is not None and len(getattr(calibration, "y", [])):
-            center = float(np.mean(calibration.y))
-            rows = int(len(calibration.y))
-        else:
-            center = float(model.meta.get("target_mean", 0.0))
+        center = float(model.meta.get("target_mean", 0.0))
         return {"type": "shrink", "alpha": round(alpha, 6), "center": round(center, 6),
-                "calibration_rows": rows}
+                "center_source": "train_target_mean", "calibration_rows": 0}
     raise ValueError(f"unsupported postprocess: {kind}")  # pragma: no cover
 
 

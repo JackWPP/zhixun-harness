@@ -129,7 +129,8 @@ class Coordinator:
                         break
             if proposals:
                 return proposals
-        return fallback_proposals(self.task.key, context.get("round_index", 0))
+        return fallback_proposals(self.task.key, context.get("round_index", 0),
+                                      stats=context.get("stats"))
 
     # -- 3. review --------------------------------------------------------
     def criticize(self, context: dict, proposals: list[ExperimentProposal]) -> dict:

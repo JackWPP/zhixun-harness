@@ -39,6 +39,7 @@ class ExperimentContext:
     report: object
     drift: object | None = None
     drift_probe: object | None = None
+    extended: object | None = None
     seed: int = 42
     classes: tuple = ()
 
@@ -51,11 +52,11 @@ class Candidate:
 
 
 def _training_matrix(context: ExperimentContext, data: str, class_balance: bool, augment: bool):
+    if data != "train":
+        raise ValueError(
+            f"training data policy violation: {data!r}; only the official 'train' split "
+            "may be fitted (validation/calibration/labels must stay held out)")
     parts = [context.train]
-    if data == "train+calibration":
-        parts.append(context.calibration)
-    elif data == "train+all-public":
-        parts = [context.train, context.calibration, context.selection, context.report]
     x = np.vstack([part.x for part in parts])
     y = np.concatenate([part.y for part in parts])
     if class_balance and context.task == "classification":
@@ -113,6 +114,25 @@ def strategy_continue_train(context, params):
                             "learning_rate": float(params["learning_rate"])})
 
 
+def strategy_extended_pretrain(context, params):
+    if context.extended is None:
+        raise ValueError("extended_pretrain requested but no extended dataset was mounted")
+    model = context.parent.clone()
+    external_epochs = int(params.get("external_epochs", 4))
+    if external_epochs:
+        model.set_learning_rate(float(params.get("external_learning_rate", 0.002)))
+        model.fit(context.extended.x, context.extended.y, external_epochs)
+    model.set_learning_rate(float(params.get("learning_rate", 5e-4)))
+    x, y = _training_matrix(context, "train", bool(params.get("class_balance")), False)
+    model.fit(x, y, int(params.get("epochs", 10)))
+    return Candidate(model, postprocess={"type": "none"},
+                     notes={"external_rows": int(len(context.extended)),
+                            "external_epochs": external_epochs,
+                            "finetune_rows": int(len(x)),
+                            "finetune_epochs": int(params.get("epochs", 10)),
+                            "source": "external_open_dataset_opt_in"})
+
+
 def strategy_ridge_last_layer(context, params):
     model = context.parent.clone()
     x, y = _training_matrix(context, params["data"], False, False)
@@ -163,12 +183,12 @@ STRATEGIES = {
         tasks=("A", "B", "C"), params={}, cost="none"),
     "continue_train": StrategySpec(
         name="continue_train",
-        description="Continue Adam training from the parent checkpoint on public train (optionally calibration) data.",
+        description="Continue Adam training from the parent checkpoint on the official train split only (validation must not be fitted).",
         tasks=("A", "B", "C"),
         params={
             "learning_rate": {"type": "float", "min": 1e-5, "max": 0.05, "default": 0.001},
             "epochs": {"type": "int", "min": 1, "max": 300, "default": 20},
-            "data": {"type": "choice", "choices": ["train", "train+calibration", "train+all-public"], "default": "train"},
+            "data": {"type": "choice", "choices": ["train"], "default": "train"},
             "class_balance": {"type": "bool", "default": False},
             "augment": {"type": "bool", "default": False},
         },
@@ -179,9 +199,25 @@ STRATEGIES = {
         tasks=("A", "B", "C"),
         params={
             "alpha": {"type": "float", "min": 1e-6, "max": 1e6, "default": 10.0},
-            "data": {"type": "choice", "choices": ["train", "train+calibration"], "default": "train"},
+            "data": {"type": "choice", "choices": ["train"], "default": "train"},
         },
         cost="very-low"),
+    "extended_pretrain": StrategySpec(
+        name="extended_pretrain",
+        description=("Opt-in (RSI_ALLOW_EXTENDED_DATA=1): adapt the parent on the bundled "
+                     "external open dataset, then fine-tune on the official train split. "
+                     "No structure change; the candidate stays continuation-compatible."),
+        tasks=("A",),
+        cost="high",
+        params={
+            "external_epochs": {"type": "int", "min": 1, "max": 20, "default": 4},
+            "external_learning_rate": {"type": "float", "min": 0.0005, "max": 0.01, "default": 0.002},
+            "epochs": {"type": "int", "min": 1, "max": 60, "default": 10},
+            "learning_rate": {"type": "float", "min": 1e-5, "max": 0.005, "default": 5e-4},
+            "data": {"type": "choice", "choices": ["extended"], "default": "extended"},
+            "class_balance": {"type": "bool", "default": True},
+        },
+    ),
     "swa": StrategySpec(
         name="swa",
         description="Weight averaging across several short continuation snapshots (variance reduction, no architecture change).",
@@ -203,7 +239,7 @@ POSTPROCESS_TYPES = {
         "modes": ["batch_std", "batch_mean"],
     },
     "shrink": {
-        "description": "Regression output calibration: y = alpha * prediction + (1 - alpha) * center, center estimated from public calibration labels.",
+        "description": "Regression output calibration: y = alpha * prediction + (1 - alpha) * center, center = checkpoint train-target mean (no validation labels).",
         "alpha": {"type": "float", "min": 0.0, "max": 1.0},
     },
 }
@@ -217,5 +253,6 @@ def run_strategy(context, name, params):
         "continue_train": strategy_continue_train,
         "ridge_last_layer": strategy_ridge_last_layer,
         "swa": strategy_swa,
+        "extended_pretrain": strategy_extended_pretrain,
     }[name]
     return function(context, params)

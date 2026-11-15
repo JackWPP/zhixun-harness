@@ -25,14 +25,20 @@ import numpy as np
 
 from rsi.agent.config import TokenBudget, load_llm_config
 from rsi.agent.coordinator import Coordinator
+from rsi.agent.goals import GoalLoop
+from rsi.agent.guard import Guard
+from rsi.agent.kernel import Kernel
 from rsi.agent.runtime import PIRuntime
 from rsi.data import Dataset, load_jsonl_dataset
 from rsi.drift import analyse
 from rsi.executor import ExperimentProposal, Executor
 from rsi.inference import apply_postprocess, resolve_postprocess
+from rsi.memory import (MemoryReviewer, MemoryStore, Recall, SkillCurator,
+                        SkillStore, StateDB)
 from rsi.metrics import from_predictions, primary
 from rsi.model import ExtendedModel, checkpoint_sha256, code_sha256
-from rsi.planner import fallback_proposals
+from rsi.planner import (fallback_proposals, postprocess_catalog_text,
+                         strategy_catalog_text)
 from rsi.records import Recorder, atomic_write_json, utcnow_iso
 from rsi.selection import best_candidate, gate, relative_change
 from rsi.splits import build_splits, sha256_file
@@ -78,6 +84,40 @@ class TaskState:
     started_at: float = 0.0
     finished_at: float | None = None
     drift: dict = field(default_factory=dict)
+    controller: str = "pipeline"
+    goal: dict = field(default_factory=dict)
+    agent_stats: dict = field(default_factory=dict)
+    memory_info: dict = field(default_factory=dict)
+    extended: Dataset | None = None
+    extended_path: Path | None = None
+    degraded: bool = False
+
+
+class KernelHost:
+    """Supervisor callbacks exposed to the autonomous kernel.
+
+    The kernel can *act*, but the supervisor remains the only writer of the
+    parent checkpoint, the experiment counter and the round record.
+    """
+
+    def __init__(self, runner: "Runner", state: TaskState, drift: dict, context: dict):
+        self.runner = runner
+        self.state = state
+        self.drift = drift
+        self._context = context
+
+    def context(self) -> dict:
+        return self._context
+
+    def parent_primary(self) -> float:
+        return float(self.state.selection_metrics["primary"])
+
+    def run_experiment(self, proposal: ExperimentProposal) -> dict:
+        return self.runner._execute_proposal(self.state, proposal, self.drift)
+
+    def record_panel(self, entries: list[dict]) -> None:
+        self.runner._record_panel(self.state, entries)
+
 
 
 class Runner:
@@ -85,7 +125,10 @@ class Runner:
                  seed: int = 42, state_dir: str = ".scratch/rsi-runs",
                  wall_cap: float = 21600.0, cpu_cap: float = 36000.0,
                  experiments_cap: int = 40, swanlab: bool = False,
-                 run_dir: Path | None = None, verbose: bool = True):
+                 run_dir: Path | None = None, verbose: bool = True,
+                 controller: str = "auto", memory: bool = True,
+                 memory_dir: str | None = None, db_path: str | None = None,
+                 round_turns: int = 20, judge: bool = True):
         self.configs = resolve_tasks(keys)
         self.rounds = int(rounds)
         self.seed = int(seed)
@@ -99,6 +142,8 @@ class Runner:
         self.experiments_cap_total = self.experiments_cap * max(1, len(self.configs))
         self.swanlab = bool(swanlab)
         self.verbose = verbose
+        self.round_turns = int(round_turns)
+        self.judge_enabled = bool(judge)
         self.started_at = time.time()
         self.run_id = "rsi-" + datetime.now().strftime("%Y%m%d-%H%M%S")
         self.run_dir = Path(run_dir) if run_dir else self.state_dir / self.run_id
@@ -112,7 +157,48 @@ class Runner:
         self.experiments_used = 0
         self.global_cpu = 0.0
         self.swan_run = None
+        # -- controller selection (kernel needs a live LLM) ----------------
+        if controller not in ("auto", "kernel", "pipeline"):
+            raise ValueError(f"unknown controller {controller!r}")
+        self.requested_controller = controller
+        self.llm_ready = self.runtime.available()
+        if controller == "auto":
+            self.controller = "kernel" if self.llm_ready else "pipeline"
+        elif controller == "kernel" and not self.llm_ready:
+            self.controller = "pipeline"
+        else:
+            self.controller = controller
+        # -- persistent memory / records (optional, stdlib only) -----------
+        self.memory_enabled = bool(memory)
+        # Memory is persistent across runs by default (Hermes-style MEMORY.md +
+        # TASK_<X>.md snapshot); use --memory-dir to isolate an ablation run.
+        self.memory_root = Path(memory_dir or os.environ.get("RSI_MEMORY_DIR")
+                                or (self.state_dir / "memory"))
+        self.db_path = Path(db_path or os.environ.get("RSI_DB_PATH")
+                            or (self.state_dir / "rsi_state.db"))
+        self.memory = MemoryStore(self.memory_root) if self.memory_enabled else None
+        self.skills = (SkillStore(HARNESS_ROOT / "skills", on_use=self._note_skill_use)
+                       if self.memory_enabled else None)
+        self.db = StateDB(self.db_path) if self.memory_enabled else None
+        if self.db is not None and hasattr(self.recorder, "attach_db"):
+            self.recorder.attach_db(self.db)
+        self.recall = Recall(self.db, self.memory, self.skills) if self.memory_enabled else None
+        self.reviewer = (MemoryReviewer(self.memory, self.db, self.skills, self.runtime, self.run_id)
+                         if self.memory_enabled else None)
+        self.curator = SkillCurator(self.skills, self.db) if self.memory_enabled else None
+        self.agent_stats = {"kernel_rounds": 0, "kernel_failures": 0, "pipeline_rounds": 0,
+                            "delegates": 0, "panels": 0, "memory_writes": 0,
+                            "skill_writes": 0, "kernel_tokens": 0}
         self._init_swanlab()
+
+    # -- memory helpers ----------------------------------------------------
+    def _note_skill_use(self, name: str) -> None:
+        if self.db is not None:
+            try:
+                self.db.record_skill_use(name, self.run_id)
+            except Exception:
+                pass
+
 
     # -- logging -----------------------------------------------------------
     def log(self, level: str, task: str, message: str, **extra) -> None:
@@ -175,8 +261,14 @@ class Runner:
 
     # -- records / state ---------------------------------------------------
     def _write_state(self, status: str = "running") -> None:
+        memory_state = {"enabled": self.memory_enabled,
+                        "dir": str(self.memory_root) if self.memory_enabled else None,
+                        "db": str(self.db_path) if self.db is not None else None}
+        if self.memory_enabled and self.memory is not None:
+            memory_state["entries"] = len(self.memory.entries())
+            memory_state["usage"] = self.memory.usage()
         state = {
-            "schema_version": 1,
+            "schema_version": 2,
             "run": {
                 "run_id": self.run_id,
                 "status": status,
@@ -187,6 +279,8 @@ class Runner:
                         "calls": self.budget.calls,
                         "tokens_in": self.budget.used_input,
                         "tokens_out": self.budget.used_output},
+                "agent": {"controller": self.controller, **self.agent_stats},
+                "memory": memory_state,
                 "budget": {"tokens_used": self.budget.used, "tokens_cap": self.budget.cap,
                            "cpu_seconds": round(self.global_cpu, 1), "cpu_cap": self.cpu_cap,
                            "wall_seconds": round(time.time() - self.started_at, 1),
@@ -202,6 +296,12 @@ class Runner:
     def _task_state(self, state: TaskState) -> dict:
         cfg = state.config
         current = state.selection_metrics.get("primary")
+        strategy_stats = []
+        if self.db is not None:
+            try:
+                strategy_stats = self.db.strategy_stats(cfg.key)
+            except Exception:
+                strategy_stats = []
         return {
             "key": cfg.key, "name": cfg.name, "name_en": cfg.name_en, "task": cfg.task,
             "primary_metric": cfg.primary_metric, "direction": cfg.direction,
@@ -211,6 +311,15 @@ class Runner:
             "status": state.status,
             "round_index": len(state.rounds),
             "rounds_total": self.rounds,
+            "controller": state.controller,
+            "degraded": state.degraded,
+            "goal": state.goal,
+            "agent": state.agent_stats,
+            "memory": state.memory_info,
+            "checkpoint_path": str(state.parent_path),
+            "checkpoint_sha256": state.parent_sha,
+            "postprocess": state.postprocess,
+            "strategy_stats": strategy_stats,
             "drift": {key: state.drift.get(key) for key in
                       ("severity", "score", "feature_shift", "ks_max", "causes", "evidence")},
             "budget": {"tokens_used": state.tokens_used, "tokens_cap": self.budget.cap,
@@ -224,27 +333,48 @@ class Runner:
             "panel": state.panel,
         }
 
+
     # -- main --------------------------------------------------------------
     def run(self) -> dict:
         self.log("info", "-", f"run {self.run_id} started; tasks={[c.key for c in self.configs]} "
                               f"rounds={self.rounds} llm={'on' if self.runtime.available() else 'off'}")
         self.log("info", "-", f"llm config: {_compact(self.llm_config.masked())}")
-        self._write_state("running")
-        for config in self.configs:
+        self.log("info", "-", f"controller={self.controller} memory={'on' if self.memory_enabled else 'off'} "
+                              f"memory_dir={self.memory_root if self.memory else '-'} db={self.db_path if self.db else '-'}")
+        if self.db is not None:
             try:
-                self.run_task(config)
-            except Exception as exc:  # one task failure must not abort the run
-                self.log("error", config.key, f"task failed: {exc.__class__.__name__}: {exc}")
-                if config.key in self.tasks:
-                    self.tasks[config.key].status = "failed"
-            finally:
-                self._write_state("running")
-        summary = self.write_summary()
-        self._write_state("done")
-        self.runtime.close()
+                self.db.add_run(self.run_id, utcnow_iso(), controller=self.controller,
+                                llm_model=self.llm_config.model if self.llm_ready else "",
+                                tasks=",".join(c.key for c in self.configs), seed=self.seed)
+            except Exception as exc:
+                self.log("warn", "-", f"sqlite index unavailable: {exc}")
+        self._write_state("running")
+        try:
+            for config in self.configs:
+                try:
+                    self.run_task(config)
+                except Exception as exc:  # one task failure must not abort the run
+                    self.log("error", config.key, f"task failed: {exc.__class__.__name__}: {exc}")
+                    if config.key in self.tasks:
+                        self.tasks[config.key].status = "failed"
+                finally:
+                    self._write_state("running")
+            summary = self.write_summary()
+            if self.db is not None:
+                try:
+                    self.db.finish_run(self.run_id, "done",
+                                       json.dumps({"tasks": [c.key for c in self.configs]}))
+                except Exception:
+                    pass
+        finally:
+            self._write_state("done")
+            self.runtime.close()
+            if self.db is not None:
+                self.db.close()
         self.log("info", "-", f"run finished: {_compact({'cpu': round(self.global_cpu, 1),
                                                           'tokens': self.budget.used})}")
         return summary
+
 
     # -- per task ----------------------------------------------------------
     def run_task(self, config: TaskConfig) -> None:
@@ -269,6 +399,7 @@ class Runner:
                             HARNESS_ROOT, task_dir, timeout_seconds=int(os.environ.get("RSI_EXPERIMENT_TIMEOUT", 1800)))
         state = TaskState(config=config, splits=splits, train=train, calibration=calibration,
                           selection=selection, report=report, probe=probe,
+                          extended=splits.get("extended"), extended_path=splits.get("extended_path"),
                           parent_path=parent_path, parent_sha=parent_sha,
                           baseline_sha_actual=baseline_sha, postprocess=postprocess,
                           selection_metrics=sel_metrics, report_metrics=rep_metrics,
@@ -282,8 +413,51 @@ class Runner:
                               + (f" probe={len(probe)}" if probe else ""))
         coordinator = Coordinator(config, self.runtime, self.recorder)
         token_start = self.budget.used
+        # -- autonomous controller setup -----------------------------------
+        state.controller = self.controller
+        memory_snapshot = ""
+        if self.recall is not None:
+            try:
+                memory_snapshot = self.recall.memory_snapshot(key)
+            except Exception as exc:
+                self.log("warn", key, f"memory snapshot failed: {exc}")
+        state.memory_info = {"enabled": self.memory_enabled,
+                             "entries": len(self.memory.entries()) if self.memory else 0,
+                             "snapshot_chars": len(memory_snapshot)}
+        goal_loop = GoalLoop(task_key=key, run_id=self.run_id,
+                             db=self.db if self.memory_enabled else None,
+                             rounds_target=self.rounds)
+        if self.judge_enabled:
+            goal_loop.start()
+        guard = Guard(config,
+                      max_experiments_per_round=int(os.environ.get("RSI_EXPERIMENTS_PER_ROUND", 3)),
+                      max_experiments_per_task=self.experiments_cap)
+        kernel = None
+        if state.controller == "kernel" and self.llm_ready:
+            kernel = Kernel(config, self.runtime, guard, memory=self.memory,
+                            skills=self.skills, recall=self.recall,
+                            recorder=self.recorder, run_id=self.run_id,
+                            max_turns=self.round_turns,
+                            round_timeout=float(os.environ.get("RSI_ROUND_TIMEOUT", 1800)),
+                            experiment_timeout=float(os.environ.get("RSI_EXPERIMENT_TIMEOUT", 900)),
+                            verbose=self.verbose)
+            self.log("info", key, f"autonomous kernel enabled (max_turns={self.round_turns}, "
+                                  f"controller={state.controller})")
+        kernel_failures = 0
 
         for round_index in range(len(state.rounds), self.rounds):
+            remaining = self.wall_cap - (time.time() - self.started_at)
+            # Time-aware degradation: when the wall budget is tight, shrink the
+            # search space instead of overrunning the platform limit.  The run is
+            # marked degraded so the report can explain the reduced plan.
+            if remaining < 1500 and self.rounds - len(state.rounds) > 0:
+                state.degraded = True
+                guard.max_experiments_per_round = 1
+                if kernel is not None:
+                    kernel.max_turns = min(kernel.max_turns, 8)
+                    kernel.round_timeout = min(kernel.round_timeout, max(300.0, remaining - 300.0))
+                self.log("warn", key, f"wall budget tight ({remaining:.0f}s left), degraded search: "
+                                     f"1 experiment/round, kernel turns<=8")
             if time.time() - self.started_at > self.wall_cap * 0.95:
                 state.status = "budget_stop"
                 self.log("warn", key, "wall-clock budget nearly exhausted, stopping rounds")
@@ -292,7 +466,37 @@ class Runner:
                 state.status = "budget_stop"
                 self.log("warn", key, "per-task experiment budget exhausted, stopping rounds")
                 break
-            self._run_round(state, coordinator, round_index)
+            handled = False
+            if kernel is not None:
+                outcome = self._run_kernel_round(state, kernel, coordinator, round_index,
+                                                goal_loop, memory_snapshot)
+                if outcome is not None:
+                    handled = True
+                    if outcome.ok:
+                        kernel_failures = 0
+                    else:
+                        kernel_failures += 1
+                        if kernel_failures >= 2:
+                            self.log("warn", key, "kernel failed twice; task switches to pipeline fallback")
+                            kernel = None
+                            state.controller = "pipeline"
+            if not handled:
+                self._run_round(state, coordinator, round_index)
+                self.agent_stats["pipeline_rounds"] += 1
+                state.agent_stats = dict(self.agent_stats)
+            # -- goal loop judge (deterministic, fail-open) ----------------
+            if self.judge_enabled and goal_loop.state and state.rounds:
+                try:
+                    last = state.rounds[-1]
+                    done, reason = goal_loop.judge(
+                        decision=last.get("decision"), round_record=last,
+                        budget_remaining=self.budget.remaining(),
+                        wall_remaining=self.wall_cap - (time.time() - self.started_at),
+                        degraded=(state.status == "budget_stop"))
+                    state.goal = dict(goal_loop.state.to_dict(),
+                                      judge={"done": done, "reason": reason})
+                except Exception as exc:
+                    state.goal = {"error": f"{exc.__class__.__name__}: {exc}"}
         else:
             state.status = "done"
         if state.status == "running":
@@ -300,7 +504,25 @@ class Runner:
         state.finished_at = time.time()
         state.tokens_used = self.budget.used - token_start
         self.log("info", key, f"task finished: {config.primary_metric}={state.selection_metrics['primary']:.6f} "
-                              f"({len(state.rounds)} rounds, {state.executor.experiments} experiments)")
+                              f"({len(state.rounds)} rounds, {state.executor.experiments} experiments, "
+                              f"controller={state.controller})")
+        # -- close the task: distill durable memory, curate skills --------
+        review_info: dict = {}
+        if self.reviewer is not None:
+            try:
+                review_info = self.reviewer.review(key, state.rounds)
+            except Exception as exc:
+                review_info = {"error": f"{exc.__class__.__name__}: {exc}"}
+        curated: list = []
+        if self.curator is not None:
+            try:
+                curated = self.curator.curate()
+            except Exception as exc:
+                curated = [{"error": f"{exc.__class__.__name__}: {exc}"}]
+        state.memory_info.update({
+            "review": review_info, "curated": curated,
+            "entries_after": len(self.memory.entries()) if self.memory else 0})
+
         # reporter closes the task record (one extra call, useful for the report)
         context = coordinator.build_context(len(state.rounds), self.rounds, state.drift,
                                             state.selection_metrics,
@@ -316,6 +538,8 @@ class Runner:
             "baseline": config.baseline_primary, "final": state.selection_metrics["primary"],
             "report_metrics": state.report_metrics, "probe_metrics": state.probe_metrics,
             "rounds": state.rounds, "panel": state.panel, "narrative": summary_text,
+            "controller": state.controller, "agent": state.agent_stats,
+            "goal": state.goal, "memory": state.memory_info,
             "llm": dict(coordinator_usage := {"tokens_used": state.tokens_used,
                                               "calls": self.budget.calls,
                                               "roles": coordinator.used_roles}),
@@ -324,6 +548,12 @@ class Runner:
             "postprocess": state.postprocess,
         })
         self._write_state("running")
+
+    def _strategy_stats(self, key: str) -> list[dict]:
+        try:
+            return self.db.strategy_stats(key) if self.db is not None else []
+        except Exception:
+            return []
 
     # -- one round ---------------------------------------------------------
     def _run_round(self, state: TaskState, coordinator: Coordinator, round_index: int) -> None:
@@ -336,9 +566,11 @@ class Runner:
         drift = self.drift_report(state, round_index)
         state.drift = drift
         history = self._history(state)
+        stats = self._strategy_stats(key)
         context = coordinator.build_context(round_number, self.rounds, drift,
                                             state.selection_metrics, history,
                                             self._budget_payload())
+        context["stats"] = stats
         self._write_state("running")
 
         diagnosis = coordinator.diagnose(context)
@@ -347,13 +579,22 @@ class Runner:
         context = coordinator.build_context(round_number, self.rounds, drift,
                                             state.selection_metrics, history,
                                             self._budget_payload())
+        context["stats"] = stats
         if state.force_explore:
-            proposals = fallback_proposals(key, round_number + 5)[:2]
+            proposals = fallback_proposals(key, round_number + 5, stats=stats)[:2]
             state.force_explore = False
             self.log("info", key, "round: forced exploration proposal set after panel")
         else:
             proposals = coordinator.propose(context, diagnosis)
-        proposals = proposals[:3]
+        from rsi.policy import deny_reason
+        proposals = [p for p in proposals[:3]
+                     if not ((p.params or {}).get("data")
+                             and deny_reason(str(p.params["data"]), state.config))]
+        if not proposals:
+            proposals = [ExperimentProposal("retain", {}, {"type": "none"},
+                                            hypothesis="policy-filtered fallback",
+                                            expected_effect="keep parent",
+                                            risk="no candidate")]
         review = coordinator.criticize(context, proposals)
         approved = [proposals[i] for i in review["approvals"]][:2]
         if not approved:
@@ -364,24 +605,7 @@ class Runner:
         for proposal in approved:
             if state.executor.experiments >= self.experiments_cap:
                 break
-            self.log("info", key, f"round {round_number}: executing {proposal.strategy} "
-                                  f"{_compact(proposal.params, 160)} pp={_compact(proposal.postprocess, 120)}")
-            result = state.executor.run(state.parent_path, proposal,
-                                        calibration=state.splits["paths"]["calibration"],
-                                        selection=state.splits["paths"]["selection"],
-                                        report=state.splits["paths"]["report"],
-                                        train=state.splits["paths"]["train"],
-                                        drift={k: drift.get(k) for k in ("severity", "score", "causes")},
-                                        drift_probe=state.splits["paths"].get("drift_probe"),
-                                        seed=self.seed + round_number)
-            self.experiments_used += 1
-            self.global_cpu += result.cpu_seconds
-            results.append(result.to_dict())
-            status = "ok" if result.ok else f"failed: {result.error}"
-            self.log("info" if result.ok else "warn", key,
-                     f"round {round_number}: {result.experiment_id} {status}"
-                     + (f" selection_primary={result.metrics['selection']['primary']:.6f}"
-                        if result.ok and result.metrics.get("selection") else ""))
+            results.append(self._execute_proposal(state, proposal, drift, round_number))
         if not results:
             self.log("warn", key, f"round {round_number}: no experiment executed")
             self._record_round(state, round_number, drift, diagnosis, proposals, review,
@@ -417,17 +641,7 @@ class Runner:
         self.log("info", key, f"round {round_number}: gate={decision.decision} delta={decision.delta:+.6f} "
                               f"({decision.reason})")
         if decision.decision == "promote":
-            state.parent_path = Path(best["candidate_checkpoint"])
-            state.parent_sha = best["checkpoint_sha256"]
-            state.postprocess = best["postprocess"]
-            model = ExtendedModel.from_checkpoint(state.parent_path)
-            state.selection_metrics = self.evaluate(model, state.selection, state.postprocess, state.config)
-            state.report_metrics = self.evaluate(model, state.report, state.postprocess, state.config)
-            if state.probe is not None:
-                state.probe_metrics = self.evaluate(model, state.probe, state.postprocess, state.config)
-            state.best_primary = state.selection_metrics["primary"]
-            state.best_round = round_number
-            state.stall_rounds = 0
+            self._apply_promotion(state, best)
             self.log("info", key, f"round {round_number}: promoted -> {state.parent_sha[:22]}... "
                                   f"{state.config.primary_metric}={state.best_primary:.6f}")
         else:
@@ -458,11 +672,192 @@ class Runner:
             state.stall_rounds = 0
             self._write_state("running")
 
+    # -- experiments (shared by kernel and pipeline) -----------------------
+    def _execute_proposal(self, state: TaskState, proposal: ExperimentProposal,
+                          drift: dict, round_number: int = 0) -> dict:
+        key = state.config.key
+        self.log("info", key, f"round {round_number}: executing {proposal.strategy} "
+                              f"{_compact(proposal.params, 160)} pp={_compact(proposal.postprocess, 120)}")
+        result = state.executor.run(
+            state.parent_path, proposal,
+            calibration=state.splits["paths"]["calibration"],
+            selection=state.splits["paths"]["selection"],
+            report=state.splits["paths"]["report"],
+            train=state.splits["paths"]["train"],
+            drift={k: drift.get(k) for k in ("severity", "score", "causes")},
+            drift_probe=state.splits["paths"].get("drift_probe"),
+            extended_train=state.extended_path,
+            seed=self.seed + round_number)
+        self.experiments_used += 1
+        self.global_cpu += result.cpu_seconds
+        status = "ok" if result.ok else f"failed: {result.error}"
+        self.log("info" if result.ok else "warn", key,
+                 f"round {round_number}: {result.experiment_id} {status}"
+                 + (f" selection_primary={result.metrics['selection']['primary']:.6f}"
+                    if result.ok and result.metrics.get("selection") else ""))
+        payload = result.to_dict()
+        # The agent may only see the public validation splits. Probe (external
+        # drift evidence) metrics stay with the supervisor and never enter the
+        # kernel context.
+        payload["metrics"] = {k: v for k, v in (payload.get("metrics") or {}).items()
+                              if k in ("selection", "report")}
+        return payload
+
+    def _apply_promotion(self, state: TaskState, best: dict) -> None:
+        state.parent_path = Path(best["candidate_checkpoint"])
+        state.parent_sha = best["checkpoint_sha256"]
+        state.postprocess = best["postprocess"]
+        model = ExtendedModel.from_checkpoint(state.parent_path)
+        state.selection_metrics = self.evaluate(model, state.selection, state.postprocess, state.config)
+        state.report_metrics = self.evaluate(model, state.report, state.postprocess, state.config)
+        if state.probe is not None:
+            state.probe_metrics = self.evaluate(model, state.probe, state.postprocess, state.config)
+        state.best_primary = state.selection_metrics["primary"]
+        state.best_round = len(state.rounds) + 1
+        state.stall_rounds = 0
+
+    def _record_panel(self, state: TaskState, entries: list[dict]) -> None:
+        state.panel.append({
+            "trigger": "kernel convened panel",
+            "round_index": len(state.rounds),
+            "verdict": next((e.get("standpoint", "") for e in entries
+                             if e.get("role") == "arbiter"), "retain"),
+            "messages": [{k: e.get(k) for k in
+                          ("role", "standpoint", "evidence", "confidence", "source", "ok")}
+                         for e in entries],
+        })
+
+    # -- autonomous kernel round -------------------------------------------
+    def _kernel_brief(self, state: TaskState, round_number: int, drift: dict,
+                      history: list[dict], memory_snapshot: str,
+                      goal_loop: GoalLoop | None) -> dict:
+        cfg = state.config
+        return {
+            "task": {"key": cfg.key, "name": cfg.name, "name_en": cfg.name_en,
+                     "task": cfg.task, "primary_metric": cfg.primary_metric,
+                     "direction": cfg.direction,
+                     "baseline_primary": cfg.baseline_primary, "margin": cfg.margin},
+            "goal": (goal_loop.state.to_dict() if goal_loop is not None
+                     and goal_loop.state else {}),
+            "round_index": round_number, "rounds_total": self.rounds,
+            "metrics": dict(state.selection_metrics),
+            "budget": self._budget_payload(),
+            "memory": memory_snapshot,
+            "lessons": self.recall.lessons_text(cfg.key) if self.recall else "",
+            "stats": self.recall.stats_text(cfg.key) if self.recall else "",
+            "history": history,
+            "drift": {k: drift.get(k) for k in
+                      ("severity", "score", "feature_shift", "max_feature_shift",
+                       "ks_max", "causes", "evidence")},
+            "catalog": strategy_catalog_text() + "\n" + postprocess_catalog_text(),
+            "skills": self.skills.index_text() if self.skills else "",
+        }
+
+    def _run_kernel_round(self, state: TaskState, kernel: Kernel, coordinator: Coordinator,
+                          round_index: int, goal_loop: GoalLoop, memory_snapshot: str):
+        key = state.config.key
+        round_number = round_index + 1
+        started = time.time()
+        token_before = self.budget.used
+        parent_sha_before = state.parent_sha
+        self.log("info", key, f"round {round_number}/{self.rounds}: kernel observes drift")
+        drift = self.drift_report(state, round_index)
+        state.drift = drift
+        history = self._history(state)
+        context = coordinator.build_context(round_number, self.rounds, drift,
+                                            state.selection_metrics, history,
+                                            self._budget_payload())
+        brief = self._kernel_brief(state, round_number, drift, history, memory_snapshot, goal_loop)
+        host = KernelHost(self, state, drift, context)
+        self._write_state("running")
+        outcome = kernel.run_round(host, brief, round_number,
+                                   experiments_total=state.executor.experiments)
+        if not outcome.results and outcome.decision is None:
+            self.agent_stats["kernel_failures"] += 1
+            return None
+        env = outcome.env or {}
+        self.agent_stats["kernel_rounds"] += 1
+        self.agent_stats["delegates"] += int(env.get("delegates", 0))
+        self.agent_stats["panels"] += int(env.get("panels", 0))
+        self.agent_stats["memory_writes"] += int(env.get("memory_writes", 0))
+        self.agent_stats["skill_writes"] += int(env.get("skill_writes", 0))
+        usage = outcome.usage or {}
+        self.agent_stats["kernel_tokens"] += int(usage.get("input", 0)) + int(usage.get("output", 0))
+        state.agent_stats = dict(self.agent_stats)
+
+        proposals = [ExperimentProposal(
+            strategy=p.get("strategy", "retain"),
+            params=p.get("params") or {},
+            postprocess=p.get("postprocess") or {},
+            hypothesis=p.get("hypothesis", ""),
+            expected_effect=p.get("expected_effect", ""),
+            risk=p.get("risk", "")) for p in outcome.proposals]
+        results = outcome.results
+        best = best_candidate(results, state.config.direction) if results else None
+        decision = dict(outcome.decision or {
+            "decision": "retain", "reason": outcome.error or "kernel produced no decision",
+            "delta": 0.0, "source": "supervisor"})
+        promote_target = None
+        if decision.get("decision") == "promote":
+            chosen_id = decision.get("experiment_id")
+            promote_target = next((r for r in results if r.get("experiment_id") == chosen_id), None) or best
+            if promote_target is None or not promote_target.get("ok") or not promote_target.get("candidate_checkpoint"):
+                promote_target = None
+                decision = {"decision": "retain", "delta": 0.0, "source": "supervisor",
+                            "reason": "kernel promote downgraded: no successful candidate"}
+        if promote_target is not None:
+            self._apply_promotion(state, promote_target)
+            self.log("info", key, f"round {round_number}: promoted -> {state.parent_sha[:22]}... "
+                                  f"{state.config.primary_metric}={state.selection_metrics['primary']:.6f}")
+        else:
+            state.stall_rounds += 1
+
+        diagnosis = {"summary": (outcome.finished or {}).get("summary", ""),
+                     "severity": drift.get("severity"),
+                     "causes": list(drift.get("causes") or []),
+                     "focus": "kernel", "confidence": None,
+                     "evidence": {"drift_score": drift.get("score"),
+                                  "tool_calls": outcome.tool_calls},
+                     "source": "kernel"}
+        review = {"source": "kernel",
+                  "note": "autonomous agent self-review; deterministic guard verified the decision",
+                  "approvals": list(range(len(proposals))), "vetoes": [],
+                  "violations": env.get("violations", [])}
+        agent_record = outcome.to_record()
+        agent_record["brief"] = {
+            "memory_chars": len(memory_snapshot or ""),
+            "lessons_chars": len(brief.get("lessons") or ""),
+            "skills_chars": len(brief.get("skills") or ""),
+            "history_rounds": len(brief.get("history") or []),
+        }
+        record = self._record_round(
+            state, round_number, drift, diagnosis, proposals, review, results, decision,
+            parent_sha_before, token_before, started,
+            best=(promote_target or best), roles=["kernel"], agent=agent_record)
+        self._swan_log({"task": key, "round": round_number,
+                        "primary": state.selection_metrics["primary"],
+                        "baseline": state.config.baseline_primary,
+                        "decision": decision["decision"], "controller": "kernel"})
+        if state.stall_rounds >= 2 and len(state.panel) < 2 and self.budget.remaining() > 20000:
+            issue = (f"连续 {state.stall_rounds} 轮未提升（当前 {state.config.primary_metric}="
+                     f"{state.selection_metrics['primary']:.6f}，基线 {state.config.baseline_primary:.6f}，"
+                     f"漂移={drift.get('severity')}）")
+            self.log("warn", key, f"round {round_number}: stall detected, convening panel")
+            entries = coordinator.panel(context, issue)
+            self._record_panel(state, entries)
+            state.force_explore = True
+            state.stall_rounds = 0
+        self.log("info", key, f"round {round_number}: kernel done decision={decision['decision']} "
+                              f"tokens={int(usage.get('input', 0)) + int(usage.get('output', 0))} "
+                              f"trace={len(outcome.trace)} tool_calls={outcome.tool_calls}")
+        return outcome
+
     # -- round record ------------------------------------------------------
     def _record_round(self, state: TaskState, round_number: int, drift: dict, diagnosis: dict,
                       proposals: list, review: dict, results: list, decision: dict,
                       parent_sha_before: str, token_before: int, started: float,
-                      best: dict | None = None) -> dict:
+                      best: dict | None = None, roles: list[str] | None = None,
+                      agent: dict | None = None) -> dict:
         cfg = state.config
         metrics = dict(state.selection_metrics)
         metrics["primary"] = state.selection_metrics["primary"]
@@ -503,11 +898,39 @@ class Runner:
             "cpu_seconds": round(sum(float(r.get("cpu_seconds", 0.0)) for r in results), 3),
             "wall_seconds": round(time.time() - started, 3),
             "llm": {"tokens_used": self.budget.used - token_before,
-                    "calls": self.budget.calls, "roles": list(coordinator_roles(proposals))},
+                    "calls": self.budget.calls,
+                    "roles": list(roles) if roles is not None else list(coordinator_roles(proposals))},
+            "agent": agent or {},
             "created_at": utcnow_iso(),
         }
         state.rounds.append(record)
         self.recorder.round(record)
+        if self.db is not None:
+            try:
+                self.db.add_round(self.run_id, cfg.key, round_number, decision["decision"],
+                                  strategy=strategy, postprocess=postprocess.get("type", "none"),
+                                  primary=metrics.get("primary"), delta=decision.get("delta"),
+                                  hypothesis=record["hypothesis"],
+                                  change_summary=change_summary, payload=record)
+                for item in results:
+                    self.db.add_experiment(
+                        self.run_id, cfg.key, round_number,
+                        str(item.get("experiment_id") or "unknown"),
+                        strategy=str((item.get("proposal") or {}).get("strategy", "")),
+                        postprocess=str((item.get("postprocess") or {}).get("type", "none")),
+                        ok=bool(item.get("ok")),
+                        primary=((item.get("metrics") or {}).get("selection") or {}).get("primary"),
+                        delta=decision.get("delta"),
+                        cpu_seconds=item.get("cpu_seconds"),
+                        payload=item)
+                self.db.record_strategy(cfg.key, strategy, postprocess.get("type", "none"),
+                                        decision.get("delta"),
+                                        decision["decision"] == "promote")
+                self.db.add_event(self.run_id, cfg.key, "info",
+                                  f"round {round_number}: {decision['decision']} "
+                                  f"delta={decision.get('delta', 0.0):+.6f}")
+            except Exception as exc:
+                self.log("warn", cfg.key, f"sqlite write failed: {exc.__class__.__name__}: {exc}")
         self._write_state("running")
         return record
 
@@ -605,6 +1028,12 @@ class Runner:
             "evaluation_config_digest": os.environ.get("RSI_EVALUATION_CONFIG_DIGEST", "local-dev"),
             "postprocess": state.postprocess,
             "panel": state.panel,
+            "controller": state.controller,
+            "degraded": state.degraded,
+            "agent": state.agent_stats,
+            "goal": state.goal,
+            "memory": state.memory_info,
+            "strategy_stats": (self.db.strategy_stats(cfg.key) if self.db is not None else []),
         }
 
 

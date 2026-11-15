@@ -32,6 +32,7 @@ COPY scripts /opt/zhixun/app/scripts
 COPY docs /opt/zhixun/app/docs
 COPY extra /opt/zhixun/app/extra
 COPY datasets /opt/zhixun/app/datasets
+COPY tasks /opt/zhixun/app/tasks
 COPY pyproject.toml README.md Makefile /opt/zhixun/app/
 
 COPY docker/entrypoint.sh /opt/zhixun/bin/entrypoint.sh

@@ -1,0 +1,17 @@
+{
+  "key": "B",
+  "name": "滚动轴承剩余寿命预测",
+  "name_en": "Bearing Remaining Useful Life",
+  "task": "regression",
+  "classes": [],
+  "package": "cpu-b-rul-20261110-v1",
+  "data_root": "../../datasets",
+  "primary_metric": "rmse",
+  "direction": "lower",
+  "baseline_primary": 681.1598326043113,
+  "margin": 5.0,
+  "rounds": 10,
+  "split_strategy": "group",
+  "probe": "none",
+  "description": "Official contest package (editable task.json; see docs/PORTING.md)."
+}

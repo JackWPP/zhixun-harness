@@ -10,35 +10,33 @@
 ## 1. 快速启动
 
 ```bash
-# 1) 生成演示数据（纯标准库，可重复执行）
-./.venv/bin/python scripts/mock_state.py \
-  --out .scratch/demo_state.json \
-  --records-out .scratch/demo_records.jsonl
+# 1) 一条命令启动：未指定 --state 时自动生成 schema v2 演示数据包
+./.venv/bin/python -m rsi.dashboard --port 7861
+#    → .scratch/demo_state.json / records.jsonl / rounds.jsonl
+#      + memory/*.md + rsi_state.db
 
-# 2) 启动看板（默认绑定 127.0.0.1）
-./.venv/bin/python -m rsi.dashboard \
-  --state .scratch/demo_state.json \
-  --port 7861
-
-# 3) 打开页面（任意浏览器，无需联网）
+# 2) 打开页面（任意浏览器，无需联网）
 #    http://127.0.0.1:7861/
+#    需要重建演示数据时加 --refresh-demo。
 ```
 
-若省略 `--state`，看板会自动在 `.scratch/demo_state.json` 生成一份演示数据再启动，因此一条命令即可演示：
+接入真实 harness 时，把 `--state` 指向其原子写出的 `state.json` 即可；同目录的 `records.jsonl`、`rounds.jsonl`、`memory/` 与 `rsi_state.db` 会被自动发现。`scripts/mock_state.py` 仍保留，用于生成向后兼容的 schema v1 样例：
 
 ```bash
-./.venv/bin/python -m rsi.dashboard --port 7861
+./.venv/bin/python scripts/mock_state.py --out .scratch/demo_state.json \
+  --records-out .scratch/demo_records.jsonl
+./.venv/bin/python -m rsi.dashboard --state .scratch/demo_state.json --port 7861
 ```
 
 ### 命令行参数
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `--state` | 自动生成 demo | harness 原子写出的 `state.json` 路径 |
+| `--state` | 自动生成 v2 demo 包 | harness 原子写出的 `state.json` 路径 |
 | `--records` | 与 state 同目录的 `records.jsonl` | 事件/轮次追加日志路径；不存在时自动忽略 |
 | `--host` | `127.0.0.1` | 监听地址；容器内演示可设 `0.0.0.0` |
 | `--port` | `7861` | 监听端口；`0` 表示随机端口（测试用） |
-| `--demo-out` | `.scratch/demo_state.json` | 未给 `--state` 时 demo 文件输出位置 |
+| `--demo-out` | `.scratch/demo_state.json` | 未给 `--state` 时 v2 demo 包输出位置（sidecar 文件写到同目录） |
 | `--refresh-demo` | 关闭 | 未给 `--state` 时强制重新生成 demo |
 | `--quiet` | 关闭 | 关闭访问日志（pytest 中使用） |
 | `--version` | — | 打印版本后退出 |
@@ -77,6 +75,9 @@
 │ │ [Panel 讨论]  │ │               │ │               │                       │
 │ └───────────────┘ └───────────────┘ └───────────────┘                       │
 ├─────────────────────────────────────────────────────────────────────────────┤
+│ 记忆与自主内核（>=1210px 三列）：MEMORY 用量 / lessons / 策略胜率 + 技能    │
+│  + controller 徽章 / kernel 计数 + records·rounds 检索框与结果              │
+├─────────────────────────────────────────────────────────────────────────────┤
 │ 下方面板（两列，<=1210px 单列）                                             │
 │ ┌───────────────────────────────────┐ ┌───────────────────────────────────┐ │
 │ │ 全局事件流（级别 / 任务过滤）     │ │ 决策分布 + 任务进度 + 数据链路    │ │
@@ -93,11 +94,13 @@
 | --- | --- |
 | 点击任务卡「轮次时间线」 | 展开/折叠该任务的轮次列表；每轮显示 decision 徽章、假设、变更摘要、指标与 Δ、checkpoint sha 前 12 位 |
 | 点击任务卡「Panel 讨论」 | 展开/折叠 panel 讨论，显示角色、立场、证据、置信度条与最终 verdict |
-| 点击任意轮次行 | 打开右侧证据抽屉：完整假设/变更、全部指标、本轮 panel 结论、父/候选 checkpoint 完整 sha、时间 |
+| 点击任意轮次行 | 打开右侧证据抽屉：完整假设/变更、全部指标、任务目标（GOAL）、内核轨迹（usage / latency / tool_calls / trace）、本轮 panel 结论、父/候选 checkpoint 完整 sha、时间 |
 | 抽屉：`Esc` / 点击遮罩 / 右上角 × | 关闭抽屉并归还焦点 |
 | 事件流级别 / 任务胶囊 | 前端过滤 `info / warn / error` 与 `A / B / C` |
 | 悬停指标轨迹圆点 | 显示第几轮与指标值（原生 SVG `<title>`） |
 | 悬停漂移仪表 | 显示漂移原因与证据文本 |
+| 搜索框输入后按 Enter / 点「检索」 | 调用 `/api/records/search`，列出最多 20 条命中 records.jsonl / rounds.jsonl 的记录；`Esc` 或「清除结果」复位 |
+| 查看任务卡头部 KERNEL / PIPELINE 徽章 | controller 指示：青色=自主内核，琥珀=流水线，取值来自 `/api/memory` 的 `run_agent.controller` |
 | 断网 / 服务停止 | 顶部红色横幅提示，保留上次数据，每 2s 自动重试；恢复后横幅消失 |
 
 ### 空态与降级
@@ -109,7 +112,7 @@
 
 ---
 
-## 3. 状态数据契约（schema v1）
+## 3. 状态数据契约（schema v1 / v2，向后兼容）
 
 `state.json` 由 harness 用 **原子替换**（临时文件 + `os.replace`）写出，看板每次请求按 `(mtime_ns, size)` 判断是否重解析。
 所有时间字段为 ISO 8601 字符串（建议 UTC，如 `2026-11-15T06:46:15+00:00`）；缺失字段按可选处理，前端做空值降级。
@@ -240,6 +243,32 @@
 
 `round` / `run_start` 缺少 `message` 时服务端会合成可读文本；坏行跳过并计数（`_meta.records_skipped_lines`）。与 `state.events` 完全相同的记录（`ts/level/task/message` 四元组）只保留一条。
 
+### 3.9 schema v2 增量字段（全部可选）
+
+`schema_version=2` 在 v1 基础上**只追加字段**，v1 的 state.json 仍可直接展示（`/api/state` 原样返回，`/api/memory` 会降级为空记忆/无 sqlite）。
+
+| 路径 | 字段 | 说明 |
+| --- | --- | --- |
+| `run` | `agent` | 内核统计：`controller`（`kernel` / `pipeline`）、`kernel_rounds`、`kernel_failures`、`pipeline_rounds`、`delegates`、`panels`、`memory_writes`、`skill_writes`、`kernel_tokens` |
+| `run` | `memory` | 运行级记忆：`enabled`、`dir`、`db`、`entries`、`usage`（人类可读，如 `"23% — 931/4000 chars"`） |
+| `tasks[]` | `controller` | 本任务使用的控制器；缺省回退 `run.agent.controller` |
+| `tasks[]` | `goal` | 自主目标：`goal`、`status`、`rounds_done`、`rounds_target`、`subgoals[]`、`last_verdict`、`turns_used/max_turns`、`judge{done,reason}` 等 |
+| `tasks[]` | `agent` | 任务级内核统计（结构同 `run.agent`，可为 `{}`） |
+| `tasks[]` | `memory` | 任务记忆：`enabled`、`entries`、`snapshot_chars`、`review.lessons[]`（`text`/`wins`/`evidence`）、`curated[]`、`entries_after` |
+| `tasks[]` | `strategy_stats[]` | 策略战绩：`strategy`、`postprocess_type`、`trials`、`promotions`、`mean_delta`、`best_delta`、`win_rate` |
+| `rounds[]` | `agent` | 内核轨迹：`ok`、`fallback`、`error`、`decision`、`finished`、`usage{input,output,reasoning}`、`latency`、`tool_calls`、`trace[{tool,ok,detail,at}]`、`env{}` |
+
+看板对每个字段做类型防御：字段缺失、`null` 或结构不符时该区块显示空态，不影响其他面板。
+
+### 3.10 运行目录 sidecar 文件
+
+| 文件 / 目录 | 内容 | 看板行为 |
+| --- | --- | --- |
+| `records.jsonl` | 每行一条 JSON：`type` ∈ `event / round / decision / panel / llm_call` 等 | 与 `state.events` 合并去重，`/api/events` + `/api/records/search` |
+| `rounds.jsonl` | 每轮一行 `type=round` 记录 | `/api/records/search` 检索；坏行跳过 |
+| `memory/MEMORY.md`、`memory/TASK_*.md` | 人类可读记忆快照（bullet 行） | `/api/memory.memory_files` 展示字符数与条目数 |
+| `rsi_state.db` | SQLite：`lessons` / `strategy_stats` / `skill_usage` 等表 | 只读打开（`mode=ro`）；读失败时降级并从 state 的 `tasks[].memory.review.lessons` 回退 |
+
 ---
 
 ## 4. HTTP API
@@ -249,6 +278,9 @@
 | GET | `/`、`/index.html` | 看板页面（中文 UI） |
 | GET | `/app.js`、`/style.css`、`/favicon.svg` | 静态资源白名单，无目录浏览 |
 | GET | `/api/state` | 完整 state + `ok` + `_meta`；数据源不可用时 `503` |
+| GET | `/api/memory` | 记忆与自主内核聚合：`run_agent`/`controller`、`memory`、三任务 `memory`+`goal`、`strategy_stats`、`lessons`（sqlite 优先，state 回退）、`skill_usage`、`memory_files`、`db{available}` |
+| GET | `/api/agent?task=A` | 内核数据：`run_agent`、`task_agent`、`goal`、每轮 `agent`（usage/latency/tool_calls/trace/env）；不带 `task` 返回三任务汇总；未知任务 `400` |
+| GET | `/api/records/search?q=&limit=` | 在 records.jsonl + rounds.jsonl 做大小写不敏感子串检索；`limit` 默认 20、最大 100；空 `q` 返回最近记录；返回 `items/total/files` |
 | GET | `/api/events?limit=&level=&task=&q=` | 事件流；`limit` 默认 50、范围 1~500；返回 `events/total/returned/limit/filters/data_source` |
 | GET | `/api/health` | 轻量健康检查（状态、事件数、运行状态） |
 | GET | `/favicon.ico` | `204 No Content` |
@@ -354,6 +386,9 @@ def atomic_write_json(path: Path, payload: dict) -> None:
 - `rounds[].decision` 允许 `null`（进行中轮次），时间线显示「进行中」徽章；`metrics` 允许 `{}`。
 - 事件 `task` 允许空串表示全局；前端按 `String(task).toUpperCase()` 匹配 A/B/C。
 - `records.jsonl` 中 `type=round` / `type=run_start` 的记录由服务端归一为事件；真实 harness 如果直接写 `message` 字段则原样保留。
+- schema v2 的 `agent` / `memory` / `goal` / `strategy_stats` 字段全部可选；看板接受 `schema_version` 1 或 2，缺失的内核区块显示空态占位。
+- 三个 v2 只读 API 用独立缓存（按文件 mtime/size），`rsi_state.db` 以 SQLite 只读 URI（`mode=ro`，timeout 0.35s）打开；读取失败只影响 `/api/memory` 的 `db.available`，不会让整个看板报错。
+- `run.memory.dir` / `run.memory.db` 允许写相对路径，服务端依次相对 state 目录、其父目录与当前工作目录解析。
 
 ---
 
@@ -366,8 +401,10 @@ def atomic_write_json(path: Path, payload: dict) -> None:
 | 0:40–1:15 | 任务 A 卡片 | 大数字 0.7308 与 +2.35% 相对基线的绿色 Δ；sparkline 从 0.7140 爬升、第 4 轮回滚下探；漂移严重度 severe（batch1→batch2 漂移）与 causes chips |
 | 1:15–1:45 | 展开 A 的「轮次时间线」 | 6 轮：4 promote / 1 rollback / 1 retain；每轮假设、策略、Δ 与 sha 前 12 位；点 rollback 轮次打开抽屉看完整证据与父检查点 |
 | 1:45–2:05 | 展开 A 的「Panel 讨论」 | 诊断者 / 实验者 / 评审者 / 仲裁者的立场、证据、置信度，以及最终 verdict；体现「多角色审议 + 门控」 |
-| 2:05–2:30 | 看 B/C 卡片 + 全局事件流 | B 轴承 RUL 仍在跑（第 4 轮运行中）；C 首轮提升后进入第 2 轮；事件流按 warn/error 过滤展示回滚与预算告警 |
-| 2:30–3:00 | 页脚与「数据链路」 | 数据源路径、生成时间、schema 版本、数据延迟；强调只看文件、不写学校/训练状态，离线可运行 |
+| 2:05–2:25 | 看 B/C 卡片 + 全局事件流 | B 轴承 RUL 仍在跑（第 4 轮运行中）；C 首轮提升后进入第 2 轮；事件流按 warn/error 过滤展示回滚与预算告警 |
+| 2:25–2:50 | 记忆与自主内核面板 | MEMORY 用量条（931/4000 chars）、KERNEL 控制器徽章、内核轮次/派发/记忆写入计数；6 条 lessons（A 漂移、B 单轴承方差等）、策略胜率条形图、技能使用；在搜索框输入 `promote` 回车，展示 records / rounds 命中 |
+| 2:50–3:05 | 打开 A 某一轮的抽屉 | 除假设/指标/sha 外，展示任务目标与 KERNEL TRACE（8 步工具调用，含一次 `experiment.run` 失败回滚），体现「内核可审计」 |
+| 3:05–3:20 | 页脚与「数据链路」 | 数据源路径、生成时间、schema 版本、数据延迟；强调只读文件、离线可运行 |
 
 **可选实时感增强**：演示前先跑一个 5 行脚本，每 3 秒 `build_state()` + 原子写一次 `.scratch/demo_state.json`（把 `elapsed_seconds` 递增、给运行中轮次追加一条事件），页面会在 2s 内自动更新；停止脚本后页脚延迟会变琥珀/红，正好演示降级提示。
 
@@ -383,6 +420,7 @@ def atomic_write_json(path: Path, payload: dict) -> None:
 | `docs/assets/dashboard-1440-timeline.png` | 展开 A 任务轮次时间线 + 漂移仪表 |
 | `docs/assets/dashboard-1440-panel.png` | 展开 Panel 讨论（四角色 + verdict） |
 | `docs/assets/dashboard-1440-drawer.png` | 单轮证据抽屉（sha 完整值、指标表、panel 结论） |
+| `docs/assets/dashboard-1440-kernel.png` | 记忆与自主内核面板（MEMORY 条、lessons、策略胜率、检索结果） |
 | `docs/assets/dashboard-390-mobile.png` | 390 宽单列响应式 |
 
 > 截图占位：`docs/assets/` 目录当前不存在，以上为建议命名；补图后在此处改为 Markdown 图片引用。
@@ -399,6 +437,9 @@ def atomic_write_json(path: Path, payload: dict) -> None:
 # 手动验收
 ./.venv/bin/python -m rsi.dashboard --state .scratch/demo_state.json --port 7861 &
 curl -s localhost:7861/api/state | head -c 200
+curl -s localhost:7861/api/memory | head -c 200
+curl -s "localhost:7861/api/agent?task=A" | head -c 200
+curl -s "localhost:7861/api/records/search?q=promote&limit=3" | head -c 200
 curl -s -o /dev/null -w "%{http_code}\n" localhost:7861/
 kill %1
 
@@ -408,13 +449,18 @@ grep -n "http" rsi/dashboard/static/index.html rsi/dashboard/static/app.js rsi/d
 
 `tests/test_dashboard.py` 覆盖：
 
-1. `GET /` 200、含关键中文、引用本地 CSS/JS、无外部 URL；
+1. `GET /` 200、含关键中文（含「记忆与自主内核」「MEMORY」）、引用本地 CSS/JS、无外部 URL；
 2. `/app.js`、`/style.css`、`/favicon.svg` 200 且离线；`/favicon.ico` 204；
-3. `/api/state` 200：schema v1、A/B/C 三任务、A 六轮、panel 结构、64 位 sha、`_meta`、records 合并；
+3. `/api/state` 200：schema v1/v2、A/B/C 三任务、A 六轮、panel 结构、64 位 sha、`_meta`、records 合并；
 4. 原子替换 state.json 后下一次请求读到新 run_id 与 elapsed（恢复原文件）；
 5. `/api/events?limit=5`：数量、倒序、字段；`level/task` 过滤；
 6. 404 JSON；`/api/health` ready；
-7. 测试进程与临时文件自动清理。
+7. `/api/memory`：schema v2、controller、MEMORY 用量百分比、三任务记忆与 goal、lessons/strategy_stats/skill_usage/memory_files、`db.available=true`；
+8. `/api/memory` 无 sqlite 降级：`db.available=false`，lessons 从 `state.json` 回退（`source="state"`）；
+9. `/api/agent?task=A`：6 轮、`trace[{tool,ok,detail,at}]`、usage/latency、goal；汇总接口三任务；未知任务 400；
+10. `/api/records/search`：`q=promote&limit=5` 数量/倒序/字段、空 q 最近记录、大小写不敏感、无匹配 total=0；
+11. v2 测试数据由 `rsi.dashboard.demo.write_demo_bundle()` 在临时目录生成（含/不含 sqlite 两种）；
+12. 测试进程与临时文件自动清理。
 
 浏览器侧人工检查（无自动化浏览器）：
 
@@ -432,4 +478,7 @@ grep -n "http" rsi/dashboard/static/index.html rsi/dashboard/static/app.js rsi/d
 - 时间线展开状态只保存在内存（刷新回到默认 A 展开）；如需持久化可用 `localStorage`。
 - 抽屉中 panel 信息按 `round_index` 关联；若 harness 的 panel 没有 `round_index` 则只展示 verdict 区块（当前 mock 有）。
 - 页面未做 i18n 切换：中文为主、指标名保留英文。
+- 记忆 / 内核数据是只读展示：看板不写 `MEMORY.md`、不写 `rsi_state.db`；sqlite 只读连接失败时 `/api/memory` 降级而不是报错。
+- 内核面板的 lessons / 策略 / 技能依赖 sidecar 文件；若 harness 只写 `state.json`，面板会回退到 `tasks[].memory.review.lessons` 与 `tasks[].strategy_stats`，其余区块显示空态。
+- 搜索为文件尾部 2 万行内的逐行 JSON 子串匹配（缓存按文件 mtime/size），适合演示与调试，不适合当作全量日志检索。
 - E2E 无浏览器断言；若后续加入 CI 可补 `playwright`（需联网安装，当前离线环境不引入）。
