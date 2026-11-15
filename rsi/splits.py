@@ -153,7 +153,7 @@ def build_splits(config: TaskConfig, state_dir: Path, seed: int = 42) -> dict:
     else:
         parts = partition_rows(validation, (0.30, 0.35, 0.35), seed, stratify="label")
 
-    paths = {"train": config.train_path}
+    paths = {"train": config.train_path, "validation": config.validation_path}
     files = {}
     for name, dataset in zip(("calibration", "selection", "report"), parts):
         out_path = split_dir / f"{name}.jsonl"

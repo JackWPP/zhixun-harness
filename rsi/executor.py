@@ -91,6 +91,14 @@ def validate_postprocess(postprocess, task):
         if not 0.0 <= alpha <= 1.0:
             raise InvalidExperiment("shrink alpha must be within [0, 1]")
         return {"type": "shrink", "alpha": alpha}
+    if kind == "damage_shrink":
+        if task != "regression":
+            raise InvalidExperiment("damage_shrink calibration is only meaningful for regression")
+        a = float(spec.get("a", 0.5))
+        w = float(spec.get("w", 0.6))
+        if not 0.0 <= a <= 1.0 or not 0.0 <= w <= 1.0:
+            raise InvalidExperiment("damage_shrink a/w must be within [0, 1]")
+        return {"type": "damage_shrink", "a": a, "w": w, "fit": "train"}
     raise InvalidExperiment(f"unsupported postprocess: {kind}")
 
 
@@ -153,6 +161,7 @@ class Executor:
             "classes": self.classes,
             "parent_checkpoint": str(parent_checkpoint),
             "train": str(self.paths["train"]),
+            "validation": str(self.paths.get("validation", "")),
             "calibration": str(calibration),
             "selection": str(selection),
             "report": str(report),

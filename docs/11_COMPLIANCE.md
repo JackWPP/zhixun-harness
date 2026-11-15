@@ -10,7 +10,7 @@
 |---|---|---|---|
 | G1 无人干预完成全部阶段 | 指定设备、统一离线环境、隐藏测试集上自动运行并输出 | `docker run` 单命令启动；默认 kernel 控制器由 LLM 自主决策，LLM 缺失/超时自动降级 pipeline；启动先跑资产自检；无交互式输入 | `docker/entrypoint.sh`、`rsi/runner.py`、`rsi/agent/kernel.py`、`scripts/verify_assets.py`、`docs/13_RUNBOOK.md` |
 | G2 实验记录完整 | 全部实验按《实验记录规范》在 SwanLab 云端留存 | 每轮写 `rounds.jsonl`（假设/变更/指标/父子 sha/agent trace/记忆用量）；同时落 SQLite（rounds/experiments/llm_calls/lessons/strategy_stats），JSONL 为审计真源、DB 可重建；`summary.json` 与 `workspace_report.json` 对齐平台 schema；`--swanlab` 可离线记录并 `swanlab sync` | `rsi/records.py`、`rsi/memory/db.py`、`rsi/runner.py::_record_round`、`docs/12_EXPERIMENTS.md`、`docs/17_MEMORY.md` |
-| G3 综合性能不低于静态基线 | 封闭评测不低于 baseline | A：selection 0.7032→0.8434，report 0.6864→0.8126，外部探针 0.4054→0.5239；B：678.02→462.45；C：44.75→41.82（report 57.46→56.28）；且门控保证最终 checkout 是"历史最优"而非最后一轮 | `summary.json`、`docs/12_EXPERIMENTS.md` §12.4 |
+| G3 综合性能不低于静态基线 | 封闭评测不低于 baseline | 严格官方数据口径（§12.19）：A selection 0.7032→0.7346（report 0.6864→0.6834），B 678.02→409.74（report 664.0→424.1），C 44.75→40.52（report 57.46→56.02）；A 外部探针 0.4054→0.5239；门控保证最终 checkout 是"历史最优"而非最后一轮 | `summary.json`、`docs/12_EXPERIMENTS.md` §12.19 |
 
 ## 11.2 客观分（35 分）
 
@@ -71,7 +71,7 @@
 
 1. **模型配置**：最终 `checkpoint.npz` + `postprocess.json`（推理期校准参数）+ 父
    checkpoint sha256 链（在 `workspace_report.json` 的 `rounds[].parent_checkpoint_sha256`）；
-2. **Harness 镜像**：`harness.tar`（`zhixun-rsi-harness:0.5.0`，amd64）；
+2. **Harness 镜像**：`harness.tar`（`zhixun-rsi-harness:0.5.1`，amd64）；
 3. **云端实验记录**：`workspace_report.json` / `rounds.jsonl`，可一键导入 SwanLab；
 4. **运行说明**：`docs/13_RUNBOOK.md`（评测方按此启动即可）；
 5. **提交包**：`scripts/make_submission.py` 从完成的 run 导出 `dist/submission_<run>/`
@@ -90,8 +90,9 @@ v0.5 的 `extended_pretrain` 只做**同结构续训**（复制父权重后在�
 结构变更/宽层迁移在 v0.5 中**未启用**；如后续启用，必须记录父/候选参数 sha 并在 predict 入口保留 strict 回退。
 
 **外部数据**：任务 A 的 `extended_pretrain` 使用 UCI Gas Sensor Array Drift 的
-batch3–7（公开数据，随镜像 `extra/uci-gas/` 打包）。该策略默认开启
-（`RSI_ALLOW_EXTENDED_DATA=1`，可用 0 关闭），仅用于预训练工业模型权重；
+batch3–7（公开数据，随镜像 `extra/uci-gas/` 打包）。该策略**默认关闭**
+（`RSI_ALLOW_EXTENDED_DATA=0`；设为 1 仅用于消融/扩展数据验证复现），
+正式评分路径不启用，仅用于预训练工业模型权重的消融实验；
 验证集/隐藏测试/校准 split 的标签在任何阶段都不参与拟合（`rsi/policy.py` 与
 Guard 双重强制）。报告与 `workspace_report.json` 会标注外部数据的用途、批次与
 隔离说明；关闭开关后流程仍完整可跑（仅性能不同）。

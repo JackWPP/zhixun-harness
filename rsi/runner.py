@@ -32,7 +32,7 @@ from rsi.agent.runtime import PIRuntime
 from rsi.data import Dataset, load_jsonl_dataset
 from rsi.drift import analyse
 from rsi.executor import ExperimentProposal, Executor
-from rsi.inference import apply_postprocess, resolve_postprocess
+from rsi.inference import apply_postprocess, predict_for_split, resolve_postprocess
 from rsi.memory import (MemoryReviewer, MemoryStore, Recall, SkillCurator,
                         SkillStore, StateDB)
 from rsi.metrics import from_predictions, primary
@@ -90,6 +90,7 @@ class TaskState:
     memory_info: dict = field(default_factory=dict)
     extended: Dataset | None = None
     extended_path: Path | None = None
+    validation: Dataset | None = None
     degraded: bool = False
 
 
@@ -116,7 +117,8 @@ class KernelHost:
         return self.runner._execute_proposal(self.state, proposal, self.drift)
 
     def record_panel(self, entries: list[dict]) -> None:
-        self.runner._record_panel(self.state, entries)
+        # KernelTool panels are counted through KernelEnv.summary(); avoid double count.
+        self.runner._record_panel(self.state, entries, count=False)
 
 
 
@@ -233,10 +235,14 @@ class Runner:
 
     # -- evaluation --------------------------------------------------------
     def evaluate(self, model: ExtendedModel, dataset: Dataset | None,
-                 postprocess: dict, config: TaskConfig) -> dict | None:
+                 postprocess: dict, config: TaskConfig,
+                 full: Dataset | None = None) -> dict | None:
         if dataset is None or len(dataset) == 0:
             return None
-        predicted = apply_postprocess(postprocess, model, dataset.x)
+        if full is not None and (postprocess or {}).get("type") == "damage_shrink":
+            predicted = predict_for_split(postprocess, model, full, dataset)
+        else:
+            predicted = apply_postprocess(postprocess, model, dataset.x)
         values = from_predictions(config.task, predicted, dataset.y, config.classes)
         values["primary"] = primary(config.task, values)
         values["rows"] = int(len(dataset))
@@ -387,17 +393,19 @@ class Runner:
         selection = splits["selection"]
         report = splits["report"]
         probe = splits.get("probe")
+        full_validation = splits.get("validation")
         parent_path = Path(config.checkpoint_path)
         parent_sha = checkpoint_sha256(parent_path)
         baseline_sha = parent_sha
         model = ExtendedModel.from_checkpoint(parent_path)
         postprocess = {"type": "none"}
-        sel_metrics = self.evaluate(model, selection, postprocess, config)
-        rep_metrics = self.evaluate(model, report, postprocess, config)
+        sel_metrics = self.evaluate(model, selection, postprocess, config, full=full_validation)
+        rep_metrics = self.evaluate(model, report, postprocess, config, full=full_validation)
         probe_metrics = self.evaluate(model, probe, postprocess, config)
         executor = Executor(key, config.task, config.classes, splits["paths"],
                             HARNESS_ROOT, task_dir, timeout_seconds=int(os.environ.get("RSI_EXPERIMENT_TIMEOUT", 1800)))
-        state = TaskState(config=config, splits=splits, train=train, calibration=calibration,
+        state = TaskState(config=config, splits=splits, train=train, validation=full_validation,
+                          calibration=calibration,
                           selection=selection, report=report, probe=probe,
                           extended=splits.get("extended"), extended_path=splits.get("extended_path"),
                           parent_path=parent_path, parent_sha=parent_sha,
@@ -708,15 +716,21 @@ class Runner:
         state.parent_sha = best["checkpoint_sha256"]
         state.postprocess = best["postprocess"]
         model = ExtendedModel.from_checkpoint(state.parent_path)
-        state.selection_metrics = self.evaluate(model, state.selection, state.postprocess, state.config)
-        state.report_metrics = self.evaluate(model, state.report, state.postprocess, state.config)
+        state.selection_metrics = self.evaluate(model, state.selection, state.postprocess,
+                                                 state.config, full=state.validation)
+        state.report_metrics = self.evaluate(model, state.report, state.postprocess,
+                                              state.config, full=state.validation)
         if state.probe is not None:
             state.probe_metrics = self.evaluate(model, state.probe, state.postprocess, state.config)
         state.best_primary = state.selection_metrics["primary"]
         state.best_round = len(state.rounds) + 1
         state.stall_rounds = 0
 
-    def _record_panel(self, state: TaskState, entries: list[dict]) -> None:
+    def _record_panel(self, state: TaskState, entries: list[dict],
+                      count: bool = True) -> None:
+        if count:
+            self.agent_stats["panels"] += 1
+            state.agent_stats = dict(self.agent_stats)
         state.panel.append({
             "trigger": "kernel convened panel",
             "round_index": len(state.rounds),

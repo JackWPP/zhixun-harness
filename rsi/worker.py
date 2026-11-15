@@ -17,15 +17,18 @@ from pathlib import Path
 
 from rsi import metrics as metrics_mod
 from rsi.data import load_jsonl_dataset
-from rsi.inference import apply_postprocess, resolve_postprocess
+from rsi.inference import apply_postprocess, predict_for_split, resolve_postprocess
 from rsi.model import ExtendedModel, checkpoint_sha256, code_sha256
 from rsi.strategies import ExperimentContext, run_strategy
 
 
-def evaluate(task, model, postprocess, dataset, classes):
+def evaluate(task, model, postprocess, dataset, classes, full=None):
     if dataset is None or len(dataset) == 0:
         return None
-    predicted = apply_postprocess(postprocess, model, dataset.x)
+    if full is not None and (postprocess or {}).get("type") == "damage_shrink":
+        predicted = predict_for_split(postprocess, model, full, dataset)
+    else:
+        predicted = apply_postprocess(postprocess, model, dataset.x)
     values = metrics_mod.from_predictions(task, predicted, dataset.y, classes)
     values["primary"] = metrics_mod.primary(task, values)
     values["rows"] = int(len(dataset))
@@ -69,6 +72,10 @@ def main(argv=None):
                        if job.get("calibration") else None)
         selection = load_jsonl_dataset(job["selection"], task, classes, parent.meta["paths"])
         report = load_jsonl_dataset(job["report"], task, classes, parent.meta["paths"])
+        full_validation = None
+        if job.get("validation"):
+            full_validation = load_jsonl_dataset(job["validation"], task, classes,
+                                                 parent.meta["paths"])
         probe = None
         if job.get("drift_probe"):
             probe_path = Path(job["drift_probe"])
@@ -89,7 +96,7 @@ def main(argv=None):
         candidate = run_strategy(context, proposal["strategy"], proposal["params"])
         model = candidate.model
         postprocess = resolve_postprocess(proposal.get("postprocess", {"type": "none"}),
-                                          model, calibration)
+                                          model, calibration, train=train)
 
         candidate_path = Path(job["candidate_checkpoint"])
         model.save(candidate_path)
@@ -98,8 +105,10 @@ def main(argv=None):
             "candidate_checkpoint": str(candidate_path),
             "checkpoint_sha256": checkpoint_sha256(candidate_path),
             "metrics": {
-                "selection": evaluate(task, model, postprocess, selection, classes),
-                "report": evaluate(task, model, postprocess, report, classes),
+                "selection": evaluate(task, model, postprocess, selection, classes,
+                                      full=full_validation),
+                "report": evaluate(task, model, postprocess, report, classes,
+                                   full=full_validation),
                 "probe": evaluate(task, model, postprocess, probe, classes),
             },
             "postprocess": postprocess,

@@ -63,12 +63,12 @@ bash scripts/stage_image.sh
 # 3) 生成 docker save 兼容 tar
 ./.venv/bin/python scripts/build_image_tar.py \
     --rootfs .scratch/image/rootfs --overlay .scratch/image/overlay \
-    --output .scratch/image/harness.tar --tag zhixun-rsi-harness:0.3.0
+    --output .scratch/image/harness.tar --tag zhixun-rsi-harness:0.5.1
 # 4) 验证（任意有 Docker 的机器）
 docker load -i harness.tar && docker images | grep zhixun
 ```
 
-镜像默认行为：`docker run -v /host/work:/work zhixun-rsi-harness:0.3.0` 会以
+镜像默认行为：`docker run -v /host/work:/work zhixun-rsi-harness:0.5.1` 会以
 `RSI_TASKS=A,B,C RSI_ROUNDS=10 RSI_LLM=auto` 无人干预跑完 3 任务 × 10 轮，
 把 `state.json / summary.json / workspace_report.json / records.jsonl` 写到
 `/work/rsi-runs/<run-id>/`，并在 `/work/` 留一份固定路径的副本。所有行为可用
@@ -111,16 +111,24 @@ planner，仍能完成全部 10 轮并产出合规记录——这是镜像在封
 
 ## 5. 实验证据（本地 6h 预算内的真实运行）
 
-| 任务 | 指标 | 官方基线 | 本轮闭环最终（selection 切分） | report 切分 | 外部漂移探针 |
+| 任务 | 指标 | 官方基线 | 严格官方数据口径（selection） | report 切分 | 外部漂移探针（只验证，不进训练） |
 |---|---|---|---|---|---|
-| A 气体分类 | macro-F1 ↑ | 0.714030 | **0.888398**（10 轮，4 次 promote；含 extended_pretrain） | 0.6864 → 0.8646 | 0.4253 → **0.7462**（batch3–10）；**未参与预训练的 b8–b10：0.3519 → 0.5781** |
-| B 轴承 RUL | RMSE ↓ | 681.160 | **491.638**（3 轮 shrink α=0→0.3 后收敛） | 664.0 → 489.6 | —（轴承级留出，见 docs/12） |
-| C 发动机 RUL | RMSE ↓ | 52.869 | **41.816**（3 轮 continue_train 后收敛） | 57.46 → 56.28 | —（单元级留出） |
+| A 气体分类 | macro-F1 ↑ | 0.714030 | **0.734555**（10 轮，r1/r2 recenter promote，其后回滚） | 0.6864 → 0.6834 | 0.4253 → **0.5239**（UCI batch3–10） |
+| B 轴承 RUL | RMSE ↓ | 681.160 | **409.737**（1 次 promote：父 checkpoint + train-only `damage_shrink`） | 664.0 → 424.1 | —（轴承级留出，见 docs/12） |
+| C 发动机 RUL | RMSE ↓ | 52.869 | **40.524**（r1 `continue_train_staged` 1000+400 epoch，后 9 轮 retain） | 57.46 → 56.02 | —（单元级留出） |
 
-> v0.5 canonical run `.scratch/rsi-v05/rsi-20261115-193347`：wall 1390s、CPU 752s、
-> 52 实验、0 LLM token；A 的外部预训练默认开启（`RSI_ALLOW_EXTENDED_DATA=1`），
-> 只用 UCI batch3–7 且从不拟合验证/隐藏标签；score 口径与合规说明见
-> `docs/11_COMPLIANCE.md` §11.9 与 `docs/12_EXPERIMENTS.md` §12.18。
+> 最终 strict canonical run `.scratch/rsi-v052/rsi-20261115-210157`：wall 1826s、
+> CPU 1059s、56 实验、0 LLM token；`RSI_ALLOW_EXTENDED_DATA=0`，只使用官方
+> train/public validation，验证/隐藏标签从不参与拟合。
+> 外部数据仅作 **opt-in 消融与扩展验证**：A 打开 external_pretrain 时 selection
+> 0.8884、UCI b8–10 诚实留出 0.3519→0.5781（`docs/12` §12.18），默认关闭，
+> 不作为评分路径；披露见 `docs/11_COMPLIANCE.md` §11.9。
+
+**Agent Kernel 真实 LLM 验证**：架构验证轮（A 3 轮，`--controller kernel`）曾达到
+0.7032→0.9256→0.9373，每轮 14–18 次工具调用、轨迹含读技能/查 lessons/比较候选/
+写记忆；但该轮发生在 P0 合规修复前、使用了 `train+calibration`，数字**已作废**，
+仅保留为“Agent 自主闭环可跑通”的架构证据。合规口径的 kernel 复验见
+`docs/12_EXPERIMENTS.md` §12.19 与 `docs/18_AGENT_KERNEL.md` §10.3。
 
 **Agent Kernel 真实 LLM 验证**：架构验证轮（A 3 轮，`--controller kernel`）曾达到
 0.7032→0.9256→0.9373，每轮 14–18 次工具调用、轨迹含读技能/查 lessons/比较候选/

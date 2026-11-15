@@ -63,6 +63,10 @@ def _shrink(alpha):
     return {"type": "shrink", "alpha": alpha}
 
 
+def _damage(a, w):
+    return {"type": "damage_shrink", "a": a, "w": w, "fit": "train"}
+
+
 SEEDED = {
     "A": [
         _plan("retain", {}, _recenter(0.40),
@@ -111,6 +115,15 @@ SEEDED = {
         _plan("retain", {}, _shrink(0.0),
               "The baseline is anti-correlated with the held-out bearing targets; predicting the train-target centre removes the bias with the lowest variance (no validation labels used).",
               "val rmse 681 -> ~536 (train-mean constant; compliant)", "constant prediction ignores signal and may look unsophisticated"),
+        _plan("retain", {}, _damage(0.5, 0.6),
+              "The raw model carries a causal degradation signal: a per-segment damage score mapped through a train-fitted curve, blended with the train-centre shrink, corrects the bias conditionally instead of globally.",
+              "val rmse ~410-425 without touching the checkpoint", "needs bearing-ordered stream; falls back to plain shrink if the stream is unstable"),
+        _plan("retain", {}, _damage(0.5, 0.5),
+              "Lower curve weight tests whether the train-fitted curve or the shrunk level carries most of the gain.",
+              "val rmse ~430-450", "under-uses the damage curve"),
+        _plan("retain", {}, _damage(0.5, 0.7),
+              "Higher curve weight explores the end of the calibration range.",
+              "val rmse ~415-440", "over-reliance on the curve may hurt bearings unlike the train set"),
         _plan("retain", {}, _shrink(0.10),
               "A small signal component on top of the shrunk train centre keeps ordering while correcting the scale bias.",
               "val rmse ~540", "bias reappears if alpha is too high"),
@@ -138,11 +151,17 @@ SEEDED = {
         _plan("ridge_last_layer", {"alpha": 10.0, "data": "train"}, _shrink(0.10),
               "Ridge head fitted on official train only; diagnostics for head-vs-representation bottleneck.",
               "val rmse ~600 -> ~540", "frozen features may be uninformative"),
-        _plan("retain", {}, _shrink(0.0),
-              "Final consolidation: keep the strongest safe deployment (train-mean constant + light shrink) for the hidden stream.",
-              "val rmse stable ~536", "none (safe action)"),
+        _plan("retain", {}, _damage(0.5, 0.6),
+              "Final consolidation: keep the official parent checkpoint unchanged and deploy the train-fitted damage-aware calibration (postprocess only, no weight updates).",
+              "val rmse ~410-425; no checkpoint change", "stream-order assumption disclosed in the round record"),
     ],
     "C": [
+        _plan("continue_train_staged",
+              {"stage1_learning_rate": 0.001, "stage1_epochs": 1000,
+               "stage2_learning_rate": 0.0002, "stage2_epochs": 400,
+               "class_balance": False, "augment": False}, {"type": "none"},
+              "Long two-stage continuation: the first stage escapes the flat baseline region, the low-lr polish removes the last optimisation noise.",
+              "val rmse 52.87 -> ~40.5", "long CPU time; only official train is fitted"),
         _plan("continue_train", {"learning_rate": 0.001, "epochs": 40, "data": "train",
                                  "class_balance": False, "augment": False}, {"type": "none"},
               "A short continuation adapts the head to the official validation slice without changing capacity.",

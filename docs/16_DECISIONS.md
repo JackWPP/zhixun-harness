@@ -179,3 +179,30 @@
   planner 对未知任务提供 generic 策略库，`--task-spec`/`RSI_TASK_SPECS` 注册。
 - **后果**：`scripts/make_demo_task.py` + `tests/test_portable.py` 证明第 4 个任务
   可无代码改动跑通；平台隐藏流只需换包与 task.json。
+
+## ADR-017 B 赛道用“损伤感知后处理”而不是结构迁移
+
+- **背景**：B 的父基线 val RMSE 681，比常数 536 还差；检查发现行特征与 RUL 的
+  关系在留出轴承上不可迁移。spike-b 证明结构迁移（34→136 维因果特征）虽可做到
+  零权重恒等（max|Δ|=1.1e-13），但最优也只到 469.8，代价是改 checkpoint 结构、
+  predict 特征管线与边界检测。
+- **决策**：保持父 checkpoint 不变，新增推理期 `damage_shrink` 后处理：
+  `y=(1-w)*(a*raw+(1-a)*center)+w*curve(score)`；`center` 用官方 train 目标均值，
+  `curve` 由官方 train 标签拟合（10 个分位箱），`score` 只用当前轴承截至当前行的
+  因果统计量；`a=0.5,w=0.6` 在 selection 上选择，report 仅报告。
+- **后果**：B selection 491.6→409.7、report 489.6→424.1，父 checkpoint 与
+  checkpoint.npz 契约完全不变；后处理内嵌“段边界重置 + 可疑流回退纯 shrink”，
+  并在 `postprocess.json` 中自带 detector/curve，predict 端无需额外训练数据。
+- **权衡**：依赖“平台按轴承分块、按时间顺序喂入”的假设；已在 round 记录与文档
+  中披露，乱序流会触发保守回退。
+
+## ADR-018 C 赛道用两阶段长续训，而不是改结构
+
+- **背景**：C 的宽度试验（h32→h128）无收益；短续训（100 epoch）只到 41.8，
+  长训练直接用 lr=1e-3 会梯度爆炸（nonfinite gradient）。
+- **决策**：新增 `continue_train_staged`：先长阶段（官方 train、lr=1e-3、
+  1000 epoch），再低 lr 抛光（lr=2e-4、400 epoch）；全部沿用官方训练器的
+  Adam/梯度裁剪/冻结归一化，结构不变、父谱系连续，属于规则允许的“修改训练参数
+  与代码后继续训练”。
+- **后果**：C selection 41.82→40.52、report 56.28→56.02；单次实验约 200s，
+  仍在每任务预算内；作为候选策略由 agent 在 Guard 内自由选择，不做强制。

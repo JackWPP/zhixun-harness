@@ -52,11 +52,11 @@ case "$COMMAND" in
             python "$APP_HOME/scripts/verify_assets.py" --json-out "$STATE_DIR/assets-check.json"
         fi
         CONTROLLER=${RSI_CONTROLLER:-auto}
-        # Competitive default: the image bundles the public UCI gas archive
-        # (batches 3-7) and allows opt-in external pretraining for task A.
-        # This never touches validation/hidden labels. Set 0 for an official
-        # package-only run (docs/11_COMPLIANCE.md, docs/15_DATA.md).
-        export RSI_ALLOW_EXTENDED_DATA="${RSI_ALLOW_EXTENDED_DATA:-1}"
+        # Strict compliance default: scored runs fit only the official train
+        # split. The image still bundles the public UCI gas archive for the
+        # opt-in ablation / extended-data validation (`RSI_ALLOW_EXTENDED_DATA=1`,
+        # documented in docs/11_COMPLIANCE.md §11.9 and docs/15_DATA.md).
+        export RSI_ALLOW_EXTENDED_DATA="${RSI_ALLOW_EXTENDED_DATA:-0}"
         TOKEN_CAP=${RSI_TOKEN_CAP:-}
         [ -n "$TOKEN_CAP" ] && EXTRA_ARGS="$EXTRA_ARGS --token-cap $TOKEN_CAP"
         echo "[harness] tasks=$TASKS rounds=$ROUNDS llm=$LLM controller=$CONTROLLER state=$STATE_DIR"

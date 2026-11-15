@@ -303,7 +303,11 @@ schema（`id`/`inputs`/`answer`）的私有数据，输出整体与按 group 的
 - 该 run 的 state.json 为 schema 2，包含 controller、goal、memory、strategy_stats、
   rounds[].agent 等字段；`workspace_report.json` 的平台字段保持不变。
 
-## 12.18 v0.5 最终运行：合规 + 外部预训练 3×10（canonical）
+## 12.18 v0.5 外部预训练消融：合规 + 外部数据 3×10（opt-in，非评分路径）
+
+> **口径说明（用户 m02821 决定）**：正式评分走“只用官方数据”，本节外部预训练
+> 默认关闭（`RSI_ALLOW_EXTENDED_DATA=0`），仅作为扩展数据验证加分与消融证据保留；
+> 当前评分用 canonical 见 §12.19。
 
 命令（离线确定性、记忆关闭、显式开启外部预训练）：
 
@@ -349,3 +353,31 @@ micro 加权 0.4253→0.7462。其中**未参与预训练的 b8–b10 加权 0.3
 中心收缩”的稳健校准（合规、可解释，但预测能力未质变）；C 的 41.8 是官方 train
 上的真实续训收益（无标签泄漏）。若隐藏轴承/发动机分布与公开验证差异更大，B 的
 收益可能缩水，C 的收益最稳。
+
+
+## 12.19 v0.5.1 最终运行：严格官方数据 3×10（canonical，B damage_shrink + C 两阶段续训）
+
+命令（离线确定性、记忆关闭、外部数据默认关闭）：
+
+```bash
+RSI_ALLOW_EXTENDED_DATA=0 ./.venv/bin/python -m rsi.cli run \
+    --tasks A,B,C --rounds 10 --llm off --state-dir .scratch/rsi-v052 --no-memory
+```
+
+run：`.scratch/rsi-v052/rsi-20261115-210157`；wall 1825.5s、CPU 1059.1s、56 实验、
+0 LLM token；`RSI_ALLOW_EXTENDED_DATA=0`，仅官方 train 参与拟合。
+
+| 任务 | selection 基线 | 最终 | report 基线 | report 最终 | 实验数 | 关键决策 |
+|---|---:|---:|---:|---:|---:|---|
+| A | 0.703220 | **0.734555** | 0.686380 | 0.683406 | 12 | r1/r2 recenter(batch_mean) promote；r3–r10 回滚（候选未过 2×margin/gate） |
+| B | 678.021915 | **409.736985** | 664.009143 | 424.130024 | 11 | r1 promote：父 checkpoint 不变 + train-only `damage_shrink`（a=0.5,w=0.6）；r2–r10 retain（指标不再变化） |
+| C | 44.748700 | **40.523699** | 57.460000 | 56.021241 | 16 | r1 promote `continue_train_staged`（1000@1e-3 + 400@2e-4，仅官方 train）；其余轮 retain |
+
+- A 外部探针（UCI batch3–10，仅验证）：0.4054 → 0.5239；报告/隐藏标签未参与拟合。
+- B 的 `damage_shrink` 由官方 train 标签拟合 10 分位曲线、center=train 目标均值；
+  selection 上选 a/w，report 只报告；checkpoint 字节不变（父 sha 保持
+  `c7d819fcee9d2545…`），predict 侧 `postprocess.json` 自带 detector/curve。
+- C 的两阶段续训沿用官方 Adam/梯度裁剪/冻结归一化，父谱系连续，属“修改训练参数
+  后继续训练”；单次约 200s。
+- 与 §12.18 的差异：A 0.8884→0.7346（关闭外部数据），B 491.6→409.7（新后处理），
+  C 41.82→40.52（两阶段续训）；外部数据消融仍保留在 §12.18 作为加分证据。

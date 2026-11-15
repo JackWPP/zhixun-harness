@@ -128,7 +128,7 @@
 - 文件：`extra/uci-gas/Dataset/batch3..7.dat`（随镜像打包，仓库内可见）。
 - 用途：仅作为任务 A 的**外部预训练**输入，`extended_pretrain` 策略先在其上
   训练少量 epoch，再回到官方 `public/train.jsonl` 微调；不读取官方 val/hidden 标签。
-- 开关：`RSI_ALLOW_EXTENDED_DATA=1`（镜像 entrypoint 默认开）；未开启时策略目录
+- 开关：`RSI_ALLOW_EXTENDED_DATA=1`（v0.5 正式口径**默认关**，仅用于消融/扩展验证演示）；未开启时策略目录
   中的扩展计划会被 Guard 拒绝并回退到合法候选。
 - 隔离证明：`rsi/policy.py` 只允许 `train`/`extended` 两种训练数据；校验/隐藏
   split 路径不进 executor；`workspace_report.json` 与 `docs/12` 记录实际用量。

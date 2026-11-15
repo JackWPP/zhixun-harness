@@ -24,7 +24,8 @@ from pathlib import Path
 
 import numpy as np
 
-from rsi.inference import RecenterStream, apply_postprocess, format_outputs, resolve_postprocess
+from rsi.inference import (DamageShrinkStream, RecenterStream, apply_postprocess,
+                           format_outputs, resolve_postprocess)
 from rsi.model import ExtendedModel
 
 
@@ -54,6 +55,9 @@ def _load_postprocess(spec_arg: str, model: ExtendedModel):
     spec = json.loads(candidate.read_text()) if candidate.is_file() else json.loads(spec_arg)
     if isinstance(spec, dict) and "postprocess" in spec and isinstance(spec["postprocess"], dict):
         spec = spec["postprocess"]
+    if (spec or {}).get("type") == "damage_shrink" and "curve" not in spec:
+        raise SystemExit("damage_shrink must be resolved at experiment time (curve/robust_scale "
+                         "missing); ship the resolved postprocess.json instead of {fit: train}")
     return resolve_postprocess(spec, model)
 
 
@@ -66,6 +70,8 @@ def _predict_row_stream(model, postprocess, features, stream: RecenterStream):
         alpha = float(postprocess["alpha"])
         center = float(postprocess["center"])
         return alpha * raw + (1.0 - alpha) * center
+    if kind == "damage_shrink":
+        return stream.transform(features, raw)
     if kind == "recenter":
         weight = float(postprocess.get("weight", 1.0))
         if weight <= 0.0:
@@ -99,7 +105,9 @@ def main(argv=None) -> int:
 
     if args.mode == "stream":
         stream = None
-        if postprocess.get("type") == "recenter":
+        if postprocess.get("type") == "damage_shrink":
+            stream = DamageShrinkStream(postprocess)
+        elif postprocess.get("type") == "recenter":
             stream = RecenterStream(model.mean, model.scale,
                                     mode=postprocess.get("mode", "batch_mean"),
                                     window=args.stream_window)

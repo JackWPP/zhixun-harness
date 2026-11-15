@@ -133,6 +133,30 @@ def strategy_extended_pretrain(context, params):
                             "source": "external_open_dataset_opt_in"})
 
 
+def strategy_continue_train_staged(context, params):
+    """Two-stage continuation: long high-lr stage then a low-lr polish stage.
+
+    Both stages only see the official train split. Gradient clipping and the
+    frozen normalisation come from the official trainer, so the candidate is a
+    genuine continuation of the parent checkpoint (same architecture/shapes).
+    """
+    model = context.parent.clone()
+    x, y = _training_matrix(context, "train", bool(params.get("class_balance")),
+                            bool(params.get("augment")))
+    stages = []
+    for suffix in ("1", "2"):
+        epochs = int(params[f"stage{suffix}_epochs"])
+        if epochs <= 0:
+            continue
+        model.set_learning_rate(float(params[f"stage{suffix}_learning_rate"]))
+        model.fit(x, y, epochs)
+        stages.append({"learning_rate": float(params[f"stage{suffix}_learning_rate"]),
+                       "epochs": epochs})
+    model.validate()
+    return Candidate(model, postprocess={"type": "none"},
+                     notes={"stages": stages, "rows": int(len(x))})
+
+
 def strategy_ridge_last_layer(context, params):
     model = context.parent.clone()
     x, y = _training_matrix(context, params["data"], False, False)
@@ -193,6 +217,21 @@ STRATEGIES = {
             "augment": {"type": "bool", "default": False},
         },
         cost="low"),
+    "continue_train_staged": StrategySpec(
+        name="continue_train_staged",
+        description=("Continue training from the parent in two stages: a long first stage at a "
+                     "higher learning rate followed by a short low-learning-rate polish. Only the "
+                     "official train split is fitted; no architecture or normalisation change."),
+        tasks=("A", "B", "C"),
+        params={
+            "stage1_learning_rate": {"type": "float", "min": 1e-5, "max": 0.05, "default": 0.001},
+            "stage1_epochs": {"type": "int", "min": 1, "max": 2000, "default": 400},
+            "stage2_learning_rate": {"type": "float", "min": 1e-5, "max": 0.05, "default": 0.0002},
+            "stage2_epochs": {"type": "int", "min": 0, "max": 2000, "default": 100},
+            "class_balance": {"type": "bool", "default": False},
+            "augment": {"type": "bool", "default": False},
+        },
+        cost="medium"),
     "ridge_last_layer": StrategySpec(
         name="ridge_last_layer",
         description="Closed-form ridge re-fit of the output layer with frozen hidden features (diagnoses whether the head or the representation is the bottleneck).",
@@ -242,6 +281,12 @@ POSTPROCESS_TYPES = {
         "description": "Regression output calibration: y = alpha * prediction + (1 - alpha) * center, center = checkpoint train-target mean (no validation labels).",
         "alpha": {"type": "float", "min": 0.0, "max": 1.0},
     },
+    "damage_shrink": {
+        "description": "RUL degradation calibration: causal damage score -> train-fitted curve, blended with a train-centre shrink. Postprocess only, checkpoint unchanged, fitted on official train labels.",
+        "a": {"type": "float", "min": 0.0, "max": 1.0},
+        "w": {"type": "float", "min": 0.0, "max": 1.0},
+        "fit": {"type": "string", "choices": ["train"]},
+    },
 }
 
 
@@ -251,6 +296,7 @@ def run_strategy(context, name, params):
     function = {
         "retain": strategy_retain,
         "continue_train": strategy_continue_train,
+        "continue_train_staged": strategy_continue_train_staged,
         "ridge_last_layer": strategy_ridge_last_layer,
         "swa": strategy_swa,
         "extended_pretrain": strategy_extended_pretrain,

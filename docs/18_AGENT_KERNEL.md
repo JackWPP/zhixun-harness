@@ -108,6 +108,7 @@ continuation 是普通 user message，不改 system prompt（保护 prefix cache
 | 真实 LLM 闭环 | A 任务 1 轮：17 tool calls、3 实验、promote 0.7032→0.9256、agent 自写记忆（`docs/12_EXPERIMENTS.md`） |
 | 多轮自主 | A 任务 × 3 轮 kernel run：18/14/14 tool calls，promote→promote→retain，selection 0.7032→0.9373，361K tokens，wall 694s（§10.1） |
 | 跨 run 记忆 | 第 2 次运行 brief 注入 1562 chars memory + 414 chars lessons，首轮 tool calls 18→13，直接复现已验证配置（§10.2） |
+| 合规内核闭环 | A 任务 × 3 轮 strict kernel run（仅官方 train）：promote→retain→retain，selection 0.7032→0.7207，8 次记忆写入、1 次自建技能、1 次 panel，440,715 tokens，wall 1443s（§10.3） |
 | 不回归 | 离线 3×10 与 v0.3.0 指标一致或更好 |
 
 ### 10.1 A 任务 3 轮真实 LLM 轨迹
@@ -130,3 +131,25 @@ continuation 是普通 user message，不改 system prompt（保护 prefix cache
 - 首轮仍 promote 到同一水平（0.9256），说明省下的是探索成本而非指标。
 
 这正是 G3 想验证的"记忆改变行动"，而不仅是"记忆文件存在"。
+
+### 10.3 合规口径下的内核证据（仅官方 train）
+
+2026-11-15 19:58，A 任务、3 轮、`--controller kernel --llm on`、`RSI_ALLOW_EXTENDED_DATA=0`、
+`--memory` 开启（run `rsi-20261115-195836`）：
+
+| 轮 | 决策 | 主要候选 | selection | tool calls |
+|---|---|---|---|---|
+| 1 | promote | recenter(batch_mean, w=0.4) | 0.7032→0.7207 | 14 |
+| 2 | retain | recenter 系数与 ridge 均未过 margin | 0.7207 | 17 |
+| 3 | retain | 同上；连续 2 轮无提升触发 panel（4 角色） | 0.7207 | 17 |
+
+- 3 轮全部由 kernel 自主完成，0 次降级、0 次 guard violation；
+- 8 次 `memory_add`（task scope）、1 次 `skill_manage`（agent 自建/修补技能）；
+- 1 次 `convene_panel`：diagnostician/experimenter/critic/reporter 四角色会诊，
+  结论为"类 3 在重度协变量漂移下坍缩，继续调 recenter 收益有限"；
+- token 440,715（3 轮），wall 1443s，CPU 109.9s；对比 v0.3 固定 pipeline，A 的
+  提升幅度变小（0.7346 strict pipeline vs 0.7207 kernel），这是合规约束下的真实
+  上限，也是"Agent 会自我收敛到保守策略"的证据；
+- 已知问题（已修）：panel 计数此前未写入 `agent_stats["panels"]`，
+  `_record_panel(count=True)` 只在 supervisor 触发的 panel 上计数，kernel 工具
+  触发的 panel 通过 `KernelEnv.summary()` 计数，避免重复。
