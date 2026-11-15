@@ -1,0 +1,244 @@
+{
+  "tests_run": 30,
+  "tests_passed": true,
+  "failures": 0,
+  "errors": 0,
+  "checks": [
+    "original archives unchanged",
+    "current code digests match run manifest",
+    "delivered checkpoint metrics independently reevaluated",
+    "parent lineage verified",
+    "original scalers preserved",
+    "no accepted primary metric regression"
+  ],
+  "runs": {
+    "A": {
+      "baseline": {
+        "macro_f1": 0.7140297220788709,
+        "accuracy": 0.8786173633440515,
+        "macro_f1_fixed_classes": 0.7140297220788709,
+        "per_class_f1": {
+          "Ethanol": 0.683982683982684,
+          "Ethylene": 0.9422776911076443,
+          "Ammonia": 0.9950248756218906,
+          "Acetaldehyde": 0.0,
+          "Acetone": 0.9962264150943396,
+          "Toluene": 0.6666666666666666
+        },
+        "confusion_matrix": [
+          [
+            158,
+            5,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            302,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            100,
+            0,
+            0,
+            0
+          ],
+          [
+            108,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            528,
+            4
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            5
+          ]
+        ],
+        "classes": [
+          "Ethanol",
+          "Ethylene",
+          "Ammonia",
+          "Acetaldehyde",
+          "Acetone",
+          "Toluene"
+        ],
+        "target_counts": {
+          "Ethanol": 164,
+          "Ethylene": 334,
+          "Ammonia": 100,
+          "Acetaldehyde": 109,
+          "Acetone": 532,
+          "Toluene": 5
+        }
+      },
+      "selected": {
+        "macro_f1": 0.7266719709757302,
+        "accuracy": 0.8858520900321544,
+        "macro_f1_fixed_classes": 0.7266719709757302,
+        "per_class_f1": {
+          "Ethanol": 0.6975717439293598,
+          "Ethylene": 0.9569230769230769,
+          "Ammonia": 0.9950248756218906,
+          "Acetaldehyde": 0.0,
+          "Acetone": 0.9962264150943396,
+          "Toluene": 0.7142857142857143
+        },
+        "confusion_matrix": [
+          [
+            158,
+            5,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            23,
+            311,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            100,
+            0,
+            0,
+            0
+          ],
+          [
+            108,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            1,
+            528,
+            3
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            5
+          ]
+        ],
+        "classes": [
+          "Ethanol",
+          "Ethylene",
+          "Ammonia",
+          "Acetaldehyde",
+          "Acetone",
+          "Toluene"
+        ],
+        "target_counts": {
+          "Ethanol": 164,
+          "Ethylene": 334,
+          "Ammonia": 100,
+          "Acetaldehyde": 109,
+          "Acetone": 532,
+          "Toluene": 5
+        }
+      },
+      "improvement": 0.012642248896859276,
+      "cost": {
+        "total_seconds": 1.3993315999978222,
+        "training_seconds": 0.058965500007616356,
+        "validation_seconds": 0.055490399987320416,
+        "candidate_count": 6,
+        "note": "validation_seconds counts candidate/final evaluation; diagnostic evaluation is included only in total_seconds"
+      },
+      "selected_sha256": "sha256:b669c5049d349fab06cd2c0455746ead7b7f78baa1f1417578109b3e52e485cc"
+    },
+    "B": {
+      "baseline": {
+        "rmse": 681.1598326043113,
+        "mae": 563.1058414514887,
+        "mean_signed_error": -365.38394916105057,
+        "overestimate_fraction": 0.3240023823704586
+      },
+      "selected": {
+        "rmse": 652.1897942381156,
+        "mae": 543.3861434566229,
+        "mean_signed_error": -317.36119143170816,
+        "overestimate_fraction": 0.34723049434187014
+      },
+      "improvement": 28.970038366195695,
+      "cost": {
+        "total_seconds": 2.2485043999986374,
+        "training_seconds": 0.2786751999883563,
+        "validation_seconds": 0.027245999990554992,
+        "candidate_count": 6,
+        "note": "validation_seconds counts candidate/final evaluation; diagnostic evaluation is included only in total_seconds"
+      },
+      "selected_sha256": "sha256:27f149eaf89c31841bedfea76f5e953366705876e312209349b229a586658be9"
+    },
+    "C": {
+      "baseline": {
+        "rmse": 52.86857256611151,
+        "mae": 38.89982982666355,
+        "mean_signed_error": 1.07826596816338,
+        "overestimate_fraction": 0.5718686277061912,
+        "nasa_score": 5823439325.342459,
+        "nasa_score_protocol": "local_conventional_sum_not_verified_platform_score"
+      },
+      "selected": {
+        "rmse": 51.75808469536506,
+        "mae": 37.8288390718539,
+        "mean_signed_error": -0.43214133971594926,
+        "overestimate_fraction": 0.558852878649833,
+        "nasa_score": 4282747505.2220325,
+        "nasa_score_protocol": "local_conventional_sum_not_verified_platform_score"
+      },
+      "improvement": 1.1104878707464465,
+      "cost": {
+        "total_seconds": 23.53555459999916,
+        "training_seconds": 5.180848899966804,
+        "validation_seconds": 0.5977304999978514,
+        "candidate_count": 6,
+        "note": "validation_seconds counts candidate/final evaluation; diagnostic evaluation is included only in total_seconds"
+      },
+      "selected_sha256": "sha256:68dbc536b90ea605c391195f2a75c0ca3130b87ed795d9adca1e280c65c4ef68"
+    }
+  },
+  "trainer_engine": "RuleDrivenHarnessTrainer",
+  "strategy_recommender": {
+    "pretrained_checkpoint": "harness/strategy_recommender_pretrained.npz",
+    "checkpoint_sha256": "sha256:19e19743bf12d6528aa0654636622fc9cc0b16280f4e6b71fba45a17319e31d4",
+    "trained_samples": 18,
+    "unique_decision_states": 6,
+    "final_loss": 0.1546585139289111,
+    "train_accuracy": 1.0
+  }
+}

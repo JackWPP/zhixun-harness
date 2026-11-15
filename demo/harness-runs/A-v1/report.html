@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Harness 本地运行报告</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#243047;font:15px/1.65 system-ui,-apple-system,"Microsoft YaHei",sans-serif}main{max-width:1180px;margin:auto;padding:32px 22px}h1,h2,h3,h4{line-height:1.35;color:#16233a}h1{font-size:30px}h2{font-size:22px}h4{margin:0}section,header{background:white;border:1px solid #dfe5ee;border-radius:14px;padding:24px;margin-bottom:22px}.muted{color:#627089}.notice{background:#fff6df;border-left:4px solid #d49a22;padding:16px;border-radius:6px}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}.card{background:#f4f7fe;border:1px solid #e0e7f6;padding:18px;border-radius:10px}.value{display:block;font-size:30px;font-weight:700;color:#224d99}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;text-align:left}th,td{padding:12px;border-bottom:1px solid #e3e8f0;vertical-align:top}th{background:#f5f7fb}td p{margin:6px 0}code,pre{font-family:ui-monospace,Consolas,monospace;overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f5f7fb;padding:14px;border-radius:8px;font-size:13px}details{margin:12px 0}summary{cursor:pointer;color:#2855a0}a{color:#2158ad;text-underline-offset:3px}.links{display:flex;flex-wrap:wrap;gap:18px}.finding,.decision{border-left:3px solid #a8bce2;padding:14px 18px;margin:16px 0;background:#f8faff}.error{color:#a32929;overflow-wrap:anywhere}p,li,td{overflow-wrap:anywhere}@media(max-width:640px){main{padding:16px 10px}section,header{padding:18px 14px}.cards{grid-template-columns:1fr}h1{font-size:25px}th,td{min-width:140px;padding:10px}}
+</style></head><body><main><header><h1>Harness 本地运行报告</h1><p>任务 A · 已完成</p><p>运行 ID：<code>A-v1</code></p><p class="muted">开始：2026-11-14T14:09:02.142166+00:00<br>结束：2026-11-14T14:09:03.541460+00:00</p><div class="notice"><strong>仅限开发验证，不代表官方或隐藏测试集成绩。</strong>本报告不包含隐藏数据评估。验证集仅用于评估与候选选择，不参与优化器更新。策略与诊断基于规则，不使用 LLM。</div></header><section><h2>基线与最终选择</h2><p>关键指标：macro_f1（越高越好）；不推断或补造缺失指标及改进量。</p><div class="cards"><div class="card">基线<span class="value">0.71403</span>Macro-F1: 0.71403<br>Accuracy: 0.878617</div><div class="card">最终选择<span class="value">0.726672</span>Macro-F1: 0.726672<br>Accuracy: 0.885852</div></div><p>基线检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\A-v1\source\checkpoint.npz</code> <code title="sha256:fd1e08b2aad08b2e9754f9b2dfdc029481c0da7ecdedca0abb0ec6fcc818c757">sha256:fd1e0…c818c757</code></p><p>最终检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\A-v1\selected\checkpoint.npz</code> <code title="sha256:b669c5049d349fab06cd2c0455746ead7b7f78baa1f1417578109b3e52e485cc">sha256:b669c…52e485cc</code></p><nav class="links"><a href="summary.json" download>下载运行摘要</a><a href="events.jsonl" download>下载事件日志</a><a href="selected/checkpoint.npz" download>下载最终检查点</a></nav></section><section><h2>基线诊断</h2><ul><li>输入均值存在跨集合差异</li><li>训练与跨批次验证存在泛化差距</li><li>训练类别数量不均衡</li><li>部分气体类别在验证中识别失效</li><li>跨期训练证据不足以训练通用漂移类型分类器</li><li>没有漂移原因标签，诊断不是因果证明</li></ul><article class="finding"><h4>输入均值存在跨集合差异</h4><p class="muted">编号：observable_input_shift · 严重程度：notice</p><p>建议：仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。</p><details><summary>查看证据</summary><pre>{
+  &quot;top_features&quot;: [
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,41]]&quot;,
+      &quot;standardized_mean_difference&quot;: 11.458230311024698
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,28]]&quot;,
+      &quot;standardized_mean_difference&quot;: 3.4582396541260545
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,31]]&quot;,
+      &quot;standardized_mean_difference&quot;: 2.458597432822978
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>训练与跨批次验证存在泛化差距</h4><p class="muted">编号：generalization_gap · 严重程度：warning</p><p>建议：比较较小学习率、训练类别加权、L2 正则和训练内轻量扰动。</p><details><summary>查看证据</summary><pre>{
+  &quot;macro_f1_gap&quot;: 0.2417241174163166
+}</pre></details></article><article class="finding"><h4>训练类别数量不均衡</h4><p class="muted">编号：train_class_imbalance · 严重程度：notice</p><p>建议：类别权重只能从训练标签计算；验证集类别频率不用于拟合。</p><details><summary>查看证据</summary><pre>{
+  &quot;train_counts&quot;: {
+    &quot;Ethanol&quot;: 90,
+    &quot;Ethylene&quot;: 98,
+    &quot;Ammonia&quot;: 83,
+    &quot;Acetaldehyde&quot;: 30,
+    &quot;Acetone&quot;: 70,
+    &quot;Toluene&quot;: 74
+  }
+}</pre></details></article><article class="finding"><h4>部分气体类别在验证中识别失效</h4><p class="muted">编号：weak_classes · 严重程度：warning</p><p>建议：检查相应训练类别的覆盖与混淆，不使用验证目标训练校正器。</p><details><summary>查看证据</summary><pre>{
+  &quot;classes&quot;: [
+    {
+      &quot;class&quot;: &quot;Acetaldehyde&quot;,
+      &quot;f1&quot;: 0.0,
+      &quot;count&quot;: 109,
+      &quot;most_confused_with&quot;: &quot;Ethanol&quot;,
+      &quot;confused_count&quot;: 108
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>跨期训练证据不足以训练通用漂移类型分类器</h4><p class="muted">编号：few_drift_examples · 严重程度：notice</p><p>建议：先用规则诊断；未来在训练内构造受控扰动，标签仅表示合成扰动。</p><details><summary>查看证据</summary><pre>{
+  &quot;training_batches&quot;: 1,
+  &quot;validation_batches&quot;: 1
+}</pre></details></article><article class="finding"><h4>没有漂移原因标签，诊断不是因果证明</h4><p class="muted">编号：no_causal_labels · 严重程度：info</p><p>建议：规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><details><summary>诊断指标与详细信息</summary><pre>{
+  &quot;train_metrics&quot;: {
+    &quot;macro_f1&quot;: 0.9557538394951876,
+    &quot;accuracy&quot;: 0.9730337078651685,
+    &quot;macro_f1_fixed_classes&quot;: 0.9557538394951876,
+    &quot;per_class_f1&quot;: {
+      &quot;Ethanol&quot;: 0.9834254143646409,
+      &quot;Ethylene&quot;: 0.9849246231155779,
+      &quot;Ammonia&quot;: 0.9878048780487805,
+      &quot;Acetaldehyde&quot;: 0.8235294117647058,
+      &quot;Acetone&quot;: 1.0,
+      &quot;Toluene&quot;: 0.9548387096774194
+    },
+    &quot;confusion_matrix&quot;: [
+      [
+        89,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        98,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        2,
+        81,
+        0,
+        0,
+        0
+      ],
+      [
+        2,
+        0,
+        0,
+        21,
+        0,
+        7
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        70,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        74
+      ]
+    ],
+    &quot;classes&quot;: [
+      &quot;Ethanol&quot;,
+      &quot;Ethylene&quot;,
+      &quot;Ammonia&quot;,
+      &quot;Acetaldehyde&quot;,
+      &quot;Acetone&quot;,
+      &quot;Toluene&quot;
+    ],
+    &quot;target_counts&quot;: {
+      &quot;Ethanol&quot;: 90,
+      &quot;Ethylene&quot;: 98,
+      &quot;Ammonia&quot;: 83,
+      &quot;Acetaldehyde&quot;: 30,
+      &quot;Acetone&quot;: 70,
+      &quot;Toluene&quot;: 74
+    }
+  },
+  &quot;validation_metrics&quot;: {
+    &quot;macro_f1&quot;: 0.7140297220788709,
+    &quot;accuracy&quot;: 0.8786173633440515,
+    &quot;macro_f1_fixed_classes&quot;: 0.7140297220788709,
+    &quot;per_class_f1&quot;: {
+      &quot;Ethanol&quot;: 0.683982683982684,
+      &quot;Ethylene&quot;: 0.9422776911076443,
+      &quot;Ammonia&quot;: 0.9950248756218906,
+      &quot;Acetaldehyde&quot;: 0.0,
+      &quot;Acetone&quot;: 0.9962264150943396,
+      &quot;Toluene&quot;: 0.6666666666666666
+    },
+    &quot;confusion_matrix&quot;: [
+      [
+        158,
+        5,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        32,
+        302,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        100,
+        0,
+        0,
+        0
+      ],
+      [
+        108,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        528,
+        4
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        5
+      ]
+    ],
+    &quot;classes&quot;: [
+      &quot;Ethanol&quot;,
+      &quot;Ethylene&quot;,
+      &quot;Ammonia&quot;,
+      &quot;Acetaldehyde&quot;,
+      &quot;Acetone&quot;,
+      &quot;Toluene&quot;
+    ],
+    &quot;target_counts&quot;: {
+      &quot;Ethanol&quot;: 164,
+      &quot;Ethylene&quot;: 334,
+      &quot;Ammonia&quot;: 100,
+      &quot;Acetaldehyde&quot;: 109,
+      &quot;Acetone&quot;: 532,
+      &quot;Toluene&quot;: 5
+    }
+  },
+  &quot;details&quot;: {
+    &quot;train_rows&quot;: 445,
+    &quot;validation_rows&quot;: 1244,
+    &quot;train_group_count&quot;: 1,
+    &quot;validation_group_count&quot;: 1,
+    &quot;feature_shift&quot;: {
+      &quot;top&quot;: [
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,41]]&quot;,
+          &quot;standardized_mean_difference&quot;: 11.458230311024698
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,28]]&quot;,
+          &quot;standardized_mean_difference&quot;: 3.4582396541260545
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,31]]&quot;,
+          &quot;standardized_mean_difference&quot;: 2.458597432822978
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,57]]&quot;,
+          &quot;standardized_mean_difference&quot;: 2.254645695359617
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,36]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.7753563691750045
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,35]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.6485739790228622
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,100]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.5684267933834564
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,20]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.3586818441261406
+        }
+      ],
+      &quot;median&quot;: 0.5442709682580986,
+      &quot;interpretation&quot;: &quot;descriptive_input_change_not_causal_or_conditional_drift_proof&quot;
+    }
+  }
+}</pre></details></section><section><h2>第 1 轮</h2><p>父检查点摘要：<code title="sha256:fd1e08b2aad08b2e9754f9b2dfdc029481c0da7ecdedca0abb0ec6fcc818c757">sha256:fd1e0…c818c757</code></p><ul><li>输入均值存在跨集合差异</li><li>训练与跨批次验证存在泛化差距</li><li>训练类别数量不均衡</li><li>部分气体类别在验证中识别失效</li><li>跨期训练证据不足以训练通用漂移类型分类器</li><li>没有漂移原因标签，诊断不是因果证明</li></ul><article class="finding"><h4>输入均值存在跨集合差异</h4><p class="muted">编号：observable_input_shift · 严重程度：notice</p><p>建议：仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。</p><details><summary>查看证据</summary><pre>{
+  &quot;top_features&quot;: [
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,41]]&quot;,
+      &quot;standardized_mean_difference&quot;: 11.458230311024698
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,28]]&quot;,
+      &quot;standardized_mean_difference&quot;: 3.4582396541260545
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,31]]&quot;,
+      &quot;standardized_mean_difference&quot;: 2.458597432822978
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>训练与跨批次验证存在泛化差距</h4><p class="muted">编号：generalization_gap · 严重程度：warning</p><p>建议：比较较小学习率、训练类别加权、L2 正则和训练内轻量扰动。</p><details><summary>查看证据</summary><pre>{
+  &quot;macro_f1_gap&quot;: 0.2417241174163166
+}</pre></details></article><article class="finding"><h4>训练类别数量不均衡</h4><p class="muted">编号：train_class_imbalance · 严重程度：notice</p><p>建议：类别权重只能从训练标签计算；验证集类别频率不用于拟合。</p><details><summary>查看证据</summary><pre>{
+  &quot;train_counts&quot;: {
+    &quot;Ethanol&quot;: 90,
+    &quot;Ethylene&quot;: 98,
+    &quot;Ammonia&quot;: 83,
+    &quot;Acetaldehyde&quot;: 30,
+    &quot;Acetone&quot;: 70,
+    &quot;Toluene&quot;: 74
+  }
+}</pre></details></article><article class="finding"><h4>部分气体类别在验证中识别失效</h4><p class="muted">编号：weak_classes · 严重程度：warning</p><p>建议：检查相应训练类别的覆盖与混淆，不使用验证目标训练校正器。</p><details><summary>查看证据</summary><pre>{
+  &quot;classes&quot;: [
+    {
+      &quot;class&quot;: &quot;Acetaldehyde&quot;,
+      &quot;f1&quot;: 0.0,
+      &quot;count&quot;: 109,
+      &quot;most_confused_with&quot;: &quot;Ethanol&quot;,
+      &quot;confused_count&quot;: 108
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>跨期训练证据不足以训练通用漂移类型分类器</h4><p class="muted">编号：few_drift_examples · 严重程度：notice</p><p>建议：先用规则诊断；未来在训练内构造受控扰动，标签仅表示合成扰动。</p><details><summary>查看证据</summary><pre>{
+  &quot;training_batches&quot;: 1,
+  &quot;validation_batches&quot;: 1
+}</pre></details></article><article class="finding"><h4>没有漂移原因标签，诊断不是因果证明</h4><p class="muted">编号：no_causal_labels · 严重程度：info</p><p>建议：规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><details><summary>诊断指标与详细信息</summary><pre>{
+  &quot;train_metrics&quot;: {
+    &quot;macro_f1&quot;: 0.9557538394951876,
+    &quot;accuracy&quot;: 0.9730337078651685,
+    &quot;macro_f1_fixed_classes&quot;: 0.9557538394951876,
+    &quot;per_class_f1&quot;: {
+      &quot;Ethanol&quot;: 0.9834254143646409,
+      &quot;Ethylene&quot;: 0.9849246231155779,
+      &quot;Ammonia&quot;: 0.9878048780487805,
+      &quot;Acetaldehyde&quot;: 0.8235294117647058,
+      &quot;Acetone&quot;: 1.0,
+      &quot;Toluene&quot;: 0.9548387096774194
+    },
+    &quot;confusion_matrix&quot;: [
+      [
+        89,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        98,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        2,
+        81,
+        0,
+        0,
+        0
+      ],
+      [
+        2,
+        0,
+        0,
+        21,
+        0,
+        7
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        70,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        74
+      ]
+    ],
+    &quot;classes&quot;: [
+      &quot;Ethanol&quot;,
+      &quot;Ethylene&quot;,
+      &quot;Ammonia&quot;,
+      &quot;Acetaldehyde&quot;,
+      &quot;Acetone&quot;,
+      &quot;Toluene&quot;
+    ],
+    &quot;target_counts&quot;: {
+      &quot;Ethanol&quot;: 90,
+      &quot;Ethylene&quot;: 98,
+      &quot;Ammonia&quot;: 83,
+      &quot;Acetaldehyde&quot;: 30,
+      &quot;Acetone&quot;: 70,
+      &quot;Toluene&quot;: 74
+    }
+  },
+  &quot;validation_metrics&quot;: {
+    &quot;macro_f1&quot;: 0.7140297220788709,
+    &quot;accuracy&quot;: 0.8786173633440515,
+    &quot;macro_f1_fixed_classes&quot;: 0.7140297220788709,
+    &quot;per_class_f1&quot;: {
+      &quot;Ethanol&quot;: 0.683982683982684,
+      &quot;Ethylene&quot;: 0.9422776911076443,
+      &quot;Ammonia&quot;: 0.9950248756218906,
+      &quot;Acetaldehyde&quot;: 0.0,
+      &quot;Acetone&quot;: 0.9962264150943396,
+      &quot;Toluene&quot;: 0.6666666666666666
+    },
+    &quot;confusion_matrix&quot;: [
+      [
+        158,
+        5,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        32,
+        302,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        100,
+        0,
+        0,
+        0
+      ],
+      [
+        108,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        528,
+        4
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        5
+      ]
+    ],
+    &quot;classes&quot;: [
+      &quot;Ethanol&quot;,
+      &quot;Ethylene&quot;,
+      &quot;Ammonia&quot;,
+      &quot;Acetaldehyde&quot;,
+      &quot;Acetone&quot;,
+      &quot;Toluene&quot;
+    ],
+    &quot;target_counts&quot;: {
+      &quot;Ethanol&quot;: 164,
+      &quot;Ethylene&quot;: 334,
+      &quot;Ammonia&quot;: 100,
+      &quot;Acetaldehyde&quot;: 109,
+      &quot;Acetone&quot;: 532,
+      &quot;Toluene&quot;: 5
+    }
+  },
+  &quot;details&quot;: {
+    &quot;train_rows&quot;: 445,
+    &quot;validation_rows&quot;: 1244,
+    &quot;train_group_count&quot;: 1,
+    &quot;validation_group_count&quot;: 1,
+    &quot;feature_shift&quot;: {
+      &quot;top&quot;: [
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,41]]&quot;,
+          &quot;standardized_mean_difference&quot;: 11.458230311024698
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,28]]&quot;,
+          &quot;standardized_mean_difference&quot;: 3.4582396541260545
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,31]]&quot;,
+          &quot;standardized_mean_difference&quot;: 2.458597432822978
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,57]]&quot;,
+          &quot;standardized_mean_difference&quot;: 2.254645695359617
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,36]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.7753563691750045
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,35]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.6485739790228622
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,100]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.5684267933834564
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,20]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.3586818441261406
+        }
+      ],
+      &quot;median&quot;: 0.5442709682580986,
+      &quot;interpretation&quot;: &quot;descriptive_input_change_not_causal_or_conditional_drift_proof&quot;
+    }
+  }
+}</pre></details><div class="table-wrap"><table><thead><tr><th>候选 / 状态</th><th>策略</th><th>最佳验证指标 / 检查点</th><th>成本</th><th>准入判定</th></tr></thead><tbody><tr><td><strong>01-conservative</strong><br>已完成</td><td>低学习率续训<p>安全对照：保留全部状态，仅降低学习率并选最佳轮。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;conservative&quot;,
+  &quot;label&quot;: &quot;低学习率续训&quot;,
+  &quot;reason&quot;: &quot;安全对照：保留全部状态，仅降低学习率并选最佳轮。&quot;,
+  &quot;learning_rate&quot;: 0.0009,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.0,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: false,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>Macro-F1: 0.718735<br>Accuracy: 0.885852<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\A-v1\round-01\01-conservative\checkpoint.npz</code></p><code title="sha256:c7251e27a87353814fd8ddba6c409ee81a9103d339fd706a9b929de45572ef9b">sha256:c7251…5572ef9b</code></td><td>训练 0.0200117 秒<br>总计 0.0452517 秒<br>轮次 4 / 步数 16</td><td>未接受<p>达到主指标改进阈值，参与本轮择优</p>改进量：0.00470574</td></tr><tr><td><strong>02-class_weighted</strong><br>已完成</td><td>训练类别加权＋L2<p>训练类不均衡或弱类混淆；权重只由训练标签频率计算。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;class_weighted&quot;,
+  &quot;label&quot;: &quot;训练类别加权＋L2&quot;,
+  &quot;reason&quot;: &quot;训练类不均衡或弱类混淆；权重只由训练标签频率计算。&quot;,
+  &quot;learning_rate&quot;: 0.0009,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.001,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: true,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>Macro-F1: 0.726672<br>Accuracy: 0.885852<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\A-v1\round-01\02-class_weighted\checkpoint.npz</code></p><code title="sha256:b669c5049d349fab06cd2c0455746ead7b7f78baa1f1417578109b3e52e485cc">sha256:b669c…52e485cc</code></td><td>训练 0.0076656 秒<br>总计 0.0351804 秒<br>轮次 4 / 步数 16</td><td>已接受<p>本轮主指标改进最大，接受；相同增益优先先执行的低复杂度候选</p>改进量：0.0126422</td></tr><tr><td><strong>03-robust_noise</strong><br>已完成</td><td>训练扰动＋L2<p>存在输入差异或泛化差距；在训练归一化特征上注入固定小幅噪声。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;robust_noise&quot;,
+  &quot;label&quot;: &quot;训练扰动＋L2&quot;,
+  &quot;reason&quot;: &quot;存在输入差异或泛化差距；在训练归一化特征上注入固定小幅噪声。&quot;,
+  &quot;learning_rate&quot;: 0.0009,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.003,
+  &quot;noise_std&quot;: 0.04,
+  &quot;balanced_classes&quot;: true,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>Macro-F1: 0.726672<br>Accuracy: 0.885852<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\A-v1\round-01\03-robust_noise\checkpoint.npz</code></p><code title="sha256:834cdf0f29b1282f7b27e1ac791f772ba24dcbeb372cb11b086f7f1510930c27">sha256:834cd…10930c27</code></td><td>训练 0.0109725 秒<br>总计 0.039013 秒<br>轮次 4 / 步数 16</td><td>未接受<p>达到主指标改进阈值，参与本轮择优</p>改进量：0.0126422</td></tr></tbody></table></div><div class="decision"><h3>本轮决策：接受候选</h3><p>胜出候选：02-class_weighted</p><p>原因：采用本轮主指标最优且超过阈值的候选</p><p>变更前：Macro-F1: 0.71403<br>Accuracy: 0.878617</p><p>变更后：Macro-F1: 0.726672<br>Accuracy: 0.885852</p></div></section><section><h2>第 2 轮</h2><p>父检查点摘要：<code title="sha256:b669c5049d349fab06cd2c0455746ead7b7f78baa1f1417578109b3e52e485cc">sha256:b669c…52e485cc</code></p><ul><li>输入均值存在跨集合差异</li><li>训练与跨批次验证存在泛化差距</li><li>训练类别数量不均衡</li><li>部分气体类别在验证中识别失效</li><li>跨期训练证据不足以训练通用漂移类型分类器</li><li>没有漂移原因标签，诊断不是因果证明</li></ul><article class="finding"><h4>输入均值存在跨集合差异</h4><p class="muted">编号：observable_input_shift · 严重程度：notice</p><p>建议：仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。</p><details><summary>查看证据</summary><pre>{
+  &quot;top_features&quot;: [
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,41]]&quot;,
+      &quot;standardized_mean_difference&quot;: 11.458230311024698
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,28]]&quot;,
+      &quot;standardized_mean_difference&quot;: 3.4582396541260545
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,31]]&quot;,
+      &quot;standardized_mean_difference&quot;: 2.458597432822978
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>训练与跨批次验证存在泛化差距</h4><p class="muted">编号：generalization_gap · 严重程度：warning</p><p>建议：比较较小学习率、训练类别加权、L2 正则和训练内轻量扰动。</p><details><summary>查看证据</summary><pre>{
+  &quot;macro_f1_gap&quot;: 0.26173397897520134
+}</pre></details></article><article class="finding"><h4>训练类别数量不均衡</h4><p class="muted">编号：train_class_imbalance · 严重程度：notice</p><p>建议：类别权重只能从训练标签计算；验证集类别频率不用于拟合。</p><details><summary>查看证据</summary><pre>{
+  &quot;train_counts&quot;: {
+    &quot;Ethanol&quot;: 90,
+    &quot;Ethylene&quot;: 98,
+    &quot;Ammonia&quot;: 83,
+    &quot;Acetaldehyde&quot;: 30,
+    &quot;Acetone&quot;: 70,
+    &quot;Toluene&quot;: 74
+  }
+}</pre></details></article><article class="finding"><h4>部分气体类别在验证中识别失效</h4><p class="muted">编号：weak_classes · 严重程度：warning</p><p>建议：检查相应训练类别的覆盖与混淆，不使用验证目标训练校正器。</p><details><summary>查看证据</summary><pre>{
+  &quot;classes&quot;: [
+    {
+      &quot;class&quot;: &quot;Acetaldehyde&quot;,
+      &quot;f1&quot;: 0.0,
+      &quot;count&quot;: 109,
+      &quot;most_confused_with&quot;: &quot;Ethanol&quot;,
+      &quot;confused_count&quot;: 108
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>跨期训练证据不足以训练通用漂移类型分类器</h4><p class="muted">编号：few_drift_examples · 严重程度：notice</p><p>建议：先用规则诊断；未来在训练内构造受控扰动，标签仅表示合成扰动。</p><details><summary>查看证据</summary><pre>{
+  &quot;training_batches&quot;: 1,
+  &quot;validation_batches&quot;: 1
+}</pre></details></article><article class="finding"><h4>没有漂移原因标签，诊断不是因果证明</h4><p class="muted">编号：no_causal_labels · 严重程度：info</p><p>建议：规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><details><summary>诊断指标与详细信息</summary><pre>{
+  &quot;train_metrics&quot;: {
+    &quot;macro_f1&quot;: 0.9884059499509316,
+    &quot;accuracy&quot;: 0.9910112359550561,
+    &quot;macro_f1_fixed_classes&quot;: 0.9884059499509316,
+    &quot;per_class_f1&quot;: {
+      &quot;Ethanol&quot;: 0.994413407821229,
+      &quot;Ethylene&quot;: 0.98989898989899,
+      &quot;Ammonia&quot;: 0.9939393939393939,
+      &quot;Acetaldehyde&quot;: 0.9655172413793104,
+      &quot;Acetone&quot;: 1.0,
+      &quot;Toluene&quot;: 0.9866666666666667
+    },
+    &quot;confusion_matrix&quot;: [
+      [
+        89,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        98,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        82,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        28,
+        0,
+        2
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        70,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        74
+      ]
+    ],
+    &quot;classes&quot;: [
+      &quot;Ethanol&quot;,
+      &quot;Ethylene&quot;,
+      &quot;Ammonia&quot;,
+      &quot;Acetaldehyde&quot;,
+      &quot;Acetone&quot;,
+      &quot;Toluene&quot;
+    ],
+    &quot;target_counts&quot;: {
+      &quot;Ethanol&quot;: 90,
+      &quot;Ethylene&quot;: 98,
+      &quot;Ammonia&quot;: 83,
+      &quot;Acetaldehyde&quot;: 30,
+      &quot;Acetone&quot;: 70,
+      &quot;Toluene&quot;: 74
+    }
+  },
+  &quot;validation_metrics&quot;: {
+    &quot;macro_f1&quot;: 0.7266719709757302,
+    &quot;accuracy&quot;: 0.8858520900321544,
+    &quot;macro_f1_fixed_classes&quot;: 0.7266719709757302,
+    &quot;per_class_f1&quot;: {
+      &quot;Ethanol&quot;: 0.6975717439293598,
+      &quot;Ethylene&quot;: 0.9569230769230769,
+      &quot;Ammonia&quot;: 0.9950248756218906,
+      &quot;Acetaldehyde&quot;: 0.0,
+      &quot;Acetone&quot;: 0.9962264150943396,
+      &quot;Toluene&quot;: 0.7142857142857143
+    },
+    &quot;confusion_matrix&quot;: [
+      [
+        158,
+        5,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        23,
+        311,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        100,
+        0,
+        0,
+        0
+      ],
+      [
+        108,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        1,
+        528,
+        3
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        5
+      ]
+    ],
+    &quot;classes&quot;: [
+      &quot;Ethanol&quot;,
+      &quot;Ethylene&quot;,
+      &quot;Ammonia&quot;,
+      &quot;Acetaldehyde&quot;,
+      &quot;Acetone&quot;,
+      &quot;Toluene&quot;
+    ],
+    &quot;target_counts&quot;: {
+      &quot;Ethanol&quot;: 164,
+      &quot;Ethylene&quot;: 334,
+      &quot;Ammonia&quot;: 100,
+      &quot;Acetaldehyde&quot;: 109,
+      &quot;Acetone&quot;: 532,
+      &quot;Toluene&quot;: 5
+    }
+  },
+  &quot;details&quot;: {
+    &quot;train_rows&quot;: 445,
+    &quot;validation_rows&quot;: 1244,
+    &quot;train_group_count&quot;: 1,
+    &quot;validation_group_count&quot;: 1,
+    &quot;feature_shift&quot;: {
+      &quot;top&quot;: [
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,41]]&quot;,
+          &quot;standardized_mean_difference&quot;: 11.458230311024698
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,28]]&quot;,
+          &quot;standardized_mean_difference&quot;: 3.4582396541260545
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,31]]&quot;,
+          &quot;standardized_mean_difference&quot;: 2.458597432822978
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,57]]&quot;,
+          &quot;standardized_mean_difference&quot;: 2.254645695359617
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,36]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.7753563691750045
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,35]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.6485739790228622
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,100]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.5684267933834564
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,20]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.3586818441261406
+        }
+      ],
+      &quot;median&quot;: 0.5442709682580986,
+      &quot;interpretation&quot;: &quot;descriptive_input_change_not_causal_or_conditional_drift_proof&quot;
+    }
+  }
+}</pre></details><div class="table-wrap"><table><thead><tr><th>候选 / 状态</th><th>策略</th><th>最佳验证指标 / 检查点</th><th>成本</th><th>准入判定</th></tr></thead><tbody><tr><td><strong>01-conservative</strong><br>已完成</td><td>低学习率续训<p>安全对照：保留全部状态，仅降低学习率并选最佳轮。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;conservative&quot;,
+  &quot;label&quot;: &quot;低学习率续训&quot;,
+  &quot;reason&quot;: &quot;安全对照：保留全部状态，仅降低学习率并选最佳轮。&quot;,
+  &quot;learning_rate&quot;: 0.00027,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.0,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: false,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>Macro-F1: 0.726672<br>Accuracy: 0.885852<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\A-v1\round-02\01-conservative\checkpoint.npz</code></p><code title="sha256:2d4b513d2d6ac08de2e3810a193930d4612976d0092db741c8cd71b2b86e1041">sha256:2d4b5…b86e1041</code></td><td>训练 0.0067626 秒<br>总计 0.025159 秒<br>轮次 3 / 步数 12</td><td>未接受<p>主指标未严格超过最小改进阈值，保留当前模型</p>改进量：0</td></tr><tr><td><strong>02-class_weighted</strong><br>已完成</td><td>训练类别加权＋L2<p>训练类不均衡或弱类混淆；权重只由训练标签频率计算。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;class_weighted&quot;,
+  &quot;label&quot;: &quot;训练类别加权＋L2&quot;,
+  &quot;reason&quot;: &quot;训练类不均衡或弱类混淆；权重只由训练标签频率计算。&quot;,
+  &quot;learning_rate&quot;: 0.00027,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.001,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: true,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>Macro-F1: 0.726514<br>Accuracy: 0.885048<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\A-v1\round-02\02-class_weighted\checkpoint.npz</code></p><code title="sha256:1ab37eeb54f699d7dd5c274263a6a80dc50467a7abae24c86f3283407630175b">sha256:1ab37…7630175b</code></td><td>训练 0.0057296 秒<br>总计 0.0216846 秒<br>轮次 3 / 步数 12</td><td>未接受<p>主指标未严格超过最小改进阈值，保留当前模型</p>改进量：-0.000157975</td></tr><tr><td><strong>03-robust_noise</strong><br>已完成</td><td>训练扰动＋L2<p>存在输入差异或泛化差距；在训练归一化特征上注入固定小幅噪声。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;robust_noise&quot;,
+  &quot;label&quot;: &quot;训练扰动＋L2&quot;,
+  &quot;reason&quot;: &quot;存在输入差异或泛化差距；在训练归一化特征上注入固定小幅噪声。&quot;,
+  &quot;learning_rate&quot;: 0.00027,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.003,
+  &quot;noise_std&quot;: 0.04,
+  &quot;balanced_classes&quot;: true,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>Macro-F1: 0.726514<br>Accuracy: 0.885048<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\A-v1\round-02\03-robust_noise\checkpoint.npz</code></p><code title="sha256:f1d11492c457b4258d8b2679115904a2a2da3e1dc87ff9d71ee75f3db163a6ea">sha256:f1d11…b163a6ea</code></td><td>训练 0.0078235 秒<br>总计 0.024896 秒<br>轮次 3 / 步数 12</td><td>未接受<p>主指标未严格超过最小改进阈值，保留当前模型</p>改进量：-0.000157975</td></tr></tbody></table></div><div class="decision"><h3>本轮决策：未接受候选</h3><p>胜出候选：—</p><p>原因：无候选满足门控；保留本轮父检查点</p><p>变更前：Macro-F1: 0.726672<br>Accuracy: 0.885852</p><p>变更后：Macro-F1: 0.726672<br>Accuracy: 0.885852</p></div></section><section><h2>最终诊断</h2><ul><li>输入均值存在跨集合差异</li><li>训练与跨批次验证存在泛化差距</li><li>训练类别数量不均衡</li><li>部分气体类别在验证中识别失效</li><li>跨期训练证据不足以训练通用漂移类型分类器</li><li>没有漂移原因标签，诊断不是因果证明</li></ul><article class="finding"><h4>输入均值存在跨集合差异</h4><p class="muted">编号：observable_input_shift · 严重程度：notice</p><p>建议：仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。</p><details><summary>查看证据</summary><pre>{
+  &quot;top_features&quot;: [
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,41]]&quot;,
+      &quot;standardized_mean_difference&quot;: 11.458230311024698
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,28]]&quot;,
+      &quot;standardized_mean_difference&quot;: 3.4582396541260545
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,31]]&quot;,
+      &quot;standardized_mean_difference&quot;: 2.458597432822978
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>训练与跨批次验证存在泛化差距</h4><p class="muted">编号：generalization_gap · 严重程度：warning</p><p>建议：比较较小学习率、训练类别加权、L2 正则和训练内轻量扰动。</p><details><summary>查看证据</summary><pre>{
+  &quot;macro_f1_gap&quot;: 0.26173397897520134
+}</pre></details></article><article class="finding"><h4>训练类别数量不均衡</h4><p class="muted">编号：train_class_imbalance · 严重程度：notice</p><p>建议：类别权重只能从训练标签计算；验证集类别频率不用于拟合。</p><details><summary>查看证据</summary><pre>{
+  &quot;train_counts&quot;: {
+    &quot;Ethanol&quot;: 90,
+    &quot;Ethylene&quot;: 98,
+    &quot;Ammonia&quot;: 83,
+    &quot;Acetaldehyde&quot;: 30,
+    &quot;Acetone&quot;: 70,
+    &quot;Toluene&quot;: 74
+  }
+}</pre></details></article><article class="finding"><h4>部分气体类别在验证中识别失效</h4><p class="muted">编号：weak_classes · 严重程度：warning</p><p>建议：检查相应训练类别的覆盖与混淆，不使用验证目标训练校正器。</p><details><summary>查看证据</summary><pre>{
+  &quot;classes&quot;: [
+    {
+      &quot;class&quot;: &quot;Acetaldehyde&quot;,
+      &quot;f1&quot;: 0.0,
+      &quot;count&quot;: 109,
+      &quot;most_confused_with&quot;: &quot;Ethanol&quot;,
+      &quot;confused_count&quot;: 108
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>跨期训练证据不足以训练通用漂移类型分类器</h4><p class="muted">编号：few_drift_examples · 严重程度：notice</p><p>建议：先用规则诊断；未来在训练内构造受控扰动，标签仅表示合成扰动。</p><details><summary>查看证据</summary><pre>{
+  &quot;training_batches&quot;: 1,
+  &quot;validation_batches&quot;: 1
+}</pre></details></article><article class="finding"><h4>没有漂移原因标签，诊断不是因果证明</h4><p class="muted">编号：no_causal_labels · 严重程度：info</p><p>建议：规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><details><summary>诊断指标与详细信息</summary><pre>{
+  &quot;train_metrics&quot;: {
+    &quot;macro_f1&quot;: 0.9884059499509316,
+    &quot;accuracy&quot;: 0.9910112359550561,
+    &quot;macro_f1_fixed_classes&quot;: 0.9884059499509316,
+    &quot;per_class_f1&quot;: {
+      &quot;Ethanol&quot;: 0.994413407821229,
+      &quot;Ethylene&quot;: 0.98989898989899,
+      &quot;Ammonia&quot;: 0.9939393939393939,
+      &quot;Acetaldehyde&quot;: 0.9655172413793104,
+      &quot;Acetone&quot;: 1.0,
+      &quot;Toluene&quot;: 0.9866666666666667
+    },
+    &quot;confusion_matrix&quot;: [
+      [
+        89,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        98,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        82,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        28,
+        0,
+        2
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        70,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        74
+      ]
+    ],
+    &quot;classes&quot;: [
+      &quot;Ethanol&quot;,
+      &quot;Ethylene&quot;,
+      &quot;Ammonia&quot;,
+      &quot;Acetaldehyde&quot;,
+      &quot;Acetone&quot;,
+      &quot;Toluene&quot;
+    ],
+    &quot;target_counts&quot;: {
+      &quot;Ethanol&quot;: 90,
+      &quot;Ethylene&quot;: 98,
+      &quot;Ammonia&quot;: 83,
+      &quot;Acetaldehyde&quot;: 30,
+      &quot;Acetone&quot;: 70,
+      &quot;Toluene&quot;: 74
+    }
+  },
+  &quot;validation_metrics&quot;: {
+    &quot;macro_f1&quot;: 0.7266719709757302,
+    &quot;accuracy&quot;: 0.8858520900321544,
+    &quot;macro_f1_fixed_classes&quot;: 0.7266719709757302,
+    &quot;per_class_f1&quot;: {
+      &quot;Ethanol&quot;: 0.6975717439293598,
+      &quot;Ethylene&quot;: 0.9569230769230769,
+      &quot;Ammonia&quot;: 0.9950248756218906,
+      &quot;Acetaldehyde&quot;: 0.0,
+      &quot;Acetone&quot;: 0.9962264150943396,
+      &quot;Toluene&quot;: 0.7142857142857143
+    },
+    &quot;confusion_matrix&quot;: [
+      [
+        158,
+        5,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        23,
+        311,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        100,
+        0,
+        0,
+        0
+      ],
+      [
+        108,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        1,
+        528,
+        3
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        5
+      ]
+    ],
+    &quot;classes&quot;: [
+      &quot;Ethanol&quot;,
+      &quot;Ethylene&quot;,
+      &quot;Ammonia&quot;,
+      &quot;Acetaldehyde&quot;,
+      &quot;Acetone&quot;,
+      &quot;Toluene&quot;
+    ],
+    &quot;target_counts&quot;: {
+      &quot;Ethanol&quot;: 164,
+      &quot;Ethylene&quot;: 334,
+      &quot;Ammonia&quot;: 100,
+      &quot;Acetaldehyde&quot;: 109,
+      &quot;Acetone&quot;: 532,
+      &quot;Toluene&quot;: 5
+    }
+  },
+  &quot;details&quot;: {
+    &quot;train_rows&quot;: 445,
+    &quot;validation_rows&quot;: 1244,
+    &quot;train_group_count&quot;: 1,
+    &quot;validation_group_count&quot;: 1,
+    &quot;feature_shift&quot;: {
+      &quot;top&quot;: [
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,41]]&quot;,
+          &quot;standardized_mean_difference&quot;: 11.458230311024698
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,28]]&quot;,
+          &quot;standardized_mean_difference&quot;: 3.4582396541260545
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,31]]&quot;,
+          &quot;standardized_mean_difference&quot;: 2.458597432822978
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,57]]&quot;,
+          &quot;standardized_mean_difference&quot;: 2.254645695359617
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,36]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.7753563691750045
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,35]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.6485739790228622
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,100]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.5684267933834564
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;index\&quot;,20]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.3586818441261406
+        }
+      ],
+      &quot;median&quot;: 0.5442709682580986,
+      &quot;interpretation&quot;: &quot;descriptive_input_change_not_causal_or_conditional_drift_proof&quot;
+    }
+  }
+}</pre></details></section><section><h2>运行成本</h2><p>总耗时：1.39933 秒 · 训练：0.0589655 秒 · 验证：0.0554904 秒 · 候选数：6</p><details><summary>运行配置</summary><pre>{
+  &quot;epochs&quot;: 5,
+  &quot;max_candidates&quot;: 3,
+  &quot;rounds&quot;: 2,
+  &quot;min_improvement&quot;: 0.0,
+  &quot;max_train_seconds&quot;: 60.0,
+  &quot;patience&quot;: 2,
+  &quot;primary_metric&quot;: &quot;macro_f1&quot;,
+  &quot;validation_policy&quot;: &quot;evaluation_and_selection_only&quot;,
+  &quot;rule_based&quot;: true,
+  &quot;trainer_engine&quot;: &quot;RuleDrivenHarnessTrainer&quot;,
+  &quot;decision_mode&quot;: &quot;rule&quot;
+}</pre></details></section><section><h2>来源与可追溯性</h2><p>归档：C:\Users\zhao jiahao\Downloads\cpu-a-guide-20261110-v1.zip</p><p>官方评分接口就绪：否 / 未确认</p><div class="table-wrap"><table><tr><th>归档 SHA-256</th><td><code title="sha256:7a992b92d92c807869c3eccf25b3bf82dcdeba9174e161d6e8b61d82c3ec8851">sha256:7a992…c3ec8851</code></td></tr><tr><th>初始检查点 SHA-256</th><td><code title="sha256:fd1e08b2aad08b2e9754f9b2dfdc029481c0da7ecdedca0abb0ec6fcc818c757">sha256:fd1e0…c818c757</code></td></tr><tr><th>训练集 SHA-256</th><td><code title="sha256:c724014feb2c968d144e167f4997d2ad2125df3825abf4306c9c87c8f08de6c0">sha256:c7240…f08de6c0</code></td></tr><tr><th>验证集 SHA-256</th><td><code title="sha256:6be1370388bf67d017f7426a51e149a65baf9bc1186f5f41f6731ce5006ffbee">sha256:6be13…006ffbee</code></td></tr></table></div><p class="muted">悬停摘要可查看完整 SHA-256。</p></section><section><h2>警告</h2><ul><li>本地开发参考，不是正式比赛成绩；未访问隐藏数据。</li><li>只用 train 优化权重/构造采样权重与扰动；validation 只用于诊断、候选评估和检查点选择。</li><li>多轮针对公开验证集选策略可能过拟合；提升不保证迁移至隐藏集。</li><li>诊断是统计关联与候选假设，不是真实漂移原因或因果结论。</li><li>给定检查点已经见过全部公开 train，重新从 train 切分不能得到从未见过的独立验证。</li><li>训练预算在 mini-batch 边界检查，可能超出最后一个 batch 的耗时；诊断/评估/IO 不计入训练预算但计入总耗时。</li><li>候选早停与接受仅按任务主指标；C 的本地 NASA 常规分数仅作辅助，未确认与平台公式一致。</li></ul></section></main></body></html>

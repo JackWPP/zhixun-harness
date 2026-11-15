@@ -1,0 +1,98 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: tests + verification (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install "numpy>=1.26.4,<3"
+
+      - name: Show environment
+        run: |
+          python -V
+          python -c "import numpy; print('numpy', numpy.__version__)"
+          du -sh archives datasets 2>/dev/null || true
+
+      - name: Archive checksums
+        run: shasum -a 256 -c archives/SHA256SUMS
+
+      - name: Unit tests
+        # harness/tests 里默认写死了作者机器上的 Windows 路径，
+        # 这里用环境变量指向仓库内的 zip，无需改代码。
+        env:
+          HARNESS_TEST_VENDOR_ARCHIVE: ${{ github.workspace }}/archives/cpu-a-guide-20261110-v1.zip
+          BASELINE_CPU_THREADS: "1"
+        run: python -m unittest discover -s harness/tests -v
+
+      - name: Reproduce baseline & demo numbers
+        env:
+          BASELINE_CPU_THREADS: "1"
+        run: python audit/scripts/00_verify_bundle.py
+
+      - name: Data quality audit
+        run: python audit/scripts/01_data_quality.py
+
+      - name: Fast audit (baseline / constant control / demo forensics)
+        env:
+          BASELINE_CPU_THREADS: "1"
+        run: |
+          python audit/scripts/02_baseline_metrics.py
+          python audit/scripts/03_constant_control.py
+          python audit/scripts/08_demo_forensics.py
+
+  smoke:
+    name: harness end-to-end smoke (A)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install "numpy>=1.26.4,<3"
+      - name: Run harness on task A
+        env:
+          BASELINE_CPU_THREADS: "1"
+        run: |
+          python -m harness run \
+            --task A \
+            --archive "$PWD/archives/cpu-a-guide-20261110-v1.zip" \
+            --output runs/A-ci \
+            --epochs 5 --max-candidates 3 --rounds 2
+      - name: Assert it produced a deliverable
+        run: |
+          test -f runs/A-ci/selected/checkpoint.npz
+          python - <<'PY'
+          import json, pathlib
+          s = json.loads(pathlib.Path("runs/A-ci/summary.json").read_text())
+          print(json.dumps({k: s[k] for k in ("task", "status") if k in s}, ensure_ascii=False))
+          assert s.get("status") == "completed", s.get("status")
+          assert s.get("improvement", 0) >= 0
+          print("OK")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runs-A-ci
+          path: runs/A-ci
+          retention-days: 7

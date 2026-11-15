@@ -1,0 +1,41 @@
+智训引擎 CPU Harness v0.2（集成 RuleDrivenHarnessTrainer 与策略推荐小模型）
+
+一、它实现了什么
+1. 诊断与探针（DiagnosticProbe & DiagnosticState）：
+   - 轮次级只读诊断：A 的类别混淆与批次差异；B 的逐轴承误差、训练均值常数对照；C 的运行设置工况聚类与误差（仅在训练设置上拟合）。
+   - 周期级诊断探针（DiagnosticProbe）：在每个候选续训 epoch 自动采集 12 维标准化诊断状态向量（训练/验证损失斜率、泛化差距、梯度统计量、Acc-F1 差值、高估比例与平台期计数），写入 candidate.json 的 diagnostic_trace。
+2. 规则路由与策略推荐小模型双引擎（rule_select_candidates & StrategyRecommenderMLP）：
+   - 规则路由表（rule_select_candidates，默认 --decision-mode rule）：按诊断证据映射为低学习率续训、L2 正则、训练类别加权、训练设备均衡抽样、训练内固定幅度噪声、非对称 RUL 滞后惩罚（penalize_late_rul）。
+   - 策略推荐小模型（StrategyRecommenderMLP，--decision-mode small_model 或 hybrid）：利用 ExperienceBuffer 收集的 (State_t, Strategy_t, Improvement, Accepted) 真实轨迹训练纯 NumPy 轻量级分类器，带任务兼容性掩码约束。
+3. 解耦训练器底座（RuleDrivenHarnessTrainer）：
+   - 已全面替换旧版过程式训练器，每一轮所有候选均从本轮实际选定父检查点出发，精确恢复 Adam 一阶/二阶矩、累计步数、epoch、输入标准化和目标缩放。
+   - 严格保持 train-only 更新边界与原模型（contest.cpu-mlp.v1）逐位浮点确定性等价。
+4. 门控与留痕：
+   - 逐 epoch 验证并恢复最佳轮次；只有主指标严格超过阈值才接受本轮最佳候选；拒绝时保留父模型。
+   - 输出 summary.json、events.jsonl、experience_trajectories.json、candidate.json 与静态 HTML 报告。
+
+二、环境
+Python 3.10–3.12 为参考环境。唯一第三方依赖是 NumPy。
+  python -m pip install -r harness/requirements.txt
+
+三、运行（在解压后的项目根目录运行，harness 文件夹应位于当前目录）
+1. 规则驱动模式（默认）：
+  python -m harness run --task A --archive "path/to/cpu-a-guide-20261110-v1.zip" --output "outputs/my-A-01" --epochs 5 --max-candidates 3 --rounds 1 --max-train-seconds 60
+2. 策略推荐小模型模式（使用内置预训练权重或指定权重）：
+  python -m harness run --task B --archive "path/to/cpu-b-rul-20261110-v1.zip" --output "outputs/my-B-sm" --decision-mode small_model
+3. 规则＋小模型混合模式：
+  python -m harness run --task C --archive "path/to/cpu-c-guide-20261110-v1.zip" --output "outputs/my-C-hyb" --decision-mode hybrid
+4. 从历史运行目录（如 harness-runs）训练/更新策略推荐小模型：
+  python -m harness train-recommender --runs-dir "harness-runs" --output "harness/strategy_recommender_pretrained.npz"
+
+四、测试与模块
+  python -m unittest discover -s harness/tests -v
+  python -m compileall -q harness
+
+  data.py         显式原包接入、摘要校验、数据角色与分组隔离
+  diagnostics.py  只读诊断、分项误差、训练侧工况聚类
+  strategies.py   rule_select_candidates 规则路由表与 StrategyRecommenderMLP 小模型
+  training.py     RuleDrivenHarnessTrainer 解耦训练器、DiagnosticProbe、ExperienceBuffer
+  runner.py       多轮编排、最佳候选门控、经验轨迹落盘与来源链
+  reporting.py    本地静态 HTML 报告，不依赖网络
+  __main__.py     命令行入口（支持 run 与 train-recommender）

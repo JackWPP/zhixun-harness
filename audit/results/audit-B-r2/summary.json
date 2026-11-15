@@ -1,0 +1,2243 @@
+{
+  "schema_version": "harness.run.v1",
+  "task": "B",
+  "run_id": "audit-B-r2",
+  "status": "completed",
+  "started_at": "2026-11-15T03:12:16.865708+00:00",
+  "configuration": {
+    "epochs": 5,
+    "max_candidates": 3,
+    "rounds": 2,
+    "min_improvement": 0.0,
+    "max_train_seconds": 120.0,
+    "patience": 2,
+    "primary_metric": "rmse",
+    "validation_policy": "evaluation_and_selection_only",
+    "rule_based": true,
+    "decision_mode": "rule",
+    "trainer_engine": "RuleDrivenHarnessTrainer"
+  },
+  "source": {
+    "archive": "/Users/jackwang/Desktop/chem harness/cpu-b-rul-20261110-v1.zip",
+    "archive_sha256": "sha256:68db6a72c29bac11a4f86e97d9c1f524d35695464fd5f3f6d131f1431bc69d68",
+    "checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+    "train_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+    "validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+    "official_scoring_ready": false,
+    "source_code_sha256": {
+      "model.py": "sha256:325026d80747eb36f39c8df1be02b640ae21b3cd082827c66aacbdf273dd61c5",
+      "data.py": "sha256:6099e312829ac3aaf48209ec1f618532c4a8552fedf73f09cf31c8876261db65",
+      "train.py": "sha256:6257f0b13f1f0614f06f602ae59fa3da4d6e242497cf7e98ae7dece878d38a6b",
+      "predict.py": "sha256:80e6787cd862dfefd85cd6bfcd73b5577dd90e202dd3d5bb9f18a52761807452"
+    },
+    "train_groups": 9,
+    "validation_groups": 3,
+    "harness_code_sha256": {
+      "__init__.py": "sha256:72acc5ac4371efccbb7836a08870cda6428dccb68ac97813b19094eb1e337761",
+      "__main__.py": "sha256:fe4358c0965ae947afdcaee348a62b603bc724d09107901eccab6820d9825dc0",
+      "data.py": "sha256:49ae0083cc8587263cd11137388fce00dcdd0e6fa221a1f083495c35d3a06926",
+      "diagnostics.py": "sha256:5ad88a03772462d285aeb20d6dcd33e380eaefe3a5387010c387092022a1df62",
+      "reporting.py": "sha256:a8fdeab47b32bf9961e976f621351e6c295b6b77e864b0742dc063ef9307e3ec",
+      "runner.py": "sha256:796110861500fe6c283fc6bcb4112694cccefb10694e629d772c842b20341e32",
+      "strategies.py": "sha256:c3d217b4523cff48993ac0ce6b35b232df4617a9fd95b6ad360f25e5db744169",
+      "training.py": "sha256:10a8e740e57382c6a971ad3ebfd3ed07bc3a04233585ba58f213294aa807cfea"
+    }
+  },
+  "baseline": {
+    "checkpoint": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/source/checkpoint.npz",
+    "checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+    "metrics": {
+      "rmse": 681.1598326043113,
+      "mae": 563.1058414514887,
+      "mean_signed_error": -365.38394916105057,
+      "overestimate_fraction": 0.3240023823704586
+    },
+    "diagnosis": {
+      "summary": [
+        "输入均值存在跨集合差异",
+        "跨设备验证误差明显高于训练误差",
+        "原模型不及训练均值常数对照",
+        "总体误差由少量长序列设备主导",
+        "RUL 真值依赖完整寿命记录",
+        "没有漂移原因标签，诊断不是因果证明"
+      ],
+      "findings": [
+        {
+          "code": "observable_input_shift",
+          "severity": "notice",
+          "title": "输入均值存在跨集合差异",
+          "evidence": {
+            "top_features": [
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+                "standardized_mean_difference": 1.0540396565527663
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+                "standardized_mean_difference": 0.7942593046390863
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+                "standardized_mean_difference": 0.7620452357846174
+              }
+            ]
+          },
+          "recommendation": "仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。"
+        },
+        {
+          "code": "generalization_gap",
+          "severity": "warning",
+          "title": "跨设备验证误差明显高于训练误差",
+          "evidence": {
+            "train_rmse": 233.3578239319839,
+            "validation_rmse": 681.1598326043113
+          },
+          "recommendation": "尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。"
+        },
+        {
+          "code": "worse_than_constant",
+          "severity": "warning",
+          "title": "原模型不及训练均值常数对照",
+          "evidence": {
+            "model_rmse": 681.1598326043113,
+            "constant_rmse": 536.2706281575896
+          },
+          "recommendation": "优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。"
+        },
+        {
+          "code": "validation_device_dominance",
+          "severity": "notice",
+          "title": "总体误差由少量长序列设备主导",
+          "evidence": {
+            "largest_device_fraction": 0.9023228111971412,
+            "counts": {
+              "Bearing1_4": 122,
+              "Bearing2_4": 42,
+              "Bearing3_4": 1515
+            }
+          },
+          "recommendation": "同时报告总体与逐设备误差；仍按原主指标门控。"
+        },
+        {
+          "code": "rul_label_delay",
+          "severity": "notice",
+          "title": "RUL 真值依赖完整寿命记录",
+          "evidence": {},
+          "recommendation": "当前只做离线续训，不假设在线失效前已经获得真实 RUL。"
+        },
+        {
+          "code": "no_causal_labels",
+          "severity": "info",
+          "title": "没有漂移原因标签，诊断不是因果证明",
+          "evidence": {},
+          "recommendation": "规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。"
+        }
+      ],
+      "train_metrics": {
+        "rmse": 233.3578239319839,
+        "mae": 167.2222699905699,
+        "mean_signed_error": -7.119658157286483,
+        "overestimate_fraction": 0.45236063708759955
+      },
+      "validation_metrics": {
+        "rmse": 681.1598326043113,
+        "mae": 563.1058414514887,
+        "mean_signed_error": -365.38394916105057,
+        "overestimate_fraction": 0.3240023823704586
+      },
+      "details": {
+        "train_rows": 7032,
+        "validation_rows": 1679,
+        "train_group_count": 9,
+        "validation_group_count": 3,
+        "feature_shift": {
+          "top": [
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+              "standardized_mean_difference": 1.0540396565527663
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+              "standardized_mean_difference": 0.7942593046390863
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+              "standardized_mean_difference": 0.7620452357846174
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_kurtosis\"]]",
+              "standardized_mean_difference": 0.7350261755584536
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"dominant_freq\"]]",
+              "standardized_mean_difference": 0.5627447491474165
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"band3_energy_6k_12k\"]]",
+              "standardized_mean_difference": 0.44762658426939467
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"dominant_freq\"]]",
+              "standardized_mean_difference": 0.40755856413559693
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"mean_abs\"]]",
+              "standardized_mean_difference": 0.40210391324735323
+            }
+          ],
+          "median": 0.31393796865452894,
+          "interpretation": "descriptive_input_change_not_causal_or_conditional_drift_proof"
+        },
+        "train_by_device": {
+          "Bearing1_1": {
+            "rows": 123,
+            "metrics": {
+              "rmse": 119.22355093755489,
+              "mae": 86.839021952953,
+              "mean_signed_error": 50.49560095153026,
+              "overestimate_fraction": 0.5934959349593496
+            }
+          },
+          "Bearing1_2": {
+            "rows": 161,
+            "metrics": {
+              "rmse": 152.83744273112987,
+              "mae": 103.21016657065549,
+              "mean_signed_error": 41.28283432822667,
+              "overestimate_fraction": 0.42857142857142855
+            }
+          },
+          "Bearing1_3": {
+            "rows": 158,
+            "metrics": {
+              "rmse": 482.53385854579494,
+              "mae": 346.11820297656186,
+              "mean_signed_error": 336.9998508636183,
+              "overestimate_fraction": 0.8291139240506329
+            }
+          },
+          "Bearing2_1": {
+            "rows": 491,
+            "metrics": {
+              "rmse": 171.8146775660628,
+              "mae": 137.88601813429662,
+              "mean_signed_error": -47.97181128843148,
+              "overestimate_fraction": 0.37474541751527496
+            }
+          },
+          "Bearing2_2": {
+            "rows": 161,
+            "metrics": {
+              "rmse": 404.12838972150286,
+              "mae": 233.5127280466968,
+              "mean_signed_error": 199.17337375770842,
+              "overestimate_fraction": 0.5900621118012422
+            }
+          },
+          "Bearing2_3": {
+            "rows": 533,
+            "metrics": {
+              "rmse": 127.82697658561024,
+              "mae": 97.62437294120535,
+              "mean_signed_error": -4.637386668599491,
+              "overestimate_fraction": 0.4446529080675422
+            }
+          },
+          "Bearing3_1": {
+            "rows": 2538,
+            "metrics": {
+              "rmse": 253.15986943252238,
+              "mae": 190.92580084738242,
+              "mean_signed_error": -67.9086832755556,
+              "overestimate_fraction": 0.3947990543735225
+            }
+          },
+          "Bearing3_2": {
+            "rows": 2496,
+            "metrics": {
+              "rmse": 210.07390455288134,
+              "mae": 157.57323512736366,
+              "mean_signed_error": 17.14279459237672,
+              "overestimate_fraction": 0.48838141025641024
+            }
+          },
+          "Bearing3_3": {
+            "rows": 371,
+            "metrics": {
+              "rmse": 222.25646148001246,
+              "mae": 158.2707214545161,
+              "mean_signed_error": 19.821801267944004,
+              "overestimate_fraction": 0.4609164420485175
+            }
+          }
+        },
+        "validation_by_device": {
+          "Bearing1_4": {
+            "rows": 122,
+            "metrics": {
+              "rmse": 241.98079883050283,
+              "mae": 175.58693393738477,
+              "mean_signed_error": 166.54097851074985,
+              "overestimate_fraction": 0.860655737704918
+            }
+          },
+          "Bearing2_4": {
+            "rows": 42,
+            "metrics": {
+              "rmse": 390.81504161336534,
+              "mae": 328.14713559610186,
+              "mean_signed_error": 326.266107840995,
+              "overestimate_fraction": 0.9523809523809523
+            }
+          },
+          "Bearing3_4": {
+            "rows": 1515,
+            "metrics": {
+              "rmse": 710.8130722393482,
+              "mae": 600.82569119581,
+              "mean_signed_error": -427.3932848508497,
+              "overestimate_fraction": 0.2633663366336634
+            }
+          }
+        },
+        "constant_training_mean_reference": {
+          "value": 954.1505972696245,
+          "validation_rmse": 536.2706281575896,
+          "fit_role": "train",
+          "not_a_continuation_candidate": true
+        }
+      }
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+      "diagnosis": {
+        "summary": [
+          "输入均值存在跨集合差异",
+          "跨设备验证误差明显高于训练误差",
+          "原模型不及训练均值常数对照",
+          "总体误差由少量长序列设备主导",
+          "RUL 真值依赖完整寿命记录",
+          "没有漂移原因标签，诊断不是因果证明"
+        ],
+        "findings": [
+          {
+            "code": "observable_input_shift",
+            "severity": "notice",
+            "title": "输入均值存在跨集合差异",
+            "evidence": {
+              "top_features": [
+                {
+                  "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+                  "standardized_mean_difference": 1.0540396565527663
+                },
+                {
+                  "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+                  "standardized_mean_difference": 0.7942593046390863
+                },
+                {
+                  "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+                  "standardized_mean_difference": 0.7620452357846174
+                }
+              ]
+            },
+            "recommendation": "仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。"
+          },
+          {
+            "code": "generalization_gap",
+            "severity": "warning",
+            "title": "跨设备验证误差明显高于训练误差",
+            "evidence": {
+              "train_rmse": 233.3578239319839,
+              "validation_rmse": 681.1598326043113
+            },
+            "recommendation": "尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。"
+          },
+          {
+            "code": "worse_than_constant",
+            "severity": "warning",
+            "title": "原模型不及训练均值常数对照",
+            "evidence": {
+              "model_rmse": 681.1598326043113,
+              "constant_rmse": 536.2706281575896
+            },
+            "recommendation": "优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。"
+          },
+          {
+            "code": "validation_device_dominance",
+            "severity": "notice",
+            "title": "总体误差由少量长序列设备主导",
+            "evidence": {
+              "largest_device_fraction": 0.9023228111971412,
+              "counts": {
+                "Bearing1_4": 122,
+                "Bearing2_4": 42,
+                "Bearing3_4": 1515
+              }
+            },
+            "recommendation": "同时报告总体与逐设备误差；仍按原主指标门控。"
+          },
+          {
+            "code": "rul_label_delay",
+            "severity": "notice",
+            "title": "RUL 真值依赖完整寿命记录",
+            "evidence": {},
+            "recommendation": "当前只做离线续训，不假设在线失效前已经获得真实 RUL。"
+          },
+          {
+            "code": "no_causal_labels",
+            "severity": "info",
+            "title": "没有漂移原因标签，诊断不是因果证明",
+            "evidence": {},
+            "recommendation": "规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。"
+          }
+        ],
+        "train_metrics": {
+          "rmse": 233.3578239319839,
+          "mae": 167.2222699905699,
+          "mean_signed_error": -7.119658157286483,
+          "overestimate_fraction": 0.45236063708759955
+        },
+        "validation_metrics": {
+          "rmse": 681.1598326043113,
+          "mae": 563.1058414514887,
+          "mean_signed_error": -365.38394916105057,
+          "overestimate_fraction": 0.3240023823704586
+        },
+        "details": {
+          "train_rows": 7032,
+          "validation_rows": 1679,
+          "train_group_count": 9,
+          "validation_group_count": 3,
+          "feature_shift": {
+            "top": [
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+                "standardized_mean_difference": 1.0540396565527663
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+                "standardized_mean_difference": 0.7942593046390863
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+                "standardized_mean_difference": 0.7620452357846174
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_kurtosis\"]]",
+                "standardized_mean_difference": 0.7350261755584536
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"dominant_freq\"]]",
+                "standardized_mean_difference": 0.5627447491474165
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"band3_energy_6k_12k\"]]",
+                "standardized_mean_difference": 0.44762658426939467
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"dominant_freq\"]]",
+                "standardized_mean_difference": 0.40755856413559693
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"mean_abs\"]]",
+                "standardized_mean_difference": 0.40210391324735323
+              }
+            ],
+            "median": 0.31393796865452894,
+            "interpretation": "descriptive_input_change_not_causal_or_conditional_drift_proof"
+          },
+          "train_by_device": {
+            "Bearing1_1": {
+              "rows": 123,
+              "metrics": {
+                "rmse": 119.22355093755489,
+                "mae": 86.839021952953,
+                "mean_signed_error": 50.49560095153026,
+                "overestimate_fraction": 0.5934959349593496
+              }
+            },
+            "Bearing1_2": {
+              "rows": 161,
+              "metrics": {
+                "rmse": 152.83744273112987,
+                "mae": 103.21016657065549,
+                "mean_signed_error": 41.28283432822667,
+                "overestimate_fraction": 0.42857142857142855
+              }
+            },
+            "Bearing1_3": {
+              "rows": 158,
+              "metrics": {
+                "rmse": 482.53385854579494,
+                "mae": 346.11820297656186,
+                "mean_signed_error": 336.9998508636183,
+                "overestimate_fraction": 0.8291139240506329
+              }
+            },
+            "Bearing2_1": {
+              "rows": 491,
+              "metrics": {
+                "rmse": 171.8146775660628,
+                "mae": 137.88601813429662,
+                "mean_signed_error": -47.97181128843148,
+                "overestimate_fraction": 0.37474541751527496
+              }
+            },
+            "Bearing2_2": {
+              "rows": 161,
+              "metrics": {
+                "rmse": 404.12838972150286,
+                "mae": 233.5127280466968,
+                "mean_signed_error": 199.17337375770842,
+                "overestimate_fraction": 0.5900621118012422
+              }
+            },
+            "Bearing2_3": {
+              "rows": 533,
+              "metrics": {
+                "rmse": 127.82697658561024,
+                "mae": 97.62437294120535,
+                "mean_signed_error": -4.637386668599491,
+                "overestimate_fraction": 0.4446529080675422
+              }
+            },
+            "Bearing3_1": {
+              "rows": 2538,
+              "metrics": {
+                "rmse": 253.15986943252238,
+                "mae": 190.92580084738242,
+                "mean_signed_error": -67.9086832755556,
+                "overestimate_fraction": 0.3947990543735225
+              }
+            },
+            "Bearing3_2": {
+              "rows": 2496,
+              "metrics": {
+                "rmse": 210.07390455288134,
+                "mae": 157.57323512736366,
+                "mean_signed_error": 17.14279459237672,
+                "overestimate_fraction": 0.48838141025641024
+              }
+            },
+            "Bearing3_3": {
+              "rows": 371,
+              "metrics": {
+                "rmse": 222.25646148001246,
+                "mae": 158.2707214545161,
+                "mean_signed_error": 19.821801267944004,
+                "overestimate_fraction": 0.4609164420485175
+              }
+            }
+          },
+          "validation_by_device": {
+            "Bearing1_4": {
+              "rows": 122,
+              "metrics": {
+                "rmse": 241.98079883050283,
+                "mae": 175.58693393738477,
+                "mean_signed_error": 166.54097851074985,
+                "overestimate_fraction": 0.860655737704918
+              }
+            },
+            "Bearing2_4": {
+              "rows": 42,
+              "metrics": {
+                "rmse": 390.81504161336534,
+                "mae": 328.14713559610186,
+                "mean_signed_error": 326.266107840995,
+                "overestimate_fraction": 0.9523809523809523
+              }
+            },
+            "Bearing3_4": {
+              "rows": 1515,
+              "metrics": {
+                "rmse": 710.8130722393482,
+                "mae": 600.82569119581,
+                "mean_signed_error": -427.3932848508497,
+                "overestimate_fraction": 0.2633663366336634
+              }
+            }
+          },
+          "constant_training_mean_reference": {
+            "value": 954.1505972696245,
+            "validation_rmse": 536.2706281575896,
+            "fit_role": "train",
+            "not_a_continuation_candidate": true
+          }
+        }
+      },
+      "strategies": [
+        {
+          "id": "conservative",
+          "label": "低学习率续训",
+          "reason": "安全对照：保留全部状态，仅降低学习率并选最佳轮。",
+          "learning_rate": 0.0009,
+          "batch_size": 128,
+          "epochs": 5,
+          "l2": 0.0,
+          "noise_std": 0.0,
+          "balanced_classes": false,
+          "balanced_groups": false
+        },
+        {
+          "id": "device_balanced",
+          "label": "训练设备均衡抽样＋L2",
+          "reason": "跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。",
+          "learning_rate": 0.0009,
+          "batch_size": 128,
+          "epochs": 5,
+          "l2": 0.002,
+          "noise_std": 0.0,
+          "balanced_classes": false,
+          "balanced_groups": true
+        },
+        {
+          "id": "regularized",
+          "label": "L2 正则续训",
+          "reason": "鲁棒性对照：保持原结构和输入，抑制权重过度适配。",
+          "learning_rate": 0.0009,
+          "batch_size": 128,
+          "epochs": 5,
+          "l2": 0.003,
+          "noise_std": 0.0,
+          "balanced_classes": false,
+          "balanced_groups": false
+        }
+      ],
+      "candidates": [
+        {
+          "id": "01-conservative",
+          "trainer_engine": "RuleDrivenHarnessTrainer",
+          "status": "completed",
+          "strategy": {
+            "id": "conservative",
+            "label": "低学习率续训",
+            "reason": "安全对照：保留全部状态，仅降低学习率并选最佳轮。",
+            "learning_rate": 0.0009,
+            "batch_size": 128,
+            "epochs": 5,
+            "l2": 0.0,
+            "noise_std": 0.0,
+            "balanced_classes": false,
+            "balanced_groups": false
+          },
+          "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+          "checkpoint_sha256": "sha256:02caf703afc4e66a3724e58e756ab47bf8f6124a2169c13af5af20b12034a858",
+          "best_checkpoint": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-01/01-conservative/checkpoint.npz",
+          "metrics": {
+            "rmse": 662.7911379880758,
+            "mae": 549.7622343510569,
+            "mean_signed_error": -333.48618194993696,
+            "overestimate_fraction": 0.3412745681953544
+          },
+          "history": [
+            {
+              "epoch": 16,
+              "local_epoch": 1,
+              "step": 880,
+              "train_loss": 0.08959126769866664,
+              "validation": {
+                "rmse": 662.7911379880758,
+                "mae": 549.7622343510569,
+                "mean_signed_error": -333.48618194993696,
+                "overestimate_fraction": 0.3412745681953544
+              },
+              "elapsed_seconds": 0.041751415999999875
+            },
+            {
+              "epoch": 17,
+              "local_epoch": 2,
+              "step": 935,
+              "train_loss": 0.08818690022232664,
+              "validation": {
+                "rmse": 665.5824076370619,
+                "mae": 553.132693754902,
+                "mean_signed_error": -338.31315227772524,
+                "overestimate_fraction": 0.33889219773674806
+              },
+              "elapsed_seconds": 0.0498536249999999
+            },
+            {
+              "epoch": 18,
+              "local_epoch": 3,
+              "step": 990,
+              "train_loss": 0.08705885519754823,
+              "validation": {
+                "rmse": 670.5796977596978,
+                "mae": 560.18110308844,
+                "mean_signed_error": -342.5187923217022,
+                "overestimate_fraction": 0.3359142346634902
+              },
+              "elapsed_seconds": 0.05941804099999981
+            }
+          ],
+          "diagnostic_trace": [
+            {
+              "epoch": 16,
+              "task_type_code": 1.0,
+              "train_loss": 0.08959126769866664,
+              "val_primary_metric": 662.7911379880758,
+              "train_loss_slope": 0.0,
+              "val_metric_slope": 0.0,
+              "generalization_gap": 7397.94351629584,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 0.0,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3412745681953544
+            },
+            {
+              "epoch": 17,
+              "task_type_code": 1.0,
+              "train_loss": 0.08818690022232664,
+              "val_primary_metric": 665.5824076370619,
+              "train_loss_slope": -0.0014043674763400127,
+              "val_metric_slope": 2.7912696489861446,
+              "generalization_gap": 7547.406768568487,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -2.7912696489861446,
+              "plateau_count": 1,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.33889219773674806
+            },
+            {
+              "epoch": 18,
+              "task_type_code": 1.0,
+              "train_loss": 0.08705885519754823,
+              "val_primary_metric": 670.5796977596978,
+              "train_loss_slope": -0.0012662062505592153,
+              "val_metric_slope": 3.894279885811049,
+              "generalization_gap": 7702.601834564242,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -4.997290122635832,
+              "plateau_count": 2,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3359142346634902
+            }
+          ],
+          "initial_steps": 825,
+          "initial_epochs": 15,
+          "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+          "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+          "normalization_policy": "preserve_parent_state_no_refit",
+          "gate": {
+            "eligible": true,
+            "reason": "达到主指标改进阈值，参与本轮择优",
+            "improvement": 18.36869461623553,
+            "passes_primary_threshold": true,
+            "accepted": false
+          },
+          "early_stopped": true,
+          "cost": {
+            "training_seconds": 0.055552333000000065,
+            "total_seconds": 0.059793540999999895,
+            "epochs": 3,
+            "steps": 165
+          },
+          "restored_best_epoch": 16,
+          "selected_steps": 880,
+          "artifact_directory": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-01/01-conservative"
+        },
+        {
+          "id": "02-device_balanced",
+          "trainer_engine": "RuleDrivenHarnessTrainer",
+          "status": "completed",
+          "strategy": {
+            "id": "device_balanced",
+            "label": "训练设备均衡抽样＋L2",
+            "reason": "跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。",
+            "learning_rate": 0.0009,
+            "batch_size": 128,
+            "epochs": 5,
+            "l2": 0.002,
+            "noise_std": 0.0,
+            "balanced_classes": false,
+            "balanced_groups": true
+          },
+          "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+          "checkpoint_sha256": "sha256:3bbf83ef3c2fd9be1b66244d0e212609baf4a7305123e72df874750ab97334f4",
+          "best_checkpoint": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-01/02-device_balanced/checkpoint.npz",
+          "metrics": {
+            "rmse": 664.6701993479425,
+            "mae": 544.112248394663,
+            "mean_signed_error": -359.17326484667063,
+            "overestimate_fraction": 0.3156640857653365
+          },
+          "history": [
+            {
+              "epoch": 16,
+              "local_epoch": 1,
+              "step": 880,
+              "train_loss": 0.10296706480054148,
+              "validation": {
+                "rmse": 664.6701993479425,
+                "mae": 544.112248394663,
+                "mean_signed_error": -359.17326484667063,
+                "overestimate_fraction": 0.3156640857653365
+              },
+              "elapsed_seconds": 0.013448834000000076
+            },
+            {
+              "epoch": 17,
+              "local_epoch": 2,
+              "step": 935,
+              "train_loss": 0.0920856970835289,
+              "validation": {
+                "rmse": 677.3226291970474,
+                "mae": 558.467926676887,
+                "mean_signed_error": -367.657213214122,
+                "overestimate_fraction": 0.3103037522334723
+              },
+              "elapsed_seconds": 0.02614374999999991
+            },
+            {
+              "epoch": 18,
+              "local_epoch": 3,
+              "step": 990,
+              "train_loss": 0.08441264700742068,
+              "validation": {
+                "rmse": 666.1889396139057,
+                "mae": 550.8618296536938,
+                "mean_signed_error": -361.27534206392687,
+                "overestimate_fraction": 0.31804645622394284
+              },
+              "elapsed_seconds": 0.03850912500000003
+            }
+          ],
+          "diagnostic_trace": [
+            {
+              "epoch": 16,
+              "task_type_code": 1.0,
+              "train_loss": 0.10296706480054148,
+              "val_primary_metric": 664.6701993479425,
+              "train_loss_slope": 0.0,
+              "val_metric_slope": 0.0,
+              "generalization_gap": 6455.1728325506965,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 0.0,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3156640857653365
+            },
+            {
+              "epoch": 17,
+              "task_type_code": 1.0,
+              "train_loss": 0.0920856970835289,
+              "val_primary_metric": 677.3226291970474,
+              "train_loss_slope": -0.010881367717012591,
+              "val_metric_slope": 12.652429849104863,
+              "generalization_gap": 7355.351055035865,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -12.65242984910492,
+              "plateau_count": 1,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3103037522334723
+            },
+            {
+              "epoch": 18,
+              "task_type_code": 1.0,
+              "train_loss": 0.08441264700742068,
+              "val_primary_metric": 666.1889396139057,
+              "train_loss_slope": -0.009277208896560397,
+              "val_metric_slope": 0.759370132981557,
+              "generalization_gap": 7892.0512888944395,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 11.133689583141631,
+              "plateau_count": 2,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.31804645622394284
+            }
+          ],
+          "initial_steps": 825,
+          "initial_epochs": 15,
+          "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+          "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+          "normalization_policy": "preserve_parent_state_no_refit",
+          "gate": {
+            "eligible": true,
+            "reason": "达到主指标改进阈值，参与本轮择优",
+            "improvement": 16.489633256368847,
+            "passes_primary_threshold": true,
+            "accepted": false
+          },
+          "early_stopped": true,
+          "cost": {
+            "training_seconds": 0.03498320799999988,
+            "total_seconds": 0.03881224999999988,
+            "epochs": 3,
+            "steps": 165
+          },
+          "restored_best_epoch": 16,
+          "selected_steps": 880,
+          "artifact_directory": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-01/02-device_balanced"
+        },
+        {
+          "id": "03-regularized",
+          "trainer_engine": "RuleDrivenHarnessTrainer",
+          "status": "completed",
+          "strategy": {
+            "id": "regularized",
+            "label": "L2 正则续训",
+            "reason": "鲁棒性对照：保持原结构和输入，抑制权重过度适配。",
+            "learning_rate": 0.0009,
+            "batch_size": 128,
+            "epochs": 5,
+            "l2": 0.003,
+            "noise_std": 0.0,
+            "balanced_classes": false,
+            "balanced_groups": false
+          },
+          "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+          "checkpoint_sha256": "sha256:583085509d13738b1e646165d99899341816c0af3f7abbb79e85d8c3aabdc3fc",
+          "best_checkpoint": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-01/03-regularized/checkpoint.npz",
+          "metrics": {
+            "rmse": 660.938749457224,
+            "mae": 548.4329187657592,
+            "mean_signed_error": -332.03155060456214,
+            "overestimate_fraction": 0.3430613460393091
+          },
+          "history": [
+            {
+              "epoch": 16,
+              "local_epoch": 1,
+              "step": 880,
+              "train_loss": 0.08984775817643756,
+              "validation": {
+                "rmse": 660.938749457224,
+                "mae": 548.4329187657592,
+                "mean_signed_error": -332.03155060456214,
+                "overestimate_fraction": 0.3430613460393091
+              },
+              "elapsed_seconds": 0.01054287499999984
+            },
+            {
+              "epoch": 17,
+              "local_epoch": 2,
+              "step": 935,
+              "train_loss": 0.08908969953740464,
+              "validation": {
+                "rmse": 661.9490146871221,
+                "mae": 550.6053584971738,
+                "mean_signed_error": -335.04376952883223,
+                "overestimate_fraction": 0.3412745681953544
+              },
+              "elapsed_seconds": 0.018733208
+            },
+            {
+              "epoch": 18,
+              "local_epoch": 3,
+              "step": 990,
+              "train_loss": 0.08866314947098015,
+              "validation": {
+                "rmse": 666.2568487299762,
+                "mae": 557.1753426565871,
+                "mean_signed_error": -338.80606950347965,
+                "overestimate_fraction": 0.33948779035139964
+              },
+              "elapsed_seconds": 0.030817166999999923
+            }
+          ],
+          "diagnostic_trace": [
+            {
+              "epoch": 16,
+              "task_type_code": 1.0,
+              "train_loss": 0.08984775817643756,
+              "val_primary_metric": 660.938749457224,
+              "train_loss_slope": 0.0,
+              "val_metric_slope": 0.0,
+              "generalization_gap": 7356.207465514195,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 0.0,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3430613460393091
+            },
+            {
+              "epoch": 17,
+              "task_type_code": 1.0,
+              "train_loss": 0.08908969953740464,
+              "val_primary_metric": 661.9490146871221,
+              "train_loss_slope": -0.0007580586390329297,
+              "val_metric_slope": 1.010265229897982,
+              "generalization_gap": 7430.1408369797045,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -1.0102652298980956,
+              "plateau_count": 1,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3412745681953544
+            },
+            {
+              "epoch": 18,
+              "task_type_code": 1.0,
+              "train_loss": 0.08866314947098015,
+              "val_primary_metric": 666.2568487299762,
+              "train_loss_slope": -0.0005923043527287082,
+              "val_metric_slope": 2.6590496363761664,
+              "generalization_gap": 7514.473066942485,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -4.307834042854097,
+              "plateau_count": 2,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.33948779035139964
+            }
+          ],
+          "initial_steps": 825,
+          "initial_epochs": 15,
+          "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+          "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+          "normalization_policy": "preserve_parent_state_no_refit",
+          "gate": {
+            "eligible": true,
+            "reason": "本轮主指标改进最大，接受；相同增益优先先执行的低复杂度候选",
+            "improvement": 20.221083147087256,
+            "passes_primary_threshold": true,
+            "accepted": true
+          },
+          "early_stopped": true,
+          "cost": {
+            "training_seconds": 0.024260500000000018,
+            "total_seconds": 0.03276670799999981,
+            "epochs": 3,
+            "steps": 165
+          },
+          "restored_best_epoch": 16,
+          "selected_steps": 880,
+          "artifact_directory": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-01/03-regularized"
+        }
+      ],
+      "decision": {
+        "accepted": true,
+        "winner_id": "03-regularized",
+        "reason": "采用本轮主指标最优且超过阈值的候选",
+        "metrics_before": {
+          "rmse": 681.1598326043113,
+          "mae": 563.1058414514887,
+          "mean_signed_error": -365.38394916105057,
+          "overestimate_fraction": 0.3240023823704586
+        },
+        "metrics_after": {
+          "rmse": 660.938749457224,
+          "mae": 548.4329187657592,
+          "mean_signed_error": -332.03155060456214,
+          "overestimate_fraction": 0.3430613460393091
+        },
+        "selected_checkpoint_sha256": "sha256:583085509d13738b1e646165d99899341816c0af3f7abbb79e85d8c3aabdc3fc"
+      }
+    },
+    {
+      "round": 2,
+      "parent_checkpoint_sha256": "sha256:583085509d13738b1e646165d99899341816c0af3f7abbb79e85d8c3aabdc3fc",
+      "diagnosis": {
+        "summary": [
+          "输入均值存在跨集合差异",
+          "跨设备验证误差明显高于训练误差",
+          "原模型不及训练均值常数对照",
+          "总体误差由少量长序列设备主导",
+          "RUL 真值依赖完整寿命记录",
+          "没有漂移原因标签，诊断不是因果证明"
+        ],
+        "findings": [
+          {
+            "code": "observable_input_shift",
+            "severity": "notice",
+            "title": "输入均值存在跨集合差异",
+            "evidence": {
+              "top_features": [
+                {
+                  "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+                  "standardized_mean_difference": 1.0540396565527663
+                },
+                {
+                  "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+                  "standardized_mean_difference": 0.7942593046390863
+                },
+                {
+                  "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+                  "standardized_mean_difference": 0.7620452357846174
+                }
+              ]
+            },
+            "recommendation": "仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。"
+          },
+          {
+            "code": "generalization_gap",
+            "severity": "warning",
+            "title": "跨设备验证误差明显高于训练误差",
+            "evidence": {
+              "train_rmse": 229.71545623291684,
+              "validation_rmse": 660.938749457224
+            },
+            "recommendation": "尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。"
+          },
+          {
+            "code": "worse_than_constant",
+            "severity": "warning",
+            "title": "原模型不及训练均值常数对照",
+            "evidence": {
+              "model_rmse": 660.938749457224,
+              "constant_rmse": 536.2706281575896
+            },
+            "recommendation": "优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。"
+          },
+          {
+            "code": "validation_device_dominance",
+            "severity": "notice",
+            "title": "总体误差由少量长序列设备主导",
+            "evidence": {
+              "largest_device_fraction": 0.9023228111971412,
+              "counts": {
+                "Bearing1_4": 122,
+                "Bearing2_4": 42,
+                "Bearing3_4": 1515
+              }
+            },
+            "recommendation": "同时报告总体与逐设备误差；仍按原主指标门控。"
+          },
+          {
+            "code": "rul_label_delay",
+            "severity": "notice",
+            "title": "RUL 真值依赖完整寿命记录",
+            "evidence": {},
+            "recommendation": "当前只做离线续训，不假设在线失效前已经获得真实 RUL。"
+          },
+          {
+            "code": "no_causal_labels",
+            "severity": "info",
+            "title": "没有漂移原因标签，诊断不是因果证明",
+            "evidence": {},
+            "recommendation": "规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。"
+          }
+        ],
+        "train_metrics": {
+          "rmse": 229.71545623291684,
+          "mae": 163.0014073547357,
+          "mean_signed_error": 5.395951571034937,
+          "overestimate_fraction": 0.4751137656427759
+        },
+        "validation_metrics": {
+          "rmse": 660.938749457224,
+          "mae": 548.4329187657592,
+          "mean_signed_error": -332.03155060456214,
+          "overestimate_fraction": 0.3430613460393091
+        },
+        "details": {
+          "train_rows": 7032,
+          "validation_rows": 1679,
+          "train_group_count": 9,
+          "validation_group_count": 3,
+          "feature_shift": {
+            "top": [
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+                "standardized_mean_difference": 1.0540396565527663
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+                "standardized_mean_difference": 0.7942593046390863
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+                "standardized_mean_difference": 0.7620452357846174
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_kurtosis\"]]",
+                "standardized_mean_difference": 0.7350261755584536
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"dominant_freq\"]]",
+                "standardized_mean_difference": 0.5627447491474165
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"band3_energy_6k_12k\"]]",
+                "standardized_mean_difference": 0.44762658426939467
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"dominant_freq\"]]",
+                "standardized_mean_difference": 0.40755856413559693
+              },
+              {
+                "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"mean_abs\"]]",
+                "standardized_mean_difference": 0.40210391324735323
+              }
+            ],
+            "median": 0.31393796865452894,
+            "interpretation": "descriptive_input_change_not_causal_or_conditional_drift_proof"
+          },
+          "train_by_device": {
+            "Bearing1_1": {
+              "rows": 123,
+              "metrics": {
+                "rmse": 98.39653353477749,
+                "mae": 71.50799581252913,
+                "mean_signed_error": 33.20751073000251,
+                "overestimate_fraction": 0.5365853658536586
+              }
+            },
+            "Bearing1_2": {
+              "rows": 161,
+              "metrics": {
+                "rmse": 152.2100673497578,
+                "mae": 101.5059873483596,
+                "mean_signed_error": 43.074620371461094,
+                "overestimate_fraction": 0.43478260869565216
+              }
+            },
+            "Bearing1_3": {
+              "rows": 158,
+              "metrics": {
+                "rmse": 502.4481858316816,
+                "mae": 360.87256803458223,
+                "mean_signed_error": 351.3516968611296,
+                "overestimate_fraction": 0.8291139240506329
+              }
+            },
+            "Bearing2_1": {
+              "rows": 491,
+              "metrics": {
+                "rmse": 158.01846411488114,
+                "mae": 125.06061042750252,
+                "mean_signed_error": -0.6151614489744431,
+                "overestimate_fraction": 0.46435845213849286
+              }
+            },
+            "Bearing2_2": {
+              "rows": 161,
+              "metrics": {
+                "rmse": 442.51866522462973,
+                "mae": 255.08726859883478,
+                "mean_signed_error": 217.7295552802459,
+                "overestimate_fraction": 0.5838509316770186
+              }
+            },
+            "Bearing2_3": {
+              "rows": 533,
+              "metrics": {
+                "rmse": 113.937846091032,
+                "mae": 85.85560946839317,
+                "mean_signed_error": -4.842759311239023,
+                "overestimate_fraction": 0.4352720450281426
+              }
+            },
+            "Bearing3_1": {
+              "rows": 2538,
+              "metrics": {
+                "rmse": 241.3952592445591,
+                "mae": 183.17136555745864,
+                "mean_signed_error": -45.668885092836184,
+                "overestimate_fraction": 0.4239558707643814
+              }
+            },
+            "Bearing3_2": {
+              "rows": 2496,
+              "metrics": {
+                "rmse": 206.74048976396477,
+                "mae": 155.58404109076872,
+                "mean_signed_error": 9.291012558530305,
+                "overestimate_fraction": 0.4895833333333333
+              }
+            },
+            "Bearing3_3": {
+              "rows": 371,
+              "metrics": {
+                "rmse": 237.8061458598096,
+                "mae": 168.75617564057157,
+                "mean_signed_error": 86.13818126039752,
+                "overestimate_fraction": 0.5983827493261455
+              }
+            }
+          },
+          "validation_by_device": {
+            "Bearing1_4": {
+              "rows": 122,
+              "metrics": {
+                "rmse": 264.73298105664963,
+                "mae": 210.7789124374187,
+                "mean_signed_error": 207.73189962503068,
+                "overestimate_fraction": 0.9344262295081968
+              }
+            },
+            "Bearing2_4": {
+              "rows": 42,
+              "metrics": {
+                "rmse": 378.5054734013813,
+                "mae": 310.3765154844295,
+                "mean_signed_error": 307.2336895572345,
+                "overestimate_fraction": 0.9285714285714286
+              }
+            },
+            "Bearing3_4": {
+              "rows": 1515,
+              "metrics": {
+                "rmse": 688.8489607692094,
+                "mae": 582.2231218745865,
+                "mean_signed_error": -393.21985490476396,
+                "overestimate_fraction": 0.27920792079207923
+              }
+            }
+          },
+          "constant_training_mean_reference": {
+            "value": 954.1505972696245,
+            "validation_rmse": 536.2706281575896,
+            "fit_role": "train",
+            "not_a_continuation_candidate": true
+          }
+        }
+      },
+      "strategies": [
+        {
+          "id": "conservative",
+          "label": "低学习率续训",
+          "reason": "安全对照：保留全部状态，仅降低学习率并选最佳轮。",
+          "learning_rate": 0.00027,
+          "batch_size": 128,
+          "epochs": 5,
+          "l2": 0.0,
+          "noise_std": 0.0,
+          "balanced_classes": false,
+          "balanced_groups": false
+        },
+        {
+          "id": "device_balanced",
+          "label": "训练设备均衡抽样＋L2",
+          "reason": "跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。",
+          "learning_rate": 0.00027,
+          "batch_size": 128,
+          "epochs": 5,
+          "l2": 0.002,
+          "noise_std": 0.0,
+          "balanced_classes": false,
+          "balanced_groups": true
+        },
+        {
+          "id": "regularized",
+          "label": "L2 正则续训",
+          "reason": "鲁棒性对照：保持原结构和输入，抑制权重过度适配。",
+          "learning_rate": 0.00027,
+          "batch_size": 128,
+          "epochs": 5,
+          "l2": 0.003,
+          "noise_std": 0.0,
+          "balanced_classes": false,
+          "balanced_groups": false
+        }
+      ],
+      "candidates": [
+        {
+          "id": "01-conservative",
+          "trainer_engine": "RuleDrivenHarnessTrainer",
+          "status": "completed",
+          "strategy": {
+            "id": "conservative",
+            "label": "低学习率续训",
+            "reason": "安全对照：保留全部状态，仅降低学习率并选最佳轮。",
+            "learning_rate": 0.00027,
+            "batch_size": 128,
+            "epochs": 5,
+            "l2": 0.0,
+            "noise_std": 0.0,
+            "balanced_classes": false,
+            "balanced_groups": false
+          },
+          "parent_checkpoint_sha256": "sha256:583085509d13738b1e646165d99899341816c0af3f7abbb79e85d8c3aabdc3fc",
+          "checkpoint_sha256": "sha256:6cc5554c0bc26a9e68278761ed67ea401e6356f3829ae5034f03c8880b5970be",
+          "best_checkpoint": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-02/01-conservative/checkpoint.npz",
+          "metrics": {
+            "rmse": 654.7134896812411,
+            "mae": 545.1287233667003,
+            "mean_signed_error": -319.8734145760772,
+            "overestimate_fraction": 0.34603930911256703
+          },
+          "history": [
+            {
+              "epoch": 17,
+              "local_epoch": 1,
+              "step": 935,
+              "train_loss": 0.08841907503303117,
+              "validation": {
+                "rmse": 658.5065503044779,
+                "mae": 546.845554657066,
+                "mean_signed_error": -327.8904975320054,
+                "overestimate_fraction": 0.3424657534246575
+              },
+              "elapsed_seconds": 0.009566874999999975
+            },
+            {
+              "epoch": 18,
+              "local_epoch": 2,
+              "step": 990,
+              "train_loss": 0.08790334082093611,
+              "validation": {
+                "rmse": 663.6203844476249,
+                "mae": 551.5682680456449,
+                "mean_signed_error": -335.57479934815575,
+                "overestimate_fraction": 0.3424657534246575
+              },
+              "elapsed_seconds": 0.01836749999999987
+            },
+            {
+              "epoch": 19,
+              "local_epoch": 3,
+              "step": 1045,
+              "train_loss": 0.08790127597737445,
+              "validation": {
+                "rmse": 658.4653773172655,
+                "mae": 547.4292631877474,
+                "mean_signed_error": -327.1268379926626,
+                "overestimate_fraction": 0.3430613460393091
+              },
+              "elapsed_seconds": 0.02821499999999988
+            },
+            {
+              "epoch": 20,
+              "local_epoch": 4,
+              "step": 1100,
+              "train_loss": 0.0874722137265419,
+              "validation": {
+                "rmse": 654.7134896812411,
+                "mae": 545.1287233667003,
+                "mean_signed_error": -319.8734145760772,
+                "overestimate_fraction": 0.34603930911256703
+              },
+              "elapsed_seconds": 0.038441999999999865
+            },
+            {
+              "epoch": 21,
+              "local_epoch": 5,
+              "step": 1155,
+              "train_loss": 0.08714529011453799,
+              "validation": {
+                "rmse": 654.9958720970836,
+                "mae": 545.232518263461,
+                "mean_signed_error": -321.1312862555584,
+                "overestimate_fraction": 0.34603930911256703
+              },
+              "elapsed_seconds": 0.04714016700000001
+            }
+          ],
+          "diagnostic_trace": [
+            {
+              "epoch": 17,
+              "task_type_code": 1.0,
+              "train_loss": 0.08841907503303117,
+              "val_primary_metric": 658.5065503044779,
+              "train_loss_slope": 0.0,
+              "val_metric_slope": 0.0,
+              "generalization_gap": 7447.562079319153,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 0.0,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3424657534246575
+            },
+            {
+              "epoch": 18,
+              "task_type_code": 1.0,
+              "train_loss": 0.08790334082093611,
+              "val_primary_metric": 663.6203844476249,
+              "train_loss_slope": -0.0005157342120950675,
+              "val_metric_slope": 5.113834143146903,
+              "generalization_gap": 7549.433027801023,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -5.1138341431470735,
+              "plateau_count": 1,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3424657534246575
+            },
+            {
+              "epoch": 19,
+              "task_type_code": 1.0,
+              "train_loss": 0.08790127597737445,
+              "val_primary_metric": 658.4653773172655,
+              "train_loss_slope": -0.00025889952782837036,
+              "val_metric_slope": -0.02058649360623998,
+              "generalization_gap": 7490.964948981546,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 5.155007130359422,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3430613460393091
+            },
+            {
+              "epoch": 20,
+              "task_type_code": 1.0,
+              "train_loss": 0.0874722137265419,
+              "val_primary_metric": 654.7134896812411,
+              "train_loss_slope": -0.00021556354719710032,
+              "val_metric_slope": -4.453447383191942,
+              "generalization_gap": 7484.816741097062,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 3.751887636024435,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.34603930911256703
+            },
+            {
+              "epoch": 21,
+              "task_type_code": 1.0,
+              "train_loss": 0.08714529011453799,
+              "val_primary_metric": 654.9958720970836,
+              "train_loss_slope": -0.0003779929314182462,
+              "val_metric_slope": -1.7347526100909445,
+              "generalization_gap": 7516.136227628602,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -0.2823824158425623,
+              "plateau_count": 1,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.34603930911256703
+            }
+          ],
+          "initial_steps": 880,
+          "initial_epochs": 16,
+          "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+          "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+          "normalization_policy": "preserve_parent_state_no_refit",
+          "gate": {
+            "eligible": true,
+            "reason": "达到主指标改进阈值，参与本轮择优",
+            "improvement": 6.225259775982977,
+            "passes_primary_threshold": true,
+            "accepted": false
+          },
+          "cost": {
+            "training_seconds": 0.038860706999999994,
+            "total_seconds": 0.048150625000000113,
+            "epochs": 5,
+            "steps": 275
+          },
+          "restored_best_epoch": 20,
+          "selected_steps": 1100,
+          "artifact_directory": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-02/01-conservative"
+        },
+        {
+          "id": "02-device_balanced",
+          "trainer_engine": "RuleDrivenHarnessTrainer",
+          "status": "completed",
+          "strategy": {
+            "id": "device_balanced",
+            "label": "训练设备均衡抽样＋L2",
+            "reason": "跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。",
+            "learning_rate": 0.00027,
+            "batch_size": 128,
+            "epochs": 5,
+            "l2": 0.002,
+            "noise_std": 0.0,
+            "balanced_classes": false,
+            "balanced_groups": true
+          },
+          "parent_checkpoint_sha256": "sha256:583085509d13738b1e646165d99899341816c0af3f7abbb79e85d8c3aabdc3fc",
+          "checkpoint_sha256": "sha256:b5bfdc53d88cf231c6aea9356c9c76ae38e4ad852ef9e0fbc7b532652f7a01f2",
+          "best_checkpoint": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-02/02-device_balanced/checkpoint.npz",
+          "metrics": {
+            "rmse": 659.3399265406617,
+            "mae": 541.319063348227,
+            "mean_signed_error": -349.65300293935235,
+            "overestimate_fraction": 0.3216200119118523
+          },
+          "history": [
+            {
+              "epoch": 17,
+              "local_epoch": 1,
+              "step": 935,
+              "train_loss": 0.11382614806216139,
+              "validation": {
+                "rmse": 683.3203774617184,
+                "mae": 560.371489240901,
+                "mean_signed_error": -377.15967694213964,
+                "overestimate_fraction": 0.3150684931506849
+              },
+              "elapsed_seconds": 0.012281624999999963
+            },
+            {
+              "epoch": 18,
+              "local_epoch": 2,
+              "step": 990,
+              "train_loss": 0.09939672552114188,
+              "validation": {
+                "rmse": 666.0271929456276,
+                "mae": 546.6201322042843,
+                "mean_signed_error": -358.0524532677373,
+                "overestimate_fraction": 0.31923764145324596
+              },
+              "elapsed_seconds": 0.026956000000000202
+            },
+            {
+              "epoch": 19,
+              "local_epoch": 3,
+              "step": 1045,
+              "train_loss": 0.08710530016562618,
+              "validation": {
+                "rmse": 659.3399265406617,
+                "mae": 541.319063348227,
+                "mean_signed_error": -349.65300293935235,
+                "overestimate_fraction": 0.3216200119118523
+              },
+              "elapsed_seconds": 0.04036274999999989
+            },
+            {
+              "epoch": 20,
+              "local_epoch": 4,
+              "step": 1100,
+              "train_loss": 0.0961810456688317,
+              "validation": {
+                "rmse": 659.7610430885147,
+                "mae": 541.1857969305045,
+                "mean_signed_error": -350.20752381927866,
+                "overestimate_fraction": 0.3222156045265039
+              },
+              "elapsed_seconds": 0.05284054100000013
+            },
+            {
+              "epoch": 21,
+              "local_epoch": 5,
+              "step": 1155,
+              "train_loss": 0.08287294909204596,
+              "validation": {
+                "rmse": 662.0979671650203,
+                "mae": 544.7489516914286,
+                "mean_signed_error": -353.2009546820871,
+                "overestimate_fraction": 0.31685527099463967
+              },
+              "elapsed_seconds": 0.06501695800000018
+            }
+          ],
+          "diagnostic_trace": [
+            {
+              "epoch": 17,
+              "task_type_code": 1.0,
+              "train_loss": 0.11382614806216139,
+              "val_primary_metric": 683.3203774617184,
+              "train_loss_slope": 0.0,
+              "val_metric_slope": 0.0,
+              "generalization_gap": 6003.193370723145,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 0.0,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3150684931506849
+            },
+            {
+              "epoch": 18,
+              "task_type_code": 1.0,
+              "train_loss": 0.09939672552114188,
+              "val_primary_metric": 666.0271929456276,
+              "train_loss_slope": -0.014429422541019532,
+              "val_metric_slope": -17.293184516091003,
+              "generalization_gap": 6700.695515406715,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 17.293184516090832,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.31923764145324596
+            },
+            {
+              "epoch": 19,
+              "task_type_code": 1.0,
+              "train_loss": 0.08710530016562618,
+              "val_primary_metric": 659.3399265406617,
+              "train_loss_slope": -0.013360423948267613,
+              "val_metric_slope": -11.990225460528364,
+              "generalization_gap": 7569.458176333258,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 6.68726640496584,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3216200119118523
+            },
+            {
+              "epoch": 20,
+              "task_type_code": 1.0,
+              "train_loss": 0.0961810456688317,
+              "val_primary_metric": 659.7610430885147,
+              "train_loss_slope": -0.0016078399261550943,
+              "val_metric_slope": -3.1330749285564448,
+              "generalization_gap": 6859.574446301907,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -0.42111654785298924,
+              "plateau_count": 1,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3222156045265039
+            },
+            {
+              "epoch": 21,
+              "task_type_code": 1.0,
+              "train_loss": 0.08287294909204596,
+              "val_primary_metric": 662.0979671650203,
+              "train_loss_slope": -0.0021161755367901255,
+              "val_metric_slope": 1.3790203121792255,
+              "generalization_gap": 7989.313454136118,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -2.3369240765056247,
+              "plateau_count": 2,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.31685527099463967
+            }
+          ],
+          "initial_steps": 880,
+          "initial_epochs": 16,
+          "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+          "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+          "normalization_policy": "preserve_parent_state_no_refit",
+          "gate": {
+            "eligible": true,
+            "reason": "达到主指标改进阈值，参与本轮择优",
+            "improvement": 1.5988229165623125,
+            "passes_primary_threshold": true,
+            "accepted": false
+          },
+          "early_stopped": true,
+          "cost": {
+            "training_seconds": 0.05560250000000044,
+            "total_seconds": 0.06531079099999992,
+            "epochs": 5,
+            "steps": 275
+          },
+          "restored_best_epoch": 19,
+          "selected_steps": 1045,
+          "artifact_directory": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-02/02-device_balanced"
+        },
+        {
+          "id": "03-regularized",
+          "trainer_engine": "RuleDrivenHarnessTrainer",
+          "status": "completed",
+          "strategy": {
+            "id": "regularized",
+            "label": "L2 正则续训",
+            "reason": "鲁棒性对照：保持原结构和输入，抑制权重过度适配。",
+            "learning_rate": 0.00027,
+            "batch_size": 128,
+            "epochs": 5,
+            "l2": 0.003,
+            "noise_std": 0.0,
+            "balanced_classes": false,
+            "balanced_groups": false
+          },
+          "parent_checkpoint_sha256": "sha256:583085509d13738b1e646165d99899341816c0af3f7abbb79e85d8c3aabdc3fc",
+          "checkpoint_sha256": "sha256:22809cdb84013e8b27ed8eb73b466c47ec0cd6a717f2c711d9aec5f3b782a780",
+          "best_checkpoint": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-02/03-regularized/checkpoint.npz",
+          "metrics": {
+            "rmse": 652.1897942381156,
+            "mae": 543.3861434566229,
+            "mean_signed_error": -317.36119143170805,
+            "overestimate_fraction": 0.34723049434187014
+          },
+          "history": [
+            {
+              "epoch": 17,
+              "local_epoch": 1,
+              "step": 935,
+              "train_loss": 0.08849971931832629,
+              "validation": {
+                "rmse": 657.5992738024751,
+                "mae": 546.1154725275309,
+                "mean_signed_error": -327.10288095807977,
+                "overestimate_fraction": 0.3436569386539607
+              },
+              "elapsed_seconds": 0.010241834000000338
+            },
+            {
+              "epoch": 18,
+              "local_epoch": 2,
+              "step": 990,
+              "train_loss": 0.08820685125781225,
+              "validation": {
+                "rmse": 662.1721959824508,
+                "mae": 550.4703472398248,
+                "mean_signed_error": -334.36214391192897,
+                "overestimate_fraction": 0.3430613460393091
+              },
+              "elapsed_seconds": 0.01880787500000025
+            },
+            {
+              "epoch": 19,
+              "local_epoch": 3,
+              "step": 1045,
+              "train_loss": 0.08843194473920768,
+              "validation": {
+                "rmse": 656.5416206512874,
+                "mae": 546.018219376949,
+                "mean_signed_error": -325.4029773651862,
+                "overestimate_fraction": 0.3436569386539607
+              },
+              "elapsed_seconds": 0.029441750000000155
+            },
+            {
+              "epoch": 20,
+              "local_epoch": 4,
+              "step": 1100,
+              "train_loss": 0.08824925358264958,
+              "validation": {
+                "rmse": 652.1897942381156,
+                "mae": 543.3861434566229,
+                "mean_signed_error": -317.36119143170805,
+                "overestimate_fraction": 0.34723049434187014
+              },
+              "elapsed_seconds": 0.03981908400000034
+            },
+            {
+              "epoch": 21,
+              "local_epoch": 5,
+              "step": 1155,
+              "train_loss": 0.08815975070721548,
+              "validation": {
+                "rmse": 652.3429249709718,
+                "mae": 543.4296246838951,
+                "mean_signed_error": -318.6556153392581,
+                "overestimate_fraction": 0.34723049434187014
+              },
+              "elapsed_seconds": 0.048680084000000345
+            }
+          ],
+          "diagnostic_trace": [
+            {
+              "epoch": 17,
+              "task_type_code": 1.0,
+              "train_loss": 0.08849971931832629,
+              "val_primary_metric": 657.5992738024751,
+              "train_loss_slope": 0.0,
+              "val_metric_slope": 0.0,
+              "generalization_gap": 7430.523835190302,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 0.0,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3436569386539607
+            },
+            {
+              "epoch": 18,
+              "task_type_code": 1.0,
+              "train_loss": 0.08820685125781225,
+              "val_primary_metric": 662.1721959824508,
+              "train_loss_slope": -0.0002928680605140538,
+              "val_metric_slope": 4.572922179975535,
+              "generalization_gap": 7507.03813297954,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -4.5729221799757624,
+              "plateau_count": 1,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3430613460393091
+            },
+            {
+              "epoch": 19,
+              "task_type_code": 1.0,
+              "train_loss": 0.08843194473920768,
+              "val_primary_metric": 656.5416206512874,
+              "train_loss_slope": -3.388728955930465e-05,
+              "val_metric_slope": -0.5288265755938176,
+              "generalization_gap": 7424.2585367479705,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 5.6305753311634135,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.3436569386539607
+            },
+            {
+              "epoch": 20,
+              "task_type_code": 1.0,
+              "train_loss": 0.08824925358264958,
+              "val_primary_metric": 652.1897942381156,
+              "train_loss_slope": 2.1201162418660968e-05,
+              "val_metric_slope": -4.991200872167644,
+              "generalization_gap": 7390.315133116782,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": 4.351826413171807,
+              "plateau_count": 0,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.34723049434187014
+            },
+            {
+              "epoch": 21,
+              "task_type_code": 1.0,
+              "train_loss": 0.08815975070721548,
+              "val_primary_metric": 652.3429249709718,
+              "train_loss_slope": -0.0001360970159961046,
+              "val_metric_slope": -2.099347840157853,
+              "generalization_gap": 7399.555009376637,
+              "grad_norm_mean": 0.0,
+              "grad_norm_std": 0.0,
+              "metric_improvement": -0.15313073285619794,
+              "plateau_count": 1,
+              "acc_f1_gap": 0.0,
+              "tail_class_f1": 1.0,
+              "overestimate_fraction": 0.34723049434187014
+            }
+          ],
+          "initial_steps": 880,
+          "initial_epochs": 16,
+          "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+          "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+          "normalization_policy": "preserve_parent_state_no_refit",
+          "gate": {
+            "eligible": true,
+            "reason": "本轮主指标改进最大，接受；相同增益优先先执行的低复杂度候选",
+            "improvement": 8.748955219108439,
+            "passes_primary_threshold": true,
+            "accepted": true
+          },
+          "cost": {
+            "training_seconds": 0.03900262599999982,
+            "total_seconds": 0.04893700000000001,
+            "epochs": 5,
+            "steps": 275
+          },
+          "restored_best_epoch": 20,
+          "selected_steps": 1100,
+          "artifact_directory": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-02/03-regularized"
+        }
+      ],
+      "decision": {
+        "accepted": true,
+        "winner_id": "03-regularized",
+        "reason": "采用本轮主指标最优且超过阈值的候选",
+        "metrics_before": {
+          "rmse": 660.938749457224,
+          "mae": 548.4329187657592,
+          "mean_signed_error": -332.03155060456214,
+          "overestimate_fraction": 0.3430613460393091
+        },
+        "metrics_after": {
+          "rmse": 652.1897942381156,
+          "mae": 543.3861434566229,
+          "mean_signed_error": -317.36119143170805,
+          "overestimate_fraction": 0.34723049434187014
+        },
+        "selected_checkpoint_sha256": "sha256:22809cdb84013e8b27ed8eb73b466c47ec0cd6a717f2c711d9aec5f3b782a780"
+      }
+    }
+  ],
+  "selected": {
+    "checkpoint": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/selected/checkpoint.npz",
+    "checkpoint_sha256": "sha256:22809cdb84013e8b27ed8eb73b466c47ec0cd6a717f2c711d9aec5f3b782a780",
+    "metrics": {
+      "rmse": 652.1897942381156,
+      "mae": 543.3861434566229,
+      "mean_signed_error": -317.36119143170805,
+      "overestimate_fraction": 0.34723049434187014
+    },
+    "selected_from": "/Users/jackwang/Desktop/chem harness/_extract/harness_prototype/outputs/audit-B-r2/round-02/03-regularized/checkpoint.npz",
+    "improvement": 28.970038366195695,
+    "steps": 1100,
+    "epochs": 20
+  },
+  "diagnosis_final": {
+    "summary": [
+      "输入均值存在跨集合差异",
+      "跨设备验证误差明显高于训练误差",
+      "原模型不及训练均值常数对照",
+      "总体误差由少量长序列设备主导",
+      "RUL 真值依赖完整寿命记录",
+      "没有漂移原因标签，诊断不是因果证明"
+    ],
+    "findings": [
+      {
+        "code": "observable_input_shift",
+        "severity": "notice",
+        "title": "输入均值存在跨集合差异",
+        "evidence": {
+          "top_features": [
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+              "standardized_mean_difference": 1.0540396565527663
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+              "standardized_mean_difference": 0.7942593046390863
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+              "standardized_mean_difference": 0.7620452357846174
+            }
+          ]
+        },
+        "recommendation": "仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。"
+      },
+      {
+        "code": "generalization_gap",
+        "severity": "warning",
+        "title": "跨设备验证误差明显高于训练误差",
+        "evidence": {
+          "train_rmse": 229.4455815794658,
+          "validation_rmse": 652.1897942381156
+        },
+        "recommendation": "尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。"
+      },
+      {
+        "code": "worse_than_constant",
+        "severity": "warning",
+        "title": "原模型不及训练均值常数对照",
+        "evidence": {
+          "model_rmse": 652.1897942381156,
+          "constant_rmse": 536.2706281575896
+        },
+        "recommendation": "优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。"
+      },
+      {
+        "code": "validation_device_dominance",
+        "severity": "notice",
+        "title": "总体误差由少量长序列设备主导",
+        "evidence": {
+          "largest_device_fraction": 0.9023228111971412,
+          "counts": {
+            "Bearing1_4": 122,
+            "Bearing2_4": 42,
+            "Bearing3_4": 1515
+          }
+        },
+        "recommendation": "同时报告总体与逐设备误差；仍按原主指标门控。"
+      },
+      {
+        "code": "rul_label_delay",
+        "severity": "notice",
+        "title": "RUL 真值依赖完整寿命记录",
+        "evidence": {},
+        "recommendation": "当前只做离线续训，不假设在线失效前已经获得真实 RUL。"
+      },
+      {
+        "code": "no_causal_labels",
+        "severity": "info",
+        "title": "没有漂移原因标签，诊断不是因果证明",
+        "evidence": {},
+        "recommendation": "规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。"
+      }
+    ],
+    "train_metrics": {
+      "rmse": 229.4455815794658,
+      "mae": 162.4268030858323,
+      "mean_signed_error": 10.636387764824017,
+      "overestimate_fraction": 0.48506825938566556
+    },
+    "validation_metrics": {
+      "rmse": 652.1897942381156,
+      "mae": 543.3861434566229,
+      "mean_signed_error": -317.36119143170805,
+      "overestimate_fraction": 0.34723049434187014
+    },
+    "details": {
+      "train_rows": 7032,
+      "validation_rows": 1679,
+      "train_group_count": 9,
+      "validation_group_count": 3,
+      "feature_shift": {
+        "top": [
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+            "standardized_mean_difference": 1.0540396565527663
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+            "standardized_mean_difference": 0.7942593046390863
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+            "standardized_mean_difference": 0.7620452357846174
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_kurtosis\"]]",
+            "standardized_mean_difference": 0.7350261755584536
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"dominant_freq\"]]",
+            "standardized_mean_difference": 0.5627447491474165
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"band3_energy_6k_12k\"]]",
+            "standardized_mean_difference": 0.44762658426939467
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"dominant_freq\"]]",
+            "standardized_mean_difference": 0.40755856413559693
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"mean_abs\"]]",
+            "standardized_mean_difference": 0.40210391324735323
+          }
+        ],
+        "median": 0.31393796865452894,
+        "interpretation": "descriptive_input_change_not_causal_or_conditional_drift_proof"
+      },
+      "train_by_device": {
+        "Bearing1_1": {
+          "rows": 123,
+          "metrics": {
+            "rmse": 94.7001353802769,
+            "mae": 67.87335835590042,
+            "mean_signed_error": 26.609623157531033,
+            "overestimate_fraction": 0.4878048780487805
+          }
+        },
+        "Bearing1_2": {
+          "rows": 161,
+          "metrics": {
+            "rmse": 147.94399019448872,
+            "mae": 97.52065881710449,
+            "mean_signed_error": 39.94235938546499,
+            "overestimate_fraction": 0.422360248447205
+          }
+        },
+        "Bearing1_3": {
+          "rows": 158,
+          "metrics": {
+            "rmse": 515.7118805878991,
+            "mae": 371.0222606962012,
+            "mean_signed_error": 360.8885231529917,
+            "overestimate_fraction": 0.8037974683544303
+          }
+        },
+        "Bearing2_1": {
+          "rows": 491,
+          "metrics": {
+            "rmse": 157.41821357002863,
+            "mae": 123.93980080660613,
+            "mean_signed_error": 13.196098819683066,
+            "overestimate_fraction": 0.49490835030549896
+          }
+        },
+        "Bearing2_2": {
+          "rows": 161,
+          "metrics": {
+            "rmse": 449.5090048581144,
+            "mae": 258.84483072563825,
+            "mean_signed_error": 219.49775329484422,
+            "overestimate_fraction": 0.5590062111801242
+          }
+        },
+        "Bearing2_3": {
+          "rows": 533,
+          "metrics": {
+            "rmse": 110.37481912974162,
+            "mae": 82.9330178518126,
+            "mean_signed_error": -1.9061107720427515,
+            "overestimate_fraction": 0.4596622889305816
+          }
+        },
+        "Bearing3_1": {
+          "rows": 2538,
+          "metrics": {
+            "rmse": 238.79963351775814,
+            "mae": 181.28599176682346,
+            "mean_signed_error": -20.864443192194663,
+            "overestimate_fraction": 0.4747832939322301
+          }
+        },
+        "Bearing3_2": {
+          "rows": 2496,
+          "metrics": {
+            "rmse": 205.68392479395368,
+            "mae": 155.48958128418502,
+            "mean_signed_error": -6.935043496327946,
+            "overestimate_fraction": 0.4579326923076923
+          }
+        },
+        "Bearing3_3": {
+          "rows": 371,
+          "metrics": {
+            "rmse": 243.7112233030386,
+            "mae": 174.06175880008604,
+            "mean_signed_error": 101.16535909386171,
+            "overestimate_fraction": 0.6199460916442049
+          }
+        }
+      },
+      "validation_by_device": {
+        "Bearing1_4": {
+          "rows": 122,
+          "metrics": {
+            "rmse": 275.86671250821547,
+            "mae": 225.19180183333845,
+            "mean_signed_error": 223.80423782527538,
+            "overestimate_fraction": 0.9590163934426229
+          }
+        },
+        "Bearing2_4": {
+          "rows": 42,
+          "metrics": {
+            "rmse": 361.9402582884461,
+            "mae": 293.0741280323637,
+            "mean_signed_error": 288.83544594912274,
+            "overestimate_fraction": 0.9285714285714286
+          }
+        },
+        "Bearing3_4": {
+          "rows": 1515,
+          "metrics": {
+            "rmse": 679.4380737068949,
+            "mae": 575.949057203065,
+            "mean_signed_error": -377.7456410286367,
+            "overestimate_fraction": 0.28184818481848184
+          }
+        }
+      },
+      "constant_training_mean_reference": {
+        "value": 954.1505972696245,
+        "validation_rmse": 536.2706281575896,
+        "fit_role": "train",
+        "not_a_continuation_candidate": true
+      }
+    }
+  },
+  "warnings": [
+    "本地开发参考，不是正式比赛成绩；未访问隐藏数据。",
+    "只用 train 优化权重/构造采样权重与扰动；validation 只用于诊断、候选评估和检查点选择。",
+    "多轮针对公开验证集选策略可能过拟合；提升不保证迁移至隐藏集。",
+    "诊断是统计关联与候选假设，不是真实漂移原因或因果结论。",
+    "给定检查点已经见过全部公开 train，重新从 train 切分不能得到从未见过的独立验证。",
+    "训练预算在 mini-batch 边界检查，可能超出最后一个 batch 的耗时；诊断/评估/IO 不计入训练预算但计入总耗时。",
+    "候选早停与接受仅按任务主指标；C 的本地 NASA 常规分数仅作辅助，未确认与平台公式一致。"
+  ],
+  "finished_at": "2026-11-15T03:12:18.830258+00:00",
+  "cost": {
+    "total_seconds": 1.964633791,
+    "training_seconds": 0.24826187400000022,
+    "validation_seconds": 0.015503749000000733,
+    "candidate_count": 6,
+    "note": "validation_seconds counts candidate/final evaluation; diagnostic evaluation is included only in total_seconds"
+  }
+}

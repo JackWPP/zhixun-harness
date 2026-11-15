@@ -1,0 +1,295 @@
+{
+  "summary": [
+    "输入均值存在跨集合差异",
+    "训练与跨批次验证存在泛化差距",
+    "训练类别数量不均衡",
+    "部分气体类别在验证中识别失效",
+    "跨期训练证据不足以训练通用漂移类型分类器",
+    "没有漂移原因标签，诊断不是因果证明"
+  ],
+  "findings": [
+    {
+      "code": "observable_input_shift",
+      "severity": "notice",
+      "title": "输入均值存在跨集合差异",
+      "evidence": {
+        "top_features": [
+          {
+            "feature": "[[\"key\",\"features\"],[\"index\",41]]",
+            "standardized_mean_difference": 11.458230311024698
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"index\",28]]",
+            "standardized_mean_difference": 3.4582396541260545
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"index\",31]]",
+            "standardized_mean_difference": 2.458597432822978
+          }
+        ]
+      },
+      "recommendation": "仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。"
+    },
+    {
+      "code": "generalization_gap",
+      "severity": "warning",
+      "title": "训练与跨批次验证存在泛化差距",
+      "evidence": {
+        "macro_f1_gap": 0.2417241174163166
+      },
+      "recommendation": "比较较小学习率、训练类别加权、L2 正则和训练内轻量扰动。"
+    },
+    {
+      "code": "train_class_imbalance",
+      "severity": "notice",
+      "title": "训练类别数量不均衡",
+      "evidence": {
+        "train_counts": {
+          "Ethanol": 90,
+          "Ethylene": 98,
+          "Ammonia": 83,
+          "Acetaldehyde": 30,
+          "Acetone": 70,
+          "Toluene": 74
+        }
+      },
+      "recommendation": "类别权重只能从训练标签计算；验证集类别频率不用于拟合。"
+    },
+    {
+      "code": "weak_classes",
+      "severity": "warning",
+      "title": "部分气体类别在验证中识别失效",
+      "evidence": {
+        "classes": [
+          {
+            "class": "Acetaldehyde",
+            "f1": 0.0,
+            "count": 109,
+            "most_confused_with": "Ethanol",
+            "confused_count": 108
+          }
+        ]
+      },
+      "recommendation": "检查相应训练类别的覆盖与混淆，不使用验证目标训练校正器。"
+    },
+    {
+      "code": "few_drift_examples",
+      "severity": "notice",
+      "title": "跨期训练证据不足以训练通用漂移类型分类器",
+      "evidence": {
+        "training_batches": 1,
+        "validation_batches": 1
+      },
+      "recommendation": "先用规则诊断；未来在训练内构造受控扰动，标签仅表示合成扰动。"
+    },
+    {
+      "code": "no_causal_labels",
+      "severity": "info",
+      "title": "没有漂移原因标签，诊断不是因果证明",
+      "evidence": {},
+      "recommendation": "规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。"
+    }
+  ],
+  "train_metrics": {
+    "macro_f1": 0.9557538394951876,
+    "accuracy": 0.9730337078651685,
+    "macro_f1_fixed_classes": 0.9557538394951876,
+    "per_class_f1": {
+      "Ethanol": 0.9834254143646409,
+      "Ethylene": 0.9849246231155779,
+      "Ammonia": 0.9878048780487805,
+      "Acetaldehyde": 0.8235294117647058,
+      "Acetone": 1.0,
+      "Toluene": 0.9548387096774194
+    },
+    "confusion_matrix": [
+      [
+        89,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        98,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        2,
+        81,
+        0,
+        0,
+        0
+      ],
+      [
+        2,
+        0,
+        0,
+        21,
+        0,
+        7
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        70,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        74
+      ]
+    ],
+    "classes": [
+      "Ethanol",
+      "Ethylene",
+      "Ammonia",
+      "Acetaldehyde",
+      "Acetone",
+      "Toluene"
+    ],
+    "target_counts": {
+      "Ethanol": 90,
+      "Ethylene": 98,
+      "Ammonia": 83,
+      "Acetaldehyde": 30,
+      "Acetone": 70,
+      "Toluene": 74
+    }
+  },
+  "validation_metrics": {
+    "macro_f1": 0.7140297220788709,
+    "accuracy": 0.8786173633440515,
+    "macro_f1_fixed_classes": 0.7140297220788709,
+    "per_class_f1": {
+      "Ethanol": 0.683982683982684,
+      "Ethylene": 0.9422776911076443,
+      "Ammonia": 0.9950248756218906,
+      "Acetaldehyde": 0.0,
+      "Acetone": 0.9962264150943396,
+      "Toluene": 0.6666666666666666
+    },
+    "confusion_matrix": [
+      [
+        158,
+        5,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        32,
+        302,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        100,
+        0,
+        0,
+        0
+      ],
+      [
+        108,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        528,
+        4
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        5
+      ]
+    ],
+    "classes": [
+      "Ethanol",
+      "Ethylene",
+      "Ammonia",
+      "Acetaldehyde",
+      "Acetone",
+      "Toluene"
+    ],
+    "target_counts": {
+      "Ethanol": 164,
+      "Ethylene": 334,
+      "Ammonia": 100,
+      "Acetaldehyde": 109,
+      "Acetone": 532,
+      "Toluene": 5
+    }
+  },
+  "details": {
+    "train_rows": 445,
+    "validation_rows": 1244,
+    "train_group_count": 1,
+    "validation_group_count": 1,
+    "feature_shift": {
+      "top": [
+        {
+          "feature": "[[\"key\",\"features\"],[\"index\",41]]",
+          "standardized_mean_difference": 11.458230311024698
+        },
+        {
+          "feature": "[[\"key\",\"features\"],[\"index\",28]]",
+          "standardized_mean_difference": 3.4582396541260545
+        },
+        {
+          "feature": "[[\"key\",\"features\"],[\"index\",31]]",
+          "standardized_mean_difference": 2.458597432822978
+        },
+        {
+          "feature": "[[\"key\",\"features\"],[\"index\",57]]",
+          "standardized_mean_difference": 2.254645695359617
+        },
+        {
+          "feature": "[[\"key\",\"features\"],[\"index\",36]]",
+          "standardized_mean_difference": 1.7753563691750045
+        },
+        {
+          "feature": "[[\"key\",\"features\"],[\"index\",35]]",
+          "standardized_mean_difference": 1.6485739790228622
+        },
+        {
+          "feature": "[[\"key\",\"features\"],[\"index\",100]]",
+          "standardized_mean_difference": 1.5684267933834564
+        },
+        {
+          "feature": "[[\"key\",\"features\"],[\"index\",20]]",
+          "standardized_mean_difference": 1.3586818441261406
+        }
+      ],
+      "median": 0.5442709682580986,
+      "interpretation": "descriptive_input_change_not_causal_or_conditional_drift_proof"
+    }
+  }
+}

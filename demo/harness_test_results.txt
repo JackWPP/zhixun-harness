@@ -1,0 +1,35 @@
+test_candidate_failure_after_valid_epoch_is_ineligible (test_harness.HarnessTests.test_candidate_failure_after_valid_epoch_is_ineligible) ... ok
+test_candidate_restores_best_epoch_and_continues_loaded_adam (test_harness.HarnessTests.test_candidate_restores_best_epoch_and_continues_loaded_adam) ... ok
+test_custom_training_deterministic_across_save_resume (test_harness.HarnessTests.test_custom_training_deterministic_across_save_resume) ... ok
+test_diagnosis_is_read_only_and_validation_is_not_fitted (test_harness.HarnessTests.test_diagnosis_is_read_only_and_validation_is_not_fitted) ... ok
+test_exhausted_candidate_budget_creates_no_checkpoint (test_harness.HarnessTests.test_exhausted_candidate_budget_creates_no_checkpoint) ... ok
+test_gate_error_status_cannot_be_selected_even_with_stale_gate (test_harness.HarnessTests.test_gate_error_status_cannot_be_selected_even_with_stale_gate) ... ok
+test_gate_rejects_classification_degradation (test_harness.HarnessTests.test_gate_rejects_classification_degradation) ... ok
+test_gate_rejects_ineligible_and_missing_checkpoints (test_harness.HarnessTests.test_gate_rejects_ineligible_and_missing_checkpoints) ... ok
+test_gate_rejects_nonfinite_gains (test_harness.HarnessTests.test_gate_rejects_nonfinite_gains) ... ok
+test_gate_rejects_regression_degradation (test_harness.HarnessTests.test_gate_rejects_regression_degradation) ... ok
+test_gate_requires_strict_threshold (test_harness.HarnessTests.test_gate_requires_strict_threshold) ... ok
+test_gate_selects_best_and_keeps_first_on_ties (test_harness.HarnessTests.test_gate_selects_best_and_keeps_first_on_ties) ... ok
+test_original_scalers_frozen_under_custom_training (test_harness.HarnessTests.test_original_scalers_frozen_under_custom_training) ... ok
+test_plain_epoch_matches_original_fit_exactly (test_harness.HarnessTests.test_plain_epoch_matches_original_fit_exactly) ... ok
+test_prepare_incorrect_digest_fails_before_staging (test_harness.HarnessTests.test_prepare_incorrect_digest_fails_before_staging) ... ok
+test_prepare_valid_bundle_has_isolated_readonly_splits (test_harness.HarnessTests.test_prepare_valid_bundle_has_isolated_readonly_splits) ... ok
+test_prepare_wrong_model_task_does_not_change_source (test_harness.HarnessTests.test_prepare_wrong_model_task_does_not_change_source) ... ok
+test_prepare_wrong_profile_does_not_change_source (test_harness.HarnessTests.test_prepare_wrong_profile_does_not_change_source) ... ok
+test_rule_driven_trainer_asymmetric_rul_and_probe (test_harness.HarnessTests.test_rule_driven_trainer_asymmetric_rul_and_probe) ... ok
+test_strategy_recommender_mlp_and_rule_select_candidates (test_harness.HarnessTests.test_strategy_recommender_mlp_and_rule_select_candidates) ... ok
+test_validation_role_rejected_without_any_updates (test_harness.HarnessTests.test_validation_role_rejected_without_any_updates) ... ok
+test_zero_epoch_budget_prevents_updates (test_harness.HarnessTests.test_zero_epoch_budget_prevents_updates) ... ok
+test_all_errors_are_not_reported_as_success (test_runner.RunnerTests.test_all_errors_are_not_reported_as_success) ... ok
+test_budget_exhaustion_keeps_original_if_no_full_epoch (test_runner.RunnerTests.test_budget_exhaustion_keeps_original_if_no_full_epoch) ... ok
+test_html_escapes_injected_text_and_handles_failed_run (test_runner.RunnerTests.test_html_escapes_injected_text_and_handles_failed_run) ... ok
+test_real_run_lineage_and_delivered_metrics (test_runner.RunnerTests.test_real_run_lineage_and_delivered_metrics) ... ok
+test_rejection_keeps_baseline_and_stops_further_rounds (test_runner.RunnerTests.test_rejection_keeps_baseline_and_stops_further_rounds) ... ok
+test_same_seed_produces_same_delivered_weights (test_runner.RunnerTests.test_same_seed_produces_same_delivered_weights) ... ok
+test_small_model_and_hybrid_decision_modes (test_runner.RunnerTests.test_small_model_and_hybrid_decision_modes) ... ok
+test_unfinished_report_is_not_published (test_runner.RunnerTests.test_unfinished_report_is_not_published) ... ok
+
+----------------------------------------------------------------------
+Ran 30 tests in 0.313s
+
+OK

@@ -1,0 +1,139 @@
+{
+  "id": "03-regularized",
+  "status": "completed",
+  "strategy": {
+    "id": "regularized",
+    "label": "L2 正则续训",
+    "reason": "鲁棒性对照：保持原结构和输入，抑制权重过度适配。",
+    "learning_rate": 0.0009,
+    "batch_size": 128,
+    "epochs": 5,
+    "l2": 0.003,
+    "noise_std": 0.0,
+    "balanced_classes": false,
+    "balanced_groups": false
+  },
+  "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+  "checkpoint_sha256": "sha256:55ee0555ef8b40faa2dc4965c7e42335f076c35affe2672d4b889e91bac555be",
+  "best_checkpoint": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-01\\03-regularized\\checkpoint.npz",
+  "metrics": {
+    "rmse": 660.938749457224,
+    "mae": 548.4329187657592,
+    "mean_signed_error": -332.03155060456214,
+    "overestimate_fraction": 0.3430613460393091
+  },
+  "history": [
+    {
+      "epoch": 16,
+      "local_epoch": 1,
+      "step": 880,
+      "train_loss": 0.08984775817643756,
+      "validation": {
+        "rmse": 660.938749457224,
+        "mae": 548.4329187657592,
+        "mean_signed_error": -332.03155060456214,
+        "overestimate_fraction": 0.3430613460393091
+      },
+      "elapsed_seconds": 0.013074599999526981
+    },
+    {
+      "epoch": 17,
+      "local_epoch": 2,
+      "step": 935,
+      "train_loss": 0.08908969953740464,
+      "validation": {
+        "rmse": 661.9490146871223,
+        "mae": 550.6053584971738,
+        "mean_signed_error": -335.0437695288323,
+        "overestimate_fraction": 0.3412745681953544
+      },
+      "elapsed_seconds": 0.03206450000288896
+    },
+    {
+      "epoch": 18,
+      "local_epoch": 3,
+      "step": 990,
+      "train_loss": 0.08866314947098015,
+      "validation": {
+        "rmse": 666.2568487299761,
+        "mae": 557.1753426565871,
+        "mean_signed_error": -338.8060695034796,
+        "overestimate_fraction": 0.33948779035139964
+      },
+      "elapsed_seconds": 0.04558000000542961
+    }
+  ],
+  "initial_steps": 825,
+  "initial_epochs": 15,
+  "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+  "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+  "normalization_policy": "preserve_parent_state_no_refit",
+  "gate": {
+    "eligible": true,
+    "reason": "本轮主指标改进最大，接受；相同增益优先先执行的低复杂度候选",
+    "improvement": 20.221083147087256,
+    "passes_primary_threshold": true,
+    "accepted": true
+  },
+  "early_stopped": true,
+  "cost": {
+    "training_seconds": 0.03222709999681683,
+    "total_seconds": 0.047200400003930554,
+    "epochs": 3,
+    "steps": 165
+  },
+  "restored_best_epoch": 16,
+  "selected_steps": 880,
+  "artifact_directory": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-01\\03-regularized",
+  "trainer_engine": "RuleDrivenHarnessTrainer",
+  "diagnostic_trace": [
+    {
+      "epoch": 16,
+      "task_type_code": 1.0,
+      "train_loss": 0.08984775817643756,
+      "val_primary_metric": 660.938749457224,
+      "train_loss_slope": 0.0,
+      "val_metric_slope": 0.0,
+      "generalization_gap": 7356.207465514195,
+      "grad_norm_mean": 0.0,
+      "grad_norm_std": 0.0,
+      "metric_improvement": 0.0,
+      "plateau_count": 0,
+      "acc_f1_gap": 0.0,
+      "tail_class_f1": 1.0,
+      "overestimate_fraction": 0.3430613460393091
+    },
+    {
+      "epoch": 17,
+      "task_type_code": 1.0,
+      "train_loss": 0.08908969953740464,
+      "val_primary_metric": 661.9490146871223,
+      "train_loss_slope": -0.0007580586390329442,
+      "val_metric_slope": 1.0102652298981485,
+      "generalization_gap": 7430.140836979706,
+      "grad_norm_mean": 0.0,
+      "grad_norm_std": 0.0,
+      "metric_improvement": -1.0102652298982093,
+      "plateau_count": 1,
+      "acc_f1_gap": 0.0,
+      "tail_class_f1": 1.0,
+      "overestimate_fraction": 0.3412745681953544
+    },
+    {
+      "epoch": 18,
+      "task_type_code": 1.0,
+      "train_loss": 0.08866314947098015,
+      "val_primary_metric": 666.2568487299761,
+      "train_loss_slope": -0.0005923043527286903,
+      "val_metric_slope": 2.6590496363761242,
+      "generalization_gap": 7514.473066942484,
+      "grad_norm_mean": 0.0,
+      "grad_norm_std": 0.0,
+      "metric_improvement": -4.3078340428538695,
+      "plateau_count": 2,
+      "acc_f1_gap": 0.0,
+      "tail_class_f1": 1.0,
+      "overestimate_fraction": 0.33948779035139964
+    }
+  ]
+}

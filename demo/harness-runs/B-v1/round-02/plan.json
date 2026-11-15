@@ -1,0 +1,297 @@
+{
+  "parent_checkpoint_sha256": "sha256:55ee0555ef8b40faa2dc4965c7e42335f076c35affe2672d4b889e91bac555be",
+  "diagnosis": {
+    "summary": [
+      "输入均值存在跨集合差异",
+      "跨设备验证误差明显高于训练误差",
+      "原模型不及训练均值常数对照",
+      "总体误差由少量长序列设备主导",
+      "RUL 真值依赖完整寿命记录",
+      "没有漂移原因标签，诊断不是因果证明"
+    ],
+    "findings": [
+      {
+        "code": "observable_input_shift",
+        "severity": "notice",
+        "title": "输入均值存在跨集合差异",
+        "evidence": {
+          "top_features": [
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+              "standardized_mean_difference": 1.0540396565527663
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+              "standardized_mean_difference": 0.7942593046390863
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+              "standardized_mean_difference": 0.7620452357846174
+            }
+          ]
+        },
+        "recommendation": "仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。"
+      },
+      {
+        "code": "generalization_gap",
+        "severity": "warning",
+        "title": "跨设备验证误差明显高于训练误差",
+        "evidence": {
+          "train_rmse": 229.71545623291678,
+          "validation_rmse": 660.938749457224
+        },
+        "recommendation": "尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。"
+      },
+      {
+        "code": "worse_than_constant",
+        "severity": "warning",
+        "title": "原模型不及训练均值常数对照",
+        "evidence": {
+          "model_rmse": 660.938749457224,
+          "constant_rmse": 536.2706281575896
+        },
+        "recommendation": "优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。"
+      },
+      {
+        "code": "validation_device_dominance",
+        "severity": "notice",
+        "title": "总体误差由少量长序列设备主导",
+        "evidence": {
+          "largest_device_fraction": 0.9023228111971412,
+          "counts": {
+            "Bearing1_4": 122,
+            "Bearing2_4": 42,
+            "Bearing3_4": 1515
+          }
+        },
+        "recommendation": "同时报告总体与逐设备误差；仍按原主指标门控。"
+      },
+      {
+        "code": "rul_label_delay",
+        "severity": "notice",
+        "title": "RUL 真值依赖完整寿命记录",
+        "evidence": {},
+        "recommendation": "当前只做离线续训，不假设在线失效前已经获得真实 RUL。"
+      },
+      {
+        "code": "no_causal_labels",
+        "severity": "info",
+        "title": "没有漂移原因标签，诊断不是因果证明",
+        "evidence": {},
+        "recommendation": "规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。"
+      }
+    ],
+    "train_metrics": {
+      "rmse": 229.71545623291678,
+      "mae": 163.0014073547357,
+      "mean_signed_error": 5.395951571034926,
+      "overestimate_fraction": 0.4751137656427759
+    },
+    "validation_metrics": {
+      "rmse": 660.938749457224,
+      "mae": 548.4329187657592,
+      "mean_signed_error": -332.03155060456214,
+      "overestimate_fraction": 0.3430613460393091
+    },
+    "details": {
+      "train_rows": 7032,
+      "validation_rows": 1679,
+      "train_group_count": 9,
+      "validation_group_count": 3,
+      "feature_shift": {
+        "top": [
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+            "standardized_mean_difference": 1.0540396565527663
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+            "standardized_mean_difference": 0.7942593046390863
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+            "standardized_mean_difference": 0.7620452357846174
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_kurtosis\"]]",
+            "standardized_mean_difference": 0.7350261755584536
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"dominant_freq\"]]",
+            "standardized_mean_difference": 0.5627447491474165
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"band3_energy_6k_12k\"]]",
+            "standardized_mean_difference": 0.44762658426939467
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"dominant_freq\"]]",
+            "standardized_mean_difference": 0.40755856413559693
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"mean_abs\"]]",
+            "standardized_mean_difference": 0.40210391324735323
+          }
+        ],
+        "median": 0.31393796865452894,
+        "interpretation": "descriptive_input_change_not_causal_or_conditional_drift_proof"
+      },
+      "train_by_device": {
+        "Bearing1_1": {
+          "rows": 123,
+          "metrics": {
+            "rmse": 98.39653353477749,
+            "mae": 71.50799581252915,
+            "mean_signed_error": 33.20751073000254,
+            "overestimate_fraction": 0.5365853658536586
+          }
+        },
+        "Bearing1_2": {
+          "rows": 161,
+          "metrics": {
+            "rmse": 152.2100673497578,
+            "mae": 101.5059873483596,
+            "mean_signed_error": 43.07462037146113,
+            "overestimate_fraction": 0.43478260869565216
+          }
+        },
+        "Bearing1_3": {
+          "rows": 158,
+          "metrics": {
+            "rmse": 502.44818583168154,
+            "mae": 360.87256803458223,
+            "mean_signed_error": 351.35169686112965,
+            "overestimate_fraction": 0.8291139240506329
+          }
+        },
+        "Bearing2_1": {
+          "rows": 491,
+          "metrics": {
+            "rmse": 158.01846411488114,
+            "mae": 125.06061042750254,
+            "mean_signed_error": -0.6151614489744728,
+            "overestimate_fraction": 0.46435845213849286
+          }
+        },
+        "Bearing2_2": {
+          "rows": 161,
+          "metrics": {
+            "rmse": 442.5186652246297,
+            "mae": 255.08726859883487,
+            "mean_signed_error": 217.72955528024596,
+            "overestimate_fraction": 0.5838509316770186
+          }
+        },
+        "Bearing2_3": {
+          "rows": 533,
+          "metrics": {
+            "rmse": 113.937846091032,
+            "mae": 85.85560946839315,
+            "mean_signed_error": -4.842759311238982,
+            "overestimate_fraction": 0.4352720450281426
+          }
+        },
+        "Bearing3_1": {
+          "rows": 2538,
+          "metrics": {
+            "rmse": 241.3952592445591,
+            "mae": 183.17136555745864,
+            "mean_signed_error": -45.66888509283621,
+            "overestimate_fraction": 0.4239558707643814
+          }
+        },
+        "Bearing3_2": {
+          "rows": 2496,
+          "metrics": {
+            "rmse": 206.7404897639648,
+            "mae": 155.58404109076872,
+            "mean_signed_error": 9.29101255853033,
+            "overestimate_fraction": 0.4895833333333333
+          }
+        },
+        "Bearing3_3": {
+          "rows": 371,
+          "metrics": {
+            "rmse": 237.8061458598096,
+            "mae": 168.75617564057157,
+            "mean_signed_error": 86.13818126039749,
+            "overestimate_fraction": 0.5983827493261455
+          }
+        }
+      },
+      "validation_by_device": {
+        "Bearing1_4": {
+          "rows": 122,
+          "metrics": {
+            "rmse": 264.73298105664963,
+            "mae": 210.7789124374187,
+            "mean_signed_error": 207.73189962503068,
+            "overestimate_fraction": 0.9344262295081968
+          }
+        },
+        "Bearing2_4": {
+          "rows": 42,
+          "metrics": {
+            "rmse": 378.5054734013814,
+            "mae": 310.3765154844296,
+            "mean_signed_error": 307.2336895572345,
+            "overestimate_fraction": 0.9285714285714286
+          }
+        },
+        "Bearing3_4": {
+          "rows": 1515,
+          "metrics": {
+            "rmse": 688.8489607692094,
+            "mae": 582.2231218745865,
+            "mean_signed_error": -393.219854904764,
+            "overestimate_fraction": 0.27920792079207923
+          }
+        }
+      },
+      "constant_training_mean_reference": {
+        "value": 954.1505972696245,
+        "validation_rmse": 536.2706281575896,
+        "fit_role": "train",
+        "not_a_continuation_candidate": true
+      }
+    }
+  },
+  "strategies": [
+    {
+      "id": "conservative",
+      "label": "低学习率续训",
+      "reason": "安全对照：保留全部状态，仅降低学习率并选最佳轮。",
+      "learning_rate": 0.00027,
+      "batch_size": 128,
+      "epochs": 5,
+      "l2": 0.0,
+      "noise_std": 0.0,
+      "balanced_classes": false,
+      "balanced_groups": false
+    },
+    {
+      "id": "device_balanced",
+      "label": "训练设备均衡抽样＋L2",
+      "reason": "跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。",
+      "learning_rate": 0.00027,
+      "batch_size": 128,
+      "epochs": 5,
+      "l2": 0.002,
+      "noise_std": 0.0,
+      "balanced_classes": false,
+      "balanced_groups": true
+    },
+    {
+      "id": "regularized",
+      "label": "L2 正则续训",
+      "reason": "鲁棒性对照：保持原结构和输入，抑制权重过度适配。",
+      "learning_rate": 0.00027,
+      "batch_size": 128,
+      "epochs": 5,
+      "l2": 0.003,
+      "noise_std": 0.0,
+      "balanced_classes": false,
+      "balanced_groups": false
+    }
+  ]
+}

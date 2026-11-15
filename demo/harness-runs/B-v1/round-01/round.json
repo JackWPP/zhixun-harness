@@ -1,0 +1,735 @@
+{
+  "round": 1,
+  "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+  "diagnosis": {
+    "summary": [
+      "输入均值存在跨集合差异",
+      "跨设备验证误差明显高于训练误差",
+      "原模型不及训练均值常数对照",
+      "总体误差由少量长序列设备主导",
+      "RUL 真值依赖完整寿命记录",
+      "没有漂移原因标签，诊断不是因果证明"
+    ],
+    "findings": [
+      {
+        "code": "observable_input_shift",
+        "severity": "notice",
+        "title": "输入均值存在跨集合差异",
+        "evidence": {
+          "top_features": [
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+              "standardized_mean_difference": 1.0540396565527663
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+              "standardized_mean_difference": 0.7942593046390863
+            },
+            {
+              "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+              "standardized_mean_difference": 0.7620452357846174
+            }
+          ]
+        },
+        "recommendation": "仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。"
+      },
+      {
+        "code": "generalization_gap",
+        "severity": "warning",
+        "title": "跨设备验证误差明显高于训练误差",
+        "evidence": {
+          "train_rmse": 233.3578239319839,
+          "validation_rmse": 681.1598326043113
+        },
+        "recommendation": "尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。"
+      },
+      {
+        "code": "worse_than_constant",
+        "severity": "warning",
+        "title": "原模型不及训练均值常数对照",
+        "evidence": {
+          "model_rmse": 681.1598326043113,
+          "constant_rmse": 536.2706281575896
+        },
+        "recommendation": "优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。"
+      },
+      {
+        "code": "validation_device_dominance",
+        "severity": "notice",
+        "title": "总体误差由少量长序列设备主导",
+        "evidence": {
+          "largest_device_fraction": 0.9023228111971412,
+          "counts": {
+            "Bearing1_4": 122,
+            "Bearing2_4": 42,
+            "Bearing3_4": 1515
+          }
+        },
+        "recommendation": "同时报告总体与逐设备误差；仍按原主指标门控。"
+      },
+      {
+        "code": "rul_label_delay",
+        "severity": "notice",
+        "title": "RUL 真值依赖完整寿命记录",
+        "evidence": {},
+        "recommendation": "当前只做离线续训，不假设在线失效前已经获得真实 RUL。"
+      },
+      {
+        "code": "no_causal_labels",
+        "severity": "info",
+        "title": "没有漂移原因标签，诊断不是因果证明",
+        "evidence": {},
+        "recommendation": "规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。"
+      }
+    ],
+    "train_metrics": {
+      "rmse": 233.3578239319839,
+      "mae": 167.2222699905699,
+      "mean_signed_error": -7.11965815728649,
+      "overestimate_fraction": 0.45236063708759955
+    },
+    "validation_metrics": {
+      "rmse": 681.1598326043113,
+      "mae": 563.1058414514887,
+      "mean_signed_error": -365.38394916105057,
+      "overestimate_fraction": 0.3240023823704586
+    },
+    "details": {
+      "train_rows": 7032,
+      "validation_rows": 1679,
+      "train_group_count": 9,
+      "validation_group_count": 3,
+      "feature_shift": {
+        "top": [
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"spectral_centroid\"]]",
+            "standardized_mean_difference": 1.0540396565527663
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"skewness\"]]",
+            "standardized_mean_difference": 0.7942593046390863
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_centroid\"]]",
+            "standardized_mean_difference": 0.7620452357846174
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"spectral_kurtosis\"]]",
+            "standardized_mean_difference": 0.7350261755584536
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"vertical\"],[\"key\",\"dominant_freq\"]]",
+            "standardized_mean_difference": 0.5627447491474165
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"band3_energy_6k_12k\"]]",
+            "standardized_mean_difference": 0.44762658426939467
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"dominant_freq\"]]",
+            "standardized_mean_difference": 0.40755856413559693
+          },
+          {
+            "feature": "[[\"key\",\"features\"],[\"key\",\"horizontal\"],[\"key\",\"mean_abs\"]]",
+            "standardized_mean_difference": 0.40210391324735323
+          }
+        ],
+        "median": 0.31393796865452894,
+        "interpretation": "descriptive_input_change_not_causal_or_conditional_drift_proof"
+      },
+      "train_by_device": {
+        "Bearing1_1": {
+          "rows": 123,
+          "metrics": {
+            "rmse": 119.22355093755493,
+            "mae": 86.83902195295303,
+            "mean_signed_error": 50.49560095153025,
+            "overestimate_fraction": 0.5934959349593496
+          }
+        },
+        "Bearing1_2": {
+          "rows": 161,
+          "metrics": {
+            "rmse": 152.83744273112984,
+            "mae": 103.21016657065549,
+            "mean_signed_error": 41.282834328226656,
+            "overestimate_fraction": 0.42857142857142855
+          }
+        },
+        "Bearing1_3": {
+          "rows": 158,
+          "metrics": {
+            "rmse": 482.53385854579494,
+            "mae": 346.11820297656186,
+            "mean_signed_error": 336.9998508636183,
+            "overestimate_fraction": 0.8291139240506329
+          }
+        },
+        "Bearing2_1": {
+          "rows": 491,
+          "metrics": {
+            "rmse": 171.8146775660628,
+            "mae": 137.88601813429662,
+            "mean_signed_error": -47.97181128843148,
+            "overestimate_fraction": 0.37474541751527496
+          }
+        },
+        "Bearing2_2": {
+          "rows": 161,
+          "metrics": {
+            "rmse": 404.1283897215028,
+            "mae": 233.5127280466968,
+            "mean_signed_error": 199.1733737577084,
+            "overestimate_fraction": 0.5900621118012422
+          }
+        },
+        "Bearing2_3": {
+          "rows": 533,
+          "metrics": {
+            "rmse": 127.82697658561024,
+            "mae": 97.62437294120535,
+            "mean_signed_error": -4.637386668599498,
+            "overestimate_fraction": 0.4446529080675422
+          }
+        },
+        "Bearing3_1": {
+          "rows": 2538,
+          "metrics": {
+            "rmse": 253.15986943252238,
+            "mae": 190.92580084738242,
+            "mean_signed_error": -67.90868327555563,
+            "overestimate_fraction": 0.3947990543735225
+          }
+        },
+        "Bearing3_2": {
+          "rows": 2496,
+          "metrics": {
+            "rmse": 210.07390455288134,
+            "mae": 157.57323512736366,
+            "mean_signed_error": 17.142794592376706,
+            "overestimate_fraction": 0.48838141025641024
+          }
+        },
+        "Bearing3_3": {
+          "rows": 371,
+          "metrics": {
+            "rmse": 222.25646148001246,
+            "mae": 158.2707214545161,
+            "mean_signed_error": 19.82180126794401,
+            "overestimate_fraction": 0.4609164420485175
+          }
+        }
+      },
+      "validation_by_device": {
+        "Bearing1_4": {
+          "rows": 122,
+          "metrics": {
+            "rmse": 241.9807988305028,
+            "mae": 175.58693393738474,
+            "mean_signed_error": 166.54097851074982,
+            "overestimate_fraction": 0.860655737704918
+          }
+        },
+        "Bearing2_4": {
+          "rows": 42,
+          "metrics": {
+            "rmse": 390.81504161336534,
+            "mae": 328.14713559610186,
+            "mean_signed_error": 326.26610784099495,
+            "overestimate_fraction": 0.9523809523809523
+          }
+        },
+        "Bearing3_4": {
+          "rows": 1515,
+          "metrics": {
+            "rmse": 710.8130722393482,
+            "mae": 600.82569119581,
+            "mean_signed_error": -427.3932848508497,
+            "overestimate_fraction": 0.2633663366336634
+          }
+        }
+      },
+      "constant_training_mean_reference": {
+        "value": 954.1505972696245,
+        "validation_rmse": 536.2706281575896,
+        "fit_role": "train",
+        "not_a_continuation_candidate": true
+      }
+    }
+  },
+  "strategies": [
+    {
+      "id": "conservative",
+      "label": "低学习率续训",
+      "reason": "安全对照：保留全部状态，仅降低学习率并选最佳轮。",
+      "learning_rate": 0.0009,
+      "batch_size": 128,
+      "epochs": 5,
+      "l2": 0.0,
+      "noise_std": 0.0,
+      "balanced_classes": false,
+      "balanced_groups": false
+    },
+    {
+      "id": "device_balanced",
+      "label": "训练设备均衡抽样＋L2",
+      "reason": "跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。",
+      "learning_rate": 0.0009,
+      "batch_size": 128,
+      "epochs": 5,
+      "l2": 0.002,
+      "noise_std": 0.0,
+      "balanced_classes": false,
+      "balanced_groups": true
+    },
+    {
+      "id": "regularized",
+      "label": "L2 正则续训",
+      "reason": "鲁棒性对照：保持原结构和输入，抑制权重过度适配。",
+      "learning_rate": 0.0009,
+      "batch_size": 128,
+      "epochs": 5,
+      "l2": 0.003,
+      "noise_std": 0.0,
+      "balanced_classes": false,
+      "balanced_groups": false
+    }
+  ],
+  "candidates": [
+    {
+      "id": "01-conservative",
+      "status": "completed",
+      "strategy": {
+        "id": "conservative",
+        "label": "低学习率续训",
+        "reason": "安全对照：保留全部状态，仅降低学习率并选最佳轮。",
+        "learning_rate": 0.0009,
+        "batch_size": 128,
+        "epochs": 5,
+        "l2": 0.0,
+        "noise_std": 0.0,
+        "balanced_classes": false,
+        "balanced_groups": false
+      },
+      "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+      "checkpoint_sha256": "sha256:d1adf17b7e1f0df4d25da447fdbd4d3ef3a65e2624ec919f33d0d5b5c263b3dd",
+      "best_checkpoint": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-01\\01-conservative\\checkpoint.npz",
+      "metrics": {
+        "rmse": 662.7911379880759,
+        "mae": 549.7622343510569,
+        "mean_signed_error": -333.48618194993696,
+        "overestimate_fraction": 0.3412745681953544
+      },
+      "history": [
+        {
+          "epoch": 16,
+          "local_epoch": 1,
+          "step": 880,
+          "train_loss": 0.08959126769866664,
+          "validation": {
+            "rmse": 662.7911379880759,
+            "mae": 549.7622343510569,
+            "mean_signed_error": -333.48618194993696,
+            "overestimate_fraction": 0.3412745681953544
+          },
+          "elapsed_seconds": 0.0274857999975211
+        },
+        {
+          "epoch": 17,
+          "local_epoch": 2,
+          "step": 935,
+          "train_loss": 0.08818690022232664,
+          "validation": {
+            "rmse": 665.5824076370619,
+            "mae": 553.1326937549019,
+            "mean_signed_error": -338.31315227772524,
+            "overestimate_fraction": 0.33889219773674806
+          },
+          "elapsed_seconds": 0.04733010000200011
+        },
+        {
+          "epoch": 18,
+          "local_epoch": 3,
+          "step": 990,
+          "train_loss": 0.08705885519754822,
+          "validation": {
+            "rmse": 670.5796977596979,
+            "mae": 560.1811030884401,
+            "mean_signed_error": -342.5187923217022,
+            "overestimate_fraction": 0.3359142346634902
+          },
+          "elapsed_seconds": 0.0608009999996284
+        }
+      ],
+      "initial_steps": 825,
+      "initial_epochs": 15,
+      "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+      "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+      "normalization_policy": "preserve_parent_state_no_refit",
+      "gate": {
+        "eligible": true,
+        "reason": "达到主指标改进阈值，参与本轮择优",
+        "improvement": 18.368694616235416,
+        "passes_primary_threshold": true,
+        "accepted": false
+      },
+      "early_stopped": true,
+      "cost": {
+        "training_seconds": 0.0481115000002319,
+        "total_seconds": 0.06249599999864586,
+        "epochs": 3,
+        "steps": 165
+      },
+      "restored_best_epoch": 16,
+      "selected_steps": 880,
+      "artifact_directory": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-01\\01-conservative",
+      "trainer_engine": "RuleDrivenHarnessTrainer",
+      "diagnostic_trace": [
+        {
+          "epoch": 16,
+          "task_type_code": 1.0,
+          "train_loss": 0.08959126769866664,
+          "val_primary_metric": 662.7911379880759,
+          "train_loss_slope": 0.0,
+          "val_metric_slope": 0.0,
+          "generalization_gap": 7397.943516295841,
+          "grad_norm_mean": 0.0,
+          "grad_norm_std": 0.0,
+          "metric_improvement": 0.0,
+          "plateau_count": 0,
+          "acc_f1_gap": 0.0,
+          "tail_class_f1": 1.0,
+          "overestimate_fraction": 0.3412745681953544
+        },
+        {
+          "epoch": 17,
+          "task_type_code": 1.0,
+          "train_loss": 0.08818690022232664,
+          "val_primary_metric": 665.5824076370619,
+          "train_loss_slope": -0.001404367476340013,
+          "val_metric_slope": 2.7912696489859865,
+          "generalization_gap": 7547.406768568487,
+          "grad_norm_mean": 0.0,
+          "grad_norm_std": 0.0,
+          "metric_improvement": -2.791269648986031,
+          "plateau_count": 1,
+          "acc_f1_gap": 0.0,
+          "tail_class_f1": 1.0,
+          "overestimate_fraction": 0.33889219773674806
+        },
+        {
+          "epoch": 18,
+          "task_type_code": 1.0,
+          "train_loss": 0.08705885519754822,
+          "val_primary_metric": 670.5796977596979,
+          "train_loss_slope": -0.0012662062505592077,
+          "val_metric_slope": 3.8942798858110588,
+          "generalization_gap": 7702.601834564245,
+          "grad_norm_mean": 0.0,
+          "grad_norm_std": 0.0,
+          "metric_improvement": -4.997290122635945,
+          "plateau_count": 2,
+          "acc_f1_gap": 0.0,
+          "tail_class_f1": 1.0,
+          "overestimate_fraction": 0.3359142346634902
+        }
+      ]
+    },
+    {
+      "id": "02-device_balanced",
+      "status": "completed",
+      "strategy": {
+        "id": "device_balanced",
+        "label": "训练设备均衡抽样＋L2",
+        "reason": "跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。",
+        "learning_rate": 0.0009,
+        "batch_size": 128,
+        "epochs": 5,
+        "l2": 0.002,
+        "noise_std": 0.0,
+        "balanced_classes": false,
+        "balanced_groups": true
+      },
+      "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+      "checkpoint_sha256": "sha256:142df71da59ffa75d6e75dee3e5ff56ca6bea39631b081dc34af7f76ad3c6c6a",
+      "best_checkpoint": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-01\\02-device_balanced\\checkpoint.npz",
+      "metrics": {
+        "rmse": 664.6701993479425,
+        "mae": 544.112248394663,
+        "mean_signed_error": -359.1732648466705,
+        "overestimate_fraction": 0.3156640857653365
+      },
+      "history": [
+        {
+          "epoch": 16,
+          "local_epoch": 1,
+          "step": 880,
+          "train_loss": 0.10296706480054148,
+          "validation": {
+            "rmse": 664.6701993479425,
+            "mae": 544.112248394663,
+            "mean_signed_error": -359.1732648466705,
+            "overestimate_fraction": 0.3156640857653365
+          },
+          "elapsed_seconds": 0.013122600001224782
+        },
+        {
+          "epoch": 17,
+          "local_epoch": 2,
+          "step": 935,
+          "train_loss": 0.09208569708352889,
+          "validation": {
+            "rmse": 677.3226291970474,
+            "mae": 558.467926676887,
+            "mean_signed_error": -367.657213214122,
+            "overestimate_fraction": 0.3103037522334723
+          },
+          "elapsed_seconds": 0.034744800002954435
+        },
+        {
+          "epoch": 18,
+          "local_epoch": 3,
+          "step": 990,
+          "train_loss": 0.08441264700742068,
+          "validation": {
+            "rmse": 666.1889396139057,
+            "mae": 550.8618296536938,
+            "mean_signed_error": -361.27534206392687,
+            "overestimate_fraction": 0.31804645622394284
+          },
+          "elapsed_seconds": 0.04898900000262074
+        }
+      ],
+      "initial_steps": 825,
+      "initial_epochs": 15,
+      "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+      "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+      "normalization_policy": "preserve_parent_state_no_refit",
+      "gate": {
+        "eligible": true,
+        "reason": "达到主指标改进阈值，参与本轮择优",
+        "improvement": 16.489633256368847,
+        "passes_primary_threshold": true,
+        "accepted": false
+      },
+      "early_stopped": true,
+      "cost": {
+        "training_seconds": 0.035775300006207544,
+        "total_seconds": 0.050679500003752764,
+        "epochs": 3,
+        "steps": 165
+      },
+      "restored_best_epoch": 16,
+      "selected_steps": 880,
+      "artifact_directory": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-01\\02-device_balanced",
+      "trainer_engine": "RuleDrivenHarnessTrainer",
+      "diagnostic_trace": [
+        {
+          "epoch": 16,
+          "task_type_code": 1.0,
+          "train_loss": 0.10296706480054148,
+          "val_primary_metric": 664.6701993479425,
+          "train_loss_slope": 0.0,
+          "val_metric_slope": 0.0,
+          "generalization_gap": 6455.1728325506965,
+          "grad_norm_mean": 0.0,
+          "grad_norm_std": 0.0,
+          "metric_improvement": 0.0,
+          "plateau_count": 0,
+          "acc_f1_gap": 0.0,
+          "tail_class_f1": 1.0,
+          "overestimate_fraction": 0.3156640857653365
+        },
+        {
+          "epoch": 17,
+          "task_type_code": 1.0,
+          "train_loss": 0.09208569708352889,
+          "val_primary_metric": 677.3226291970474,
+          "train_loss_slope": -0.010881367717012601,
+          "val_metric_slope": 12.652429849104863,
+          "generalization_gap": 7355.351055035866,
+          "grad_norm_mean": 0.0,
+          "grad_norm_std": 0.0,
+          "metric_improvement": -12.65242984910492,
+          "plateau_count": 1,
+          "acc_f1_gap": 0.0,
+          "tail_class_f1": 1.0,
+          "overestimate_fraction": 0.3103037522334723
+        },
+        {
+          "epoch": 18,
+          "task_type_code": 1.0,
+          "train_loss": 0.08441264700742068,
+          "val_primary_metric": 666.1889396139057,
+          "train_loss_slope": -0.009277208896560382,
+          "val_metric_slope": 0.7593701329817167,
+          "generalization_gap": 7892.0512888944395,
+          "grad_norm_mean": 0.0,
+          "grad_norm_std": 0.0,
+          "metric_improvement": 11.133689583141631,
+          "plateau_count": 2,
+          "acc_f1_gap": 0.0,
+          "tail_class_f1": 1.0,
+          "overestimate_fraction": 0.31804645622394284
+        }
+      ]
+    },
+    {
+      "id": "03-regularized",
+      "status": "completed",
+      "strategy": {
+        "id": "regularized",
+        "label": "L2 正则续训",
+        "reason": "鲁棒性对照：保持原结构和输入，抑制权重过度适配。",
+        "learning_rate": 0.0009,
+        "batch_size": 128,
+        "epochs": 5,
+        "l2": 0.003,
+        "noise_std": 0.0,
+        "balanced_classes": false,
+        "balanced_groups": false
+      },
+      "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+      "checkpoint_sha256": "sha256:55ee0555ef8b40faa2dc4965c7e42335f076c35affe2672d4b889e91bac555be",
+      "best_checkpoint": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-01\\03-regularized\\checkpoint.npz",
+      "metrics": {
+        "rmse": 660.938749457224,
+        "mae": 548.4329187657592,
+        "mean_signed_error": -332.03155060456214,
+        "overestimate_fraction": 0.3430613460393091
+      },
+      "history": [
+        {
+          "epoch": 16,
+          "local_epoch": 1,
+          "step": 880,
+          "train_loss": 0.08984775817643756,
+          "validation": {
+            "rmse": 660.938749457224,
+            "mae": 548.4329187657592,
+            "mean_signed_error": -332.03155060456214,
+            "overestimate_fraction": 0.3430613460393091
+          },
+          "elapsed_seconds": 0.013074599999526981
+        },
+        {
+          "epoch": 17,
+          "local_epoch": 2,
+          "step": 935,
+          "train_loss": 0.08908969953740464,
+          "validation": {
+            "rmse": 661.9490146871223,
+            "mae": 550.6053584971738,
+            "mean_signed_error": -335.0437695288323,
+            "overestimate_fraction": 0.3412745681953544
+          },
+          "elapsed_seconds": 0.03206450000288896
+        },
+        {
+          "epoch": 18,
+          "local_epoch": 3,
+          "step": 990,
+          "train_loss": 0.08866314947098015,
+          "validation": {
+            "rmse": 666.2568487299761,
+            "mae": 557.1753426565871,
+            "mean_signed_error": -338.8060695034796,
+            "overestimate_fraction": 0.33948779035139964
+          },
+          "elapsed_seconds": 0.04558000000542961
+        }
+      ],
+      "initial_steps": 825,
+      "initial_epochs": 15,
+      "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+      "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+      "normalization_policy": "preserve_parent_state_no_refit",
+      "gate": {
+        "eligible": true,
+        "reason": "本轮主指标改进最大，接受；相同增益优先先执行的低复杂度候选",
+        "improvement": 20.221083147087256,
+        "passes_primary_threshold": true,
+        "accepted": true
+      },
+      "early_stopped": true,
+      "cost": {
+        "training_seconds": 0.03222709999681683,
+        "total_seconds": 0.047200400003930554,
+        "epochs": 3,
+        "steps": 165
+      },
+      "restored_best_epoch": 16,
+      "selected_steps": 880,
+      "artifact_directory": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-01\\03-regularized",
+      "trainer_engine": "RuleDrivenHarnessTrainer",
+      "diagnostic_trace": [
+        {
+          "epoch": 16,
+          "task_type_code": 1.0,
+          "train_loss": 0.08984775817643756,
+          "val_primary_metric": 660.938749457224,
+          "train_loss_slope": 0.0,
+          "val_metric_slope": 0.0,
+          "generalization_gap": 7356.207465514195,
+          "grad_norm_mean": 0.0,
+          "grad_norm_std": 0.0,
+          "metric_improvement": 0.0,
+          "plateau_count": 0,
+          "acc_f1_gap": 0.0,
+          "tail_class_f1": 1.0,
+          "overestimate_fraction": 0.3430613460393091
+        },
+        {
+          "epoch": 17,
+          "task_type_code": 1.0,
+          "train_loss": 0.08908969953740464,
+          "val_primary_metric": 661.9490146871223,
+          "train_loss_slope": -0.0007580586390329442,
+          "val_metric_slope": 1.0102652298981485,
+          "generalization_gap": 7430.140836979706,
+          "grad_norm_mean": 0.0,
+          "grad_norm_std": 0.0,
+          "metric_improvement": -1.0102652298982093,
+          "plateau_count": 1,
+          "acc_f1_gap": 0.0,
+          "tail_class_f1": 1.0,
+          "overestimate_fraction": 0.3412745681953544
+        },
+        {
+          "epoch": 18,
+          "task_type_code": 1.0,
+          "train_loss": 0.08866314947098015,
+          "val_primary_metric": 666.2568487299761,
+          "train_loss_slope": -0.0005923043527286903,
+          "val_metric_slope": 2.6590496363761242,
+          "generalization_gap": 7514.473066942484,
+          "grad_norm_mean": 0.0,
+          "grad_norm_std": 0.0,
+          "metric_improvement": -4.3078340428538695,
+          "plateau_count": 2,
+          "acc_f1_gap": 0.0,
+          "tail_class_f1": 1.0,
+          "overestimate_fraction": 0.33948779035139964
+        }
+      ]
+    }
+  ],
+  "decision": {
+    "accepted": true,
+    "winner_id": "03-regularized",
+    "reason": "采用本轮主指标最优且超过阈值的候选",
+    "metrics_before": {
+      "rmse": 681.1598326043113,
+      "mae": 563.1058414514887,
+      "mean_signed_error": -365.38394916105057,
+      "overestimate_fraction": 0.3240023823704586
+    },
+    "metrics_after": {
+      "rmse": 660.938749457224,
+      "mae": 548.4329187657592,
+      "mean_signed_error": -332.03155060456214,
+      "overestimate_fraction": 0.3430613460393091
+    },
+    "selected_checkpoint_sha256": "sha256:55ee0555ef8b40faa2dc4965c7e42335f076c35affe2672d4b889e91bac555be"
+  }
+}

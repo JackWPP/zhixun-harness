@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zhixun-harness"
+version = "0.2.0"
+description = "智训引擎 Harness 原型：工业模型受控自进化（诊断 → 策略 → 续训 → 门控）"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Proprietary" }
+authors = [{ name = "Team (original authors)" }]
+dependencies = ["numpy>=1.26.4,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools]
+packages = ["harness"]
+
+[tool.setuptools.package-data]
+harness = ["*.npz", "USAGE.txt", "requirements.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["harness/tests"]

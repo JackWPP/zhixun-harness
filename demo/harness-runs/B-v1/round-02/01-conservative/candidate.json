@@ -1,0 +1,196 @@
+{
+  "id": "01-conservative",
+  "status": "completed",
+  "strategy": {
+    "id": "conservative",
+    "label": "低学习率续训",
+    "reason": "安全对照：保留全部状态，仅降低学习率并选最佳轮。",
+    "learning_rate": 0.00027,
+    "batch_size": 128,
+    "epochs": 5,
+    "l2": 0.0,
+    "noise_std": 0.0,
+    "balanced_classes": false,
+    "balanced_groups": false
+  },
+  "parent_checkpoint_sha256": "sha256:55ee0555ef8b40faa2dc4965c7e42335f076c35affe2672d4b889e91bac555be",
+  "checkpoint_sha256": "sha256:5aa400e5bf856f2c5153218ce9a0ff4bb52557cbe815d9fdd7dc5a420a6d0071",
+  "best_checkpoint": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-02\\01-conservative\\checkpoint.npz",
+  "metrics": {
+    "rmse": 654.7134896812411,
+    "mae": 545.1287233667003,
+    "mean_signed_error": -319.87341457607727,
+    "overestimate_fraction": 0.34603930911256703
+  },
+  "history": [
+    {
+      "epoch": 17,
+      "local_epoch": 1,
+      "step": 935,
+      "train_loss": 0.08841907503303119,
+      "validation": {
+        "rmse": 658.5065503044779,
+        "mae": 546.8455546570659,
+        "mean_signed_error": -327.8904975320054,
+        "overestimate_fraction": 0.3424657534246575
+      },
+      "elapsed_seconds": 0.011389799998141825
+    },
+    {
+      "epoch": 18,
+      "local_epoch": 2,
+      "step": 990,
+      "train_loss": 0.08790334082093611,
+      "validation": {
+        "rmse": 663.6203844476249,
+        "mae": 551.568268045645,
+        "mean_signed_error": -335.5747993481559,
+        "overestimate_fraction": 0.3424657534246575
+      },
+      "elapsed_seconds": 0.030573199997888878
+    },
+    {
+      "epoch": 19,
+      "local_epoch": 3,
+      "step": 1045,
+      "train_loss": 0.08790127597737445,
+      "validation": {
+        "rmse": 658.4653773172655,
+        "mae": 547.4292631877474,
+        "mean_signed_error": -327.1268379926627,
+        "overestimate_fraction": 0.3430613460393091
+      },
+      "elapsed_seconds": 0.04692559999966761
+    },
+    {
+      "epoch": 20,
+      "local_epoch": 4,
+      "step": 1100,
+      "train_loss": 0.08747221372654192,
+      "validation": {
+        "rmse": 654.7134896812411,
+        "mae": 545.1287233667003,
+        "mean_signed_error": -319.87341457607727,
+        "overestimate_fraction": 0.34603930911256703
+      },
+      "elapsed_seconds": 0.06493829999817535
+    },
+    {
+      "epoch": 21,
+      "local_epoch": 5,
+      "step": 1155,
+      "train_loss": 0.08714529011453799,
+      "validation": {
+        "rmse": 654.9958720970836,
+        "mae": 545.2325182634611,
+        "mean_signed_error": -321.1312862555584,
+        "overestimate_fraction": 0.34603930911256703
+      },
+      "elapsed_seconds": 0.08273860000190325
+    }
+  ],
+  "initial_steps": 880,
+  "initial_epochs": 16,
+  "optimizer_training_sha256": "sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+  "evaluation_validation_sha256": "sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+  "normalization_policy": "preserve_parent_state_no_refit",
+  "gate": {
+    "eligible": true,
+    "reason": "达到主指标改进阈值，参与本轮择优",
+    "improvement": 6.225259775982977,
+    "passes_primary_threshold": true,
+    "accepted": false
+  },
+  "cost": {
+    "training_seconds": 0.05469479999737814,
+    "total_seconds": 0.0840364999967278,
+    "epochs": 5,
+    "steps": 275
+  },
+  "restored_best_epoch": 20,
+  "selected_steps": 1100,
+  "artifact_directory": "D:\\AppData\\2026-11-14-09-31-59\\outputs\\harness-runs\\B-v1\\round-02\\01-conservative",
+  "trainer_engine": "RuleDrivenHarnessTrainer",
+  "diagnostic_trace": [
+    {
+      "epoch": 17,
+      "task_type_code": 1.0,
+      "train_loss": 0.08841907503303119,
+      "val_primary_metric": 658.5065503044779,
+      "train_loss_slope": 0.0,
+      "val_metric_slope": 0.0,
+      "generalization_gap": 7447.562079319152,
+      "grad_norm_mean": 0.0,
+      "grad_norm_std": 0.0,
+      "metric_improvement": 0.0,
+      "plateau_count": 0,
+      "acc_f1_gap": 0.0,
+      "tail_class_f1": 1.0,
+      "overestimate_fraction": 0.3424657534246575
+    },
+    {
+      "epoch": 18,
+      "task_type_code": 1.0,
+      "train_loss": 0.08790334082093611,
+      "val_primary_metric": 663.6203844476249,
+      "train_loss_slope": -0.0005157342120950977,
+      "val_metric_slope": 5.11383414314699,
+      "generalization_gap": 7549.433027801023,
+      "grad_norm_mean": 0.0,
+      "grad_norm_std": 0.0,
+      "metric_improvement": -5.1138341431470735,
+      "plateau_count": 1,
+      "acc_f1_gap": 0.0,
+      "tail_class_f1": 1.0,
+      "overestimate_fraction": 0.3424657534246575
+    },
+    {
+      "epoch": 19,
+      "task_type_code": 1.0,
+      "train_loss": 0.08790127597737445,
+      "val_primary_metric": 658.4653773172655,
+      "train_loss_slope": -0.00025889952782837144,
+      "val_metric_slope": -0.020586493606123128,
+      "generalization_gap": 7490.964948981546,
+      "grad_norm_mean": 0.0,
+      "grad_norm_std": 0.0,
+      "metric_improvement": 5.155007130359422,
+      "plateau_count": 0,
+      "acc_f1_gap": 0.0,
+      "tail_class_f1": 1.0,
+      "overestimate_fraction": 0.3430613460393091
+    },
+    {
+      "epoch": 20,
+      "task_type_code": 1.0,
+      "train_loss": 0.08747221372654192,
+      "val_primary_metric": 654.7134896812411,
+      "train_loss_slope": -0.00021556354719708164,
+      "val_metric_slope": -4.453447383191872,
+      "generalization_gap": 7484.816741097061,
+      "grad_norm_mean": 0.0,
+      "grad_norm_std": 0.0,
+      "metric_improvement": 3.751887636024435,
+      "plateau_count": 0,
+      "acc_f1_gap": 0.0,
+      "tail_class_f1": 1.0,
+      "overestimate_fraction": 0.34603930911256703
+    },
+    {
+      "epoch": 21,
+      "task_type_code": 1.0,
+      "train_loss": 0.08714529011453799,
+      "val_primary_metric": 654.9958720970836,
+      "train_loss_slope": -0.000377992931418221,
+      "val_metric_slope": -1.7347526100909274,
+      "generalization_gap": 7516.136227628602,
+      "grad_norm_mean": 0.0,
+      "grad_norm_std": 0.0,
+      "metric_improvement": -0.2823824158425623,
+      "plateau_count": 1,
+      "acc_f1_gap": 0.0,
+      "tail_class_f1": 1.0,
+      "overestimate_fraction": 0.34603930911256703
+    }
+  ]
+}

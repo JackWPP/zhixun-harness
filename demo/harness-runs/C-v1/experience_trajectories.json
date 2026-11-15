@@ -1,0 +1,143 @@
+{
+  "count": 6,
+  "records": [
+    {
+      "task": "C",
+      "round_index": 1,
+      "candidate_id": "01-conservative",
+      "strategy_id": "conservative",
+      "state_vector": [
+        1.0,
+        4.032121310408502,
+        3.986547238589589,
+        -0.045355629490007224,
+        0.023007138128004742,
+        0.030785022543116027,
+        496.0,
+        106.0,
+        0.0,
+        0.0,
+        0.5718686277061912,
+        0.0
+      ],
+      "improvement": 1.09986524342402,
+      "accepted": true,
+      "eligible": true
+    },
+    {
+      "task": "C",
+      "round_index": 1,
+      "candidate_id": "02-regularized",
+      "strategy_id": "regularized",
+      "state_vector": [
+        1.0,
+        4.032121310408502,
+        3.986547238589589,
+        -0.045355629490007224,
+        0.023007138128004742,
+        0.030785022543116027,
+        496.0,
+        106.0,
+        0.0,
+        0.0,
+        0.5718686277061912,
+        0.0
+      ],
+      "improvement": 0.8884013685978189,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "C",
+      "round_index": 1,
+      "candidate_id": "03-robust_noise",
+      "strategy_id": "robust_noise",
+      "state_vector": [
+        1.0,
+        4.032121310408502,
+        3.986547238589589,
+        -0.045355629490007224,
+        0.023007138128004742,
+        0.030785022543116027,
+        496.0,
+        106.0,
+        0.0,
+        0.0,
+        0.5718686277061912,
+        0.0
+      ],
+      "improvement": 0.8567827480250543,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "C",
+      "round_index": 2,
+      "candidate_id": "01-conservative",
+      "strategy_id": "conservative",
+      "state_vector": [
+        1.0,
+        4.0218271641977825,
+        3.965918350674242,
+        -0.05536682390411704,
+        0.023007138128004742,
+        0.030785022543116027,
+        496.0,
+        106.0,
+        0.0,
+        0.0,
+        0.5492212243481279,
+        0.0
+      ],
+      "improvement": 0.010622627322426581,
+      "accepted": true,
+      "eligible": true
+    },
+    {
+      "task": "C",
+      "round_index": 2,
+      "candidate_id": "02-regularized",
+      "strategy_id": "regularized",
+      "state_vector": [
+        1.0,
+        4.0218271641977825,
+        3.965918350674242,
+        -0.05536682390411704,
+        0.023007138128004742,
+        0.030785022543116027,
+        496.0,
+        106.0,
+        0.0,
+        0.0,
+        0.5492212243481279,
+        0.0
+      ],
+      "improvement": -0.06562804690427981,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "C",
+      "round_index": 2,
+      "candidate_id": "03-robust_noise",
+      "strategy_id": "robust_noise",
+      "state_vector": [
+        1.0,
+        4.0218271641977825,
+        3.965918350674242,
+        -0.05536682390411704,
+        0.023007138128004742,
+        0.030785022543116027,
+        496.0,
+        106.0,
+        0.0,
+        0.0,
+        0.5492212243481279,
+        0.0
+      ],
+      "improvement": -0.16317664086964356,
+      "accepted": false,
+      "eligible": true
+    }
+  ]
+}

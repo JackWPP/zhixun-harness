@@ -1,0 +1,16 @@
+# 全局默认：文本文件统一 LF（源码、文档、脚本）
+* text=auto eol=lf
+
+# 原始压缩包与二进制检查点按二进制处理，禁止行尾转换
+*.zip       binary
+*.npz       binary
+*.png       binary
+*.webp      binary
+*.pdf       binary
+
+# 数据与运行产物：必须保持字节原样（-text 关闭行尾归一化），
+# 否则 sha256 会变、demo 的摘要校验会失败、审计结论无法复现。
+datasets/**          -text -diff linguist-generated
+demo/**              -text -diff linguist-generated
+audit/results/**     -text -diff linguist-generated
+archives/SHA256SUMS  -text

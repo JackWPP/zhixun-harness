@@ -1,0 +1,898 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Harness 本地运行报告</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#243047;font:15px/1.65 system-ui,-apple-system,"Microsoft YaHei",sans-serif}main{max-width:1180px;margin:auto;padding:32px 22px}h1,h2,h3,h4{line-height:1.35;color:#16233a}h1{font-size:30px}h2{font-size:22px}h4{margin:0}section,header{background:white;border:1px solid #dfe5ee;border-radius:14px;padding:24px;margin-bottom:22px}.muted{color:#627089}.notice{background:#fff6df;border-left:4px solid #d49a22;padding:16px;border-radius:6px}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}.card{background:#f4f7fe;border:1px solid #e0e7f6;padding:18px;border-radius:10px}.value{display:block;font-size:30px;font-weight:700;color:#224d99}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;text-align:left}th,td{padding:12px;border-bottom:1px solid #e3e8f0;vertical-align:top}th{background:#f5f7fb}td p{margin:6px 0}code,pre{font-family:ui-monospace,Consolas,monospace;overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f5f7fb;padding:14px;border-radius:8px;font-size:13px}details{margin:12px 0}summary{cursor:pointer;color:#2855a0}a{color:#2158ad;text-underline-offset:3px}.links{display:flex;flex-wrap:wrap;gap:18px}.finding,.decision{border-left:3px solid #a8bce2;padding:14px 18px;margin:16px 0;background:#f8faff}.error{color:#a32929;overflow-wrap:anywhere}p,li,td{overflow-wrap:anywhere}@media(max-width:640px){main{padding:16px 10px}section,header{padding:18px 14px}.cards{grid-template-columns:1fr}h1{font-size:25px}th,td{min-width:140px;padding:10px}}
+</style></head><body><main><header><h1>Harness 本地运行报告</h1><p>任务 B · 已完成</p><p>运行 ID：<code>B-v1</code></p><p class="muted">开始：2026-11-14T14:09:02.195670+00:00<br>结束：2026-11-14T14:09:04.444143+00:00</p><div class="notice"><strong>仅限开发验证，不代表官方或隐藏测试集成绩。</strong>本报告不包含隐藏数据评估。验证集仅用于评估与候选选择，不参与优化器更新。策略与诊断基于规则，不使用 LLM。</div></header><section><h2>基线与最终选择</h2><p>关键指标：rmse（越低越好）；不推断或补造缺失指标及改进量。</p><div class="cards"><div class="card">基线<span class="value">681.16</span>RMSE: 681.16<br>MAE: 563.106<br>平均有符号误差: -365.384<br>高估比例: 0.324002</div><div class="card">最终选择<span class="value">652.19</span>RMSE: 652.19<br>MAE: 543.386<br>平均有符号误差: -317.361<br>高估比例: 0.34723</div></div><p>基线检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\B-v1\source\checkpoint.npz</code> <code title="sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4">sha256:c7d81…283314b4</code></p><p>最终检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\B-v1\selected\checkpoint.npz</code> <code title="sha256:27f149eaf89c31841bedfea76f5e953366705876e312209349b229a586658be9">sha256:27f14…86658be9</code></p><nav class="links"><a href="summary.json" download>下载运行摘要</a><a href="events.jsonl" download>下载事件日志</a><a href="selected/checkpoint.npz" download>下载最终检查点</a></nav></section><section><h2>基线诊断</h2><ul><li>输入均值存在跨集合差异</li><li>跨设备验证误差明显高于训练误差</li><li>原模型不及训练均值常数对照</li><li>总体误差由少量长序列设备主导</li><li>RUL 真值依赖完整寿命记录</li><li>没有漂移原因标签，诊断不是因果证明</li></ul><article class="finding"><h4>输入均值存在跨集合差异</h4><p class="muted">编号：observable_input_shift · 严重程度：notice</p><p>建议：仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。</p><details><summary>查看证据</summary><pre>{
+  &quot;top_features&quot;: [
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 1.0540396565527663
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;skewness\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 0.7942593046390863
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 0.7620452357846174
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>跨设备验证误差明显高于训练误差</h4><p class="muted">编号：generalization_gap · 严重程度：warning</p><p>建议：尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。</p><details><summary>查看证据</summary><pre>{
+  &quot;train_rmse&quot;: 233.3578239319839,
+  &quot;validation_rmse&quot;: 681.1598326043113
+}</pre></details></article><article class="finding"><h4>原模型不及训练均值常数对照</h4><p class="muted">编号：worse_than_constant · 严重程度：warning</p><p>建议：优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。</p><details><summary>查看证据</summary><pre>{
+  &quot;model_rmse&quot;: 681.1598326043113,
+  &quot;constant_rmse&quot;: 536.2706281575896
+}</pre></details></article><article class="finding"><h4>总体误差由少量长序列设备主导</h4><p class="muted">编号：validation_device_dominance · 严重程度：notice</p><p>建议：同时报告总体与逐设备误差；仍按原主指标门控。</p><details><summary>查看证据</summary><pre>{
+  &quot;largest_device_fraction&quot;: 0.9023228111971412,
+  &quot;counts&quot;: {
+    &quot;Bearing1_4&quot;: 122,
+    &quot;Bearing2_4&quot;: 42,
+    &quot;Bearing3_4&quot;: 1515
+  }
+}</pre></details></article><article class="finding"><h4>RUL 真值依赖完整寿命记录</h4><p class="muted">编号：rul_label_delay · 严重程度：notice</p><p>建议：当前只做离线续训，不假设在线失效前已经获得真实 RUL。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><article class="finding"><h4>没有漂移原因标签，诊断不是因果证明</h4><p class="muted">编号：no_causal_labels · 严重程度：info</p><p>建议：规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><details><summary>诊断指标与详细信息</summary><pre>{
+  &quot;train_metrics&quot;: {
+    &quot;rmse&quot;: 233.3578239319839,
+    &quot;mae&quot;: 167.2222699905699,
+    &quot;mean_signed_error&quot;: -7.11965815728649,
+    &quot;overestimate_fraction&quot;: 0.45236063708759955
+  },
+  &quot;validation_metrics&quot;: {
+    &quot;rmse&quot;: 681.1598326043113,
+    &quot;mae&quot;: 563.1058414514887,
+    &quot;mean_signed_error&quot;: -365.38394916105057,
+    &quot;overestimate_fraction&quot;: 0.3240023823704586
+  },
+  &quot;details&quot;: {
+    &quot;train_rows&quot;: 7032,
+    &quot;validation_rows&quot;: 1679,
+    &quot;train_group_count&quot;: 9,
+    &quot;validation_group_count&quot;: 3,
+    &quot;feature_shift&quot;: {
+      &quot;top&quot;: [
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.0540396565527663
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;skewness\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7942593046390863
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7620452357846174
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_kurtosis\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7350261755584536
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;dominant_freq\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.5627447491474165
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;band3_energy_6k_12k\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.44762658426939467
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;dominant_freq\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.40755856413559693
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;mean_abs\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.40210391324735323
+        }
+      ],
+      &quot;median&quot;: 0.31393796865452894,
+      &quot;interpretation&quot;: &quot;descriptive_input_change_not_causal_or_conditional_drift_proof&quot;
+    },
+    &quot;train_by_device&quot;: {
+      &quot;Bearing1_1&quot;: {
+        &quot;rows&quot;: 123,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 119.22355093755493,
+          &quot;mae&quot;: 86.83902195295303,
+          &quot;mean_signed_error&quot;: 50.49560095153025,
+          &quot;overestimate_fraction&quot;: 0.5934959349593496
+        }
+      },
+      &quot;Bearing1_2&quot;: {
+        &quot;rows&quot;: 161,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 152.83744273112984,
+          &quot;mae&quot;: 103.21016657065549,
+          &quot;mean_signed_error&quot;: 41.282834328226656,
+          &quot;overestimate_fraction&quot;: 0.42857142857142855
+        }
+      },
+      &quot;Bearing1_3&quot;: {
+        &quot;rows&quot;: 158,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 482.53385854579494,
+          &quot;mae&quot;: 346.11820297656186,
+          &quot;mean_signed_error&quot;: 336.9998508636183,
+          &quot;overestimate_fraction&quot;: 0.8291139240506329
+        }
+      },
+      &quot;Bearing2_1&quot;: {
+        &quot;rows&quot;: 491,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 171.8146775660628,
+          &quot;mae&quot;: 137.88601813429662,
+          &quot;mean_signed_error&quot;: -47.97181128843148,
+          &quot;overestimate_fraction&quot;: 0.37474541751527496
+        }
+      },
+      &quot;Bearing2_2&quot;: {
+        &quot;rows&quot;: 161,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 404.1283897215028,
+          &quot;mae&quot;: 233.5127280466968,
+          &quot;mean_signed_error&quot;: 199.1733737577084,
+          &quot;overestimate_fraction&quot;: 0.5900621118012422
+        }
+      },
+      &quot;Bearing2_3&quot;: {
+        &quot;rows&quot;: 533,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 127.82697658561024,
+          &quot;mae&quot;: 97.62437294120535,
+          &quot;mean_signed_error&quot;: -4.637386668599498,
+          &quot;overestimate_fraction&quot;: 0.4446529080675422
+        }
+      },
+      &quot;Bearing3_1&quot;: {
+        &quot;rows&quot;: 2538,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 253.15986943252238,
+          &quot;mae&quot;: 190.92580084738242,
+          &quot;mean_signed_error&quot;: -67.90868327555563,
+          &quot;overestimate_fraction&quot;: 0.3947990543735225
+        }
+      },
+      &quot;Bearing3_2&quot;: {
+        &quot;rows&quot;: 2496,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 210.07390455288134,
+          &quot;mae&quot;: 157.57323512736366,
+          &quot;mean_signed_error&quot;: 17.142794592376706,
+          &quot;overestimate_fraction&quot;: 0.48838141025641024
+        }
+      },
+      &quot;Bearing3_3&quot;: {
+        &quot;rows&quot;: 371,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 222.25646148001246,
+          &quot;mae&quot;: 158.2707214545161,
+          &quot;mean_signed_error&quot;: 19.82180126794401,
+          &quot;overestimate_fraction&quot;: 0.4609164420485175
+        }
+      }
+    },
+    &quot;validation_by_device&quot;: {
+      &quot;Bearing1_4&quot;: {
+        &quot;rows&quot;: 122,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 241.9807988305028,
+          &quot;mae&quot;: 175.58693393738474,
+          &quot;mean_signed_error&quot;: 166.54097851074982,
+          &quot;overestimate_fraction&quot;: 0.860655737704918
+        }
+      },
+      &quot;Bearing2_4&quot;: {
+        &quot;rows&quot;: 42,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 390.81504161336534,
+          &quot;mae&quot;: 328.14713559610186,
+          &quot;mean_signed_error&quot;: 326.26610784099495,
+          &quot;overestimate_fraction&quot;: 0.9523809523809523
+        }
+      },
+      &quot;Bearing3_4&quot;: {
+        &quot;rows&quot;: 1515,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 710.8130722393482,
+          &quot;mae&quot;: 600.82569119581,
+          &quot;mean_signed_error&quot;: -427.3932848508497,
+          &quot;overestimate_fraction&quot;: 0.2633663366336634
+        }
+      }
+    },
+    &quot;constant_training_mean_reference&quot;: {
+      &quot;value&quot;: 954.1505972696245,
+      &quot;validation_rmse&quot;: 536.2706281575896,
+      &quot;fit_role&quot;: &quot;train&quot;,
+      &quot;not_a_continuation_candidate&quot;: true
+    }
+  }
+}</pre></details></section><section><h2>第 1 轮</h2><p>父检查点摘要：<code title="sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4">sha256:c7d81…283314b4</code></p><ul><li>输入均值存在跨集合差异</li><li>跨设备验证误差明显高于训练误差</li><li>原模型不及训练均值常数对照</li><li>总体误差由少量长序列设备主导</li><li>RUL 真值依赖完整寿命记录</li><li>没有漂移原因标签，诊断不是因果证明</li></ul><article class="finding"><h4>输入均值存在跨集合差异</h4><p class="muted">编号：observable_input_shift · 严重程度：notice</p><p>建议：仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。</p><details><summary>查看证据</summary><pre>{
+  &quot;top_features&quot;: [
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 1.0540396565527663
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;skewness\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 0.7942593046390863
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 0.7620452357846174
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>跨设备验证误差明显高于训练误差</h4><p class="muted">编号：generalization_gap · 严重程度：warning</p><p>建议：尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。</p><details><summary>查看证据</summary><pre>{
+  &quot;train_rmse&quot;: 233.3578239319839,
+  &quot;validation_rmse&quot;: 681.1598326043113
+}</pre></details></article><article class="finding"><h4>原模型不及训练均值常数对照</h4><p class="muted">编号：worse_than_constant · 严重程度：warning</p><p>建议：优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。</p><details><summary>查看证据</summary><pre>{
+  &quot;model_rmse&quot;: 681.1598326043113,
+  &quot;constant_rmse&quot;: 536.2706281575896
+}</pre></details></article><article class="finding"><h4>总体误差由少量长序列设备主导</h4><p class="muted">编号：validation_device_dominance · 严重程度：notice</p><p>建议：同时报告总体与逐设备误差；仍按原主指标门控。</p><details><summary>查看证据</summary><pre>{
+  &quot;largest_device_fraction&quot;: 0.9023228111971412,
+  &quot;counts&quot;: {
+    &quot;Bearing1_4&quot;: 122,
+    &quot;Bearing2_4&quot;: 42,
+    &quot;Bearing3_4&quot;: 1515
+  }
+}</pre></details></article><article class="finding"><h4>RUL 真值依赖完整寿命记录</h4><p class="muted">编号：rul_label_delay · 严重程度：notice</p><p>建议：当前只做离线续训，不假设在线失效前已经获得真实 RUL。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><article class="finding"><h4>没有漂移原因标签，诊断不是因果证明</h4><p class="muted">编号：no_causal_labels · 严重程度：info</p><p>建议：规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><details><summary>诊断指标与详细信息</summary><pre>{
+  &quot;train_metrics&quot;: {
+    &quot;rmse&quot;: 233.3578239319839,
+    &quot;mae&quot;: 167.2222699905699,
+    &quot;mean_signed_error&quot;: -7.11965815728649,
+    &quot;overestimate_fraction&quot;: 0.45236063708759955
+  },
+  &quot;validation_metrics&quot;: {
+    &quot;rmse&quot;: 681.1598326043113,
+    &quot;mae&quot;: 563.1058414514887,
+    &quot;mean_signed_error&quot;: -365.38394916105057,
+    &quot;overestimate_fraction&quot;: 0.3240023823704586
+  },
+  &quot;details&quot;: {
+    &quot;train_rows&quot;: 7032,
+    &quot;validation_rows&quot;: 1679,
+    &quot;train_group_count&quot;: 9,
+    &quot;validation_group_count&quot;: 3,
+    &quot;feature_shift&quot;: {
+      &quot;top&quot;: [
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.0540396565527663
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;skewness\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7942593046390863
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7620452357846174
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_kurtosis\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7350261755584536
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;dominant_freq\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.5627447491474165
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;band3_energy_6k_12k\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.44762658426939467
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;dominant_freq\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.40755856413559693
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;mean_abs\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.40210391324735323
+        }
+      ],
+      &quot;median&quot;: 0.31393796865452894,
+      &quot;interpretation&quot;: &quot;descriptive_input_change_not_causal_or_conditional_drift_proof&quot;
+    },
+    &quot;train_by_device&quot;: {
+      &quot;Bearing1_1&quot;: {
+        &quot;rows&quot;: 123,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 119.22355093755493,
+          &quot;mae&quot;: 86.83902195295303,
+          &quot;mean_signed_error&quot;: 50.49560095153025,
+          &quot;overestimate_fraction&quot;: 0.5934959349593496
+        }
+      },
+      &quot;Bearing1_2&quot;: {
+        &quot;rows&quot;: 161,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 152.83744273112984,
+          &quot;mae&quot;: 103.21016657065549,
+          &quot;mean_signed_error&quot;: 41.282834328226656,
+          &quot;overestimate_fraction&quot;: 0.42857142857142855
+        }
+      },
+      &quot;Bearing1_3&quot;: {
+        &quot;rows&quot;: 158,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 482.53385854579494,
+          &quot;mae&quot;: 346.11820297656186,
+          &quot;mean_signed_error&quot;: 336.9998508636183,
+          &quot;overestimate_fraction&quot;: 0.8291139240506329
+        }
+      },
+      &quot;Bearing2_1&quot;: {
+        &quot;rows&quot;: 491,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 171.8146775660628,
+          &quot;mae&quot;: 137.88601813429662,
+          &quot;mean_signed_error&quot;: -47.97181128843148,
+          &quot;overestimate_fraction&quot;: 0.37474541751527496
+        }
+      },
+      &quot;Bearing2_2&quot;: {
+        &quot;rows&quot;: 161,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 404.1283897215028,
+          &quot;mae&quot;: 233.5127280466968,
+          &quot;mean_signed_error&quot;: 199.1733737577084,
+          &quot;overestimate_fraction&quot;: 0.5900621118012422
+        }
+      },
+      &quot;Bearing2_3&quot;: {
+        &quot;rows&quot;: 533,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 127.82697658561024,
+          &quot;mae&quot;: 97.62437294120535,
+          &quot;mean_signed_error&quot;: -4.637386668599498,
+          &quot;overestimate_fraction&quot;: 0.4446529080675422
+        }
+      },
+      &quot;Bearing3_1&quot;: {
+        &quot;rows&quot;: 2538,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 253.15986943252238,
+          &quot;mae&quot;: 190.92580084738242,
+          &quot;mean_signed_error&quot;: -67.90868327555563,
+          &quot;overestimate_fraction&quot;: 0.3947990543735225
+        }
+      },
+      &quot;Bearing3_2&quot;: {
+        &quot;rows&quot;: 2496,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 210.07390455288134,
+          &quot;mae&quot;: 157.57323512736366,
+          &quot;mean_signed_error&quot;: 17.142794592376706,
+          &quot;overestimate_fraction&quot;: 0.48838141025641024
+        }
+      },
+      &quot;Bearing3_3&quot;: {
+        &quot;rows&quot;: 371,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 222.25646148001246,
+          &quot;mae&quot;: 158.2707214545161,
+          &quot;mean_signed_error&quot;: 19.82180126794401,
+          &quot;overestimate_fraction&quot;: 0.4609164420485175
+        }
+      }
+    },
+    &quot;validation_by_device&quot;: {
+      &quot;Bearing1_4&quot;: {
+        &quot;rows&quot;: 122,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 241.9807988305028,
+          &quot;mae&quot;: 175.58693393738474,
+          &quot;mean_signed_error&quot;: 166.54097851074982,
+          &quot;overestimate_fraction&quot;: 0.860655737704918
+        }
+      },
+      &quot;Bearing2_4&quot;: {
+        &quot;rows&quot;: 42,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 390.81504161336534,
+          &quot;mae&quot;: 328.14713559610186,
+          &quot;mean_signed_error&quot;: 326.26610784099495,
+          &quot;overestimate_fraction&quot;: 0.9523809523809523
+        }
+      },
+      &quot;Bearing3_4&quot;: {
+        &quot;rows&quot;: 1515,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 710.8130722393482,
+          &quot;mae&quot;: 600.82569119581,
+          &quot;mean_signed_error&quot;: -427.3932848508497,
+          &quot;overestimate_fraction&quot;: 0.2633663366336634
+        }
+      }
+    },
+    &quot;constant_training_mean_reference&quot;: {
+      &quot;value&quot;: 954.1505972696245,
+      &quot;validation_rmse&quot;: 536.2706281575896,
+      &quot;fit_role&quot;: &quot;train&quot;,
+      &quot;not_a_continuation_candidate&quot;: true
+    }
+  }
+}</pre></details><div class="table-wrap"><table><thead><tr><th>候选 / 状态</th><th>策略</th><th>最佳验证指标 / 检查点</th><th>成本</th><th>准入判定</th></tr></thead><tbody><tr><td><strong>01-conservative</strong><br>已完成</td><td>低学习率续训<p>安全对照：保留全部状态，仅降低学习率并选最佳轮。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;conservative&quot;,
+  &quot;label&quot;: &quot;低学习率续训&quot;,
+  &quot;reason&quot;: &quot;安全对照：保留全部状态，仅降低学习率并选最佳轮。&quot;,
+  &quot;learning_rate&quot;: 0.0009,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.0,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: false,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>RMSE: 662.791<br>MAE: 549.762<br>平均有符号误差: -333.486<br>高估比例: 0.341275<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\B-v1\round-01\01-conservative\checkpoint.npz</code></p><code title="sha256:d1adf17b7e1f0df4d25da447fdbd4d3ef3a65e2624ec919f33d0d5b5c263b3dd">sha256:d1adf…c263b3dd</code></td><td>训练 0.0481115 秒<br>总计 0.062496 秒<br>轮次 3 / 步数 165</td><td>未接受<p>达到主指标改进阈值，参与本轮择优</p>改进量：18.3687</td></tr><tr><td><strong>02-device_balanced</strong><br>已完成</td><td>训练设备均衡抽样＋L2<p>跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;device_balanced&quot;,
+  &quot;label&quot;: &quot;训练设备均衡抽样＋L2&quot;,
+  &quot;reason&quot;: &quot;跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。&quot;,
+  &quot;learning_rate&quot;: 0.0009,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.002,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: false,
+  &quot;balanced_groups&quot;: true
+}</pre></details></td><td>RMSE: 664.67<br>MAE: 544.112<br>平均有符号误差: -359.173<br>高估比例: 0.315664<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\B-v1\round-01\02-device_balanced\checkpoint.npz</code></p><code title="sha256:142df71da59ffa75d6e75dee3e5ff56ca6bea39631b081dc34af7f76ad3c6c6a">sha256:142df…ad3c6c6a</code></td><td>训练 0.0357753 秒<br>总计 0.0506795 秒<br>轮次 3 / 步数 165</td><td>未接受<p>达到主指标改进阈值，参与本轮择优</p>改进量：16.4896</td></tr><tr><td><strong>03-regularized</strong><br>已完成</td><td>L2 正则续训<p>鲁棒性对照：保持原结构和输入，抑制权重过度适配。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;regularized&quot;,
+  &quot;label&quot;: &quot;L2 正则续训&quot;,
+  &quot;reason&quot;: &quot;鲁棒性对照：保持原结构和输入，抑制权重过度适配。&quot;,
+  &quot;learning_rate&quot;: 0.0009,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.003,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: false,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>RMSE: 660.939<br>MAE: 548.433<br>平均有符号误差: -332.032<br>高估比例: 0.343061<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\B-v1\round-01\03-regularized\checkpoint.npz</code></p><code title="sha256:55ee0555ef8b40faa2dc4965c7e42335f076c35affe2672d4b889e91bac555be">sha256:55ee0…bac555be</code></td><td>训练 0.0322271 秒<br>总计 0.0472004 秒<br>轮次 3 / 步数 165</td><td>已接受<p>本轮主指标改进最大，接受；相同增益优先先执行的低复杂度候选</p>改进量：20.2211</td></tr></tbody></table></div><div class="decision"><h3>本轮决策：接受候选</h3><p>胜出候选：03-regularized</p><p>原因：采用本轮主指标最优且超过阈值的候选</p><p>变更前：RMSE: 681.16<br>MAE: 563.106<br>平均有符号误差: -365.384<br>高估比例: 0.324002</p><p>变更后：RMSE: 660.939<br>MAE: 548.433<br>平均有符号误差: -332.032<br>高估比例: 0.343061</p></div></section><section><h2>第 2 轮</h2><p>父检查点摘要：<code title="sha256:55ee0555ef8b40faa2dc4965c7e42335f076c35affe2672d4b889e91bac555be">sha256:55ee0…bac555be</code></p><ul><li>输入均值存在跨集合差异</li><li>跨设备验证误差明显高于训练误差</li><li>原模型不及训练均值常数对照</li><li>总体误差由少量长序列设备主导</li><li>RUL 真值依赖完整寿命记录</li><li>没有漂移原因标签，诊断不是因果证明</li></ul><article class="finding"><h4>输入均值存在跨集合差异</h4><p class="muted">编号：observable_input_shift · 严重程度：notice</p><p>建议：仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。</p><details><summary>查看证据</summary><pre>{
+  &quot;top_features&quot;: [
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 1.0540396565527663
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;skewness\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 0.7942593046390863
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 0.7620452357846174
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>跨设备验证误差明显高于训练误差</h4><p class="muted">编号：generalization_gap · 严重程度：warning</p><p>建议：尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。</p><details><summary>查看证据</summary><pre>{
+  &quot;train_rmse&quot;: 229.71545623291678,
+  &quot;validation_rmse&quot;: 660.938749457224
+}</pre></details></article><article class="finding"><h4>原模型不及训练均值常数对照</h4><p class="muted">编号：worse_than_constant · 严重程度：warning</p><p>建议：优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。</p><details><summary>查看证据</summary><pre>{
+  &quot;model_rmse&quot;: 660.938749457224,
+  &quot;constant_rmse&quot;: 536.2706281575896
+}</pre></details></article><article class="finding"><h4>总体误差由少量长序列设备主导</h4><p class="muted">编号：validation_device_dominance · 严重程度：notice</p><p>建议：同时报告总体与逐设备误差；仍按原主指标门控。</p><details><summary>查看证据</summary><pre>{
+  &quot;largest_device_fraction&quot;: 0.9023228111971412,
+  &quot;counts&quot;: {
+    &quot;Bearing1_4&quot;: 122,
+    &quot;Bearing2_4&quot;: 42,
+    &quot;Bearing3_4&quot;: 1515
+  }
+}</pre></details></article><article class="finding"><h4>RUL 真值依赖完整寿命记录</h4><p class="muted">编号：rul_label_delay · 严重程度：notice</p><p>建议：当前只做离线续训，不假设在线失效前已经获得真实 RUL。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><article class="finding"><h4>没有漂移原因标签，诊断不是因果证明</h4><p class="muted">编号：no_causal_labels · 严重程度：info</p><p>建议：规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><details><summary>诊断指标与详细信息</summary><pre>{
+  &quot;train_metrics&quot;: {
+    &quot;rmse&quot;: 229.71545623291678,
+    &quot;mae&quot;: 163.0014073547357,
+    &quot;mean_signed_error&quot;: 5.395951571034926,
+    &quot;overestimate_fraction&quot;: 0.4751137656427759
+  },
+  &quot;validation_metrics&quot;: {
+    &quot;rmse&quot;: 660.938749457224,
+    &quot;mae&quot;: 548.4329187657592,
+    &quot;mean_signed_error&quot;: -332.03155060456214,
+    &quot;overestimate_fraction&quot;: 0.3430613460393091
+  },
+  &quot;details&quot;: {
+    &quot;train_rows&quot;: 7032,
+    &quot;validation_rows&quot;: 1679,
+    &quot;train_group_count&quot;: 9,
+    &quot;validation_group_count&quot;: 3,
+    &quot;feature_shift&quot;: {
+      &quot;top&quot;: [
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.0540396565527663
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;skewness\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7942593046390863
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7620452357846174
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_kurtosis\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7350261755584536
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;dominant_freq\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.5627447491474165
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;band3_energy_6k_12k\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.44762658426939467
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;dominant_freq\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.40755856413559693
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;mean_abs\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.40210391324735323
+        }
+      ],
+      &quot;median&quot;: 0.31393796865452894,
+      &quot;interpretation&quot;: &quot;descriptive_input_change_not_causal_or_conditional_drift_proof&quot;
+    },
+    &quot;train_by_device&quot;: {
+      &quot;Bearing1_1&quot;: {
+        &quot;rows&quot;: 123,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 98.39653353477749,
+          &quot;mae&quot;: 71.50799581252915,
+          &quot;mean_signed_error&quot;: 33.20751073000254,
+          &quot;overestimate_fraction&quot;: 0.5365853658536586
+        }
+      },
+      &quot;Bearing1_2&quot;: {
+        &quot;rows&quot;: 161,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 152.2100673497578,
+          &quot;mae&quot;: 101.5059873483596,
+          &quot;mean_signed_error&quot;: 43.07462037146113,
+          &quot;overestimate_fraction&quot;: 0.43478260869565216
+        }
+      },
+      &quot;Bearing1_3&quot;: {
+        &quot;rows&quot;: 158,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 502.44818583168154,
+          &quot;mae&quot;: 360.87256803458223,
+          &quot;mean_signed_error&quot;: 351.35169686112965,
+          &quot;overestimate_fraction&quot;: 0.8291139240506329
+        }
+      },
+      &quot;Bearing2_1&quot;: {
+        &quot;rows&quot;: 491,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 158.01846411488114,
+          &quot;mae&quot;: 125.06061042750254,
+          &quot;mean_signed_error&quot;: -0.6151614489744728,
+          &quot;overestimate_fraction&quot;: 0.46435845213849286
+        }
+      },
+      &quot;Bearing2_2&quot;: {
+        &quot;rows&quot;: 161,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 442.5186652246297,
+          &quot;mae&quot;: 255.08726859883487,
+          &quot;mean_signed_error&quot;: 217.72955528024596,
+          &quot;overestimate_fraction&quot;: 0.5838509316770186
+        }
+      },
+      &quot;Bearing2_3&quot;: {
+        &quot;rows&quot;: 533,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 113.937846091032,
+          &quot;mae&quot;: 85.85560946839315,
+          &quot;mean_signed_error&quot;: -4.842759311238982,
+          &quot;overestimate_fraction&quot;: 0.4352720450281426
+        }
+      },
+      &quot;Bearing3_1&quot;: {
+        &quot;rows&quot;: 2538,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 241.3952592445591,
+          &quot;mae&quot;: 183.17136555745864,
+          &quot;mean_signed_error&quot;: -45.66888509283621,
+          &quot;overestimate_fraction&quot;: 0.4239558707643814
+        }
+      },
+      &quot;Bearing3_2&quot;: {
+        &quot;rows&quot;: 2496,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 206.7404897639648,
+          &quot;mae&quot;: 155.58404109076872,
+          &quot;mean_signed_error&quot;: 9.29101255853033,
+          &quot;overestimate_fraction&quot;: 0.4895833333333333
+        }
+      },
+      &quot;Bearing3_3&quot;: {
+        &quot;rows&quot;: 371,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 237.8061458598096,
+          &quot;mae&quot;: 168.75617564057157,
+          &quot;mean_signed_error&quot;: 86.13818126039749,
+          &quot;overestimate_fraction&quot;: 0.5983827493261455
+        }
+      }
+    },
+    &quot;validation_by_device&quot;: {
+      &quot;Bearing1_4&quot;: {
+        &quot;rows&quot;: 122,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 264.73298105664963,
+          &quot;mae&quot;: 210.7789124374187,
+          &quot;mean_signed_error&quot;: 207.73189962503068,
+          &quot;overestimate_fraction&quot;: 0.9344262295081968
+        }
+      },
+      &quot;Bearing2_4&quot;: {
+        &quot;rows&quot;: 42,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 378.5054734013814,
+          &quot;mae&quot;: 310.3765154844296,
+          &quot;mean_signed_error&quot;: 307.2336895572345,
+          &quot;overestimate_fraction&quot;: 0.9285714285714286
+        }
+      },
+      &quot;Bearing3_4&quot;: {
+        &quot;rows&quot;: 1515,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 688.8489607692094,
+          &quot;mae&quot;: 582.2231218745865,
+          &quot;mean_signed_error&quot;: -393.219854904764,
+          &quot;overestimate_fraction&quot;: 0.27920792079207923
+        }
+      }
+    },
+    &quot;constant_training_mean_reference&quot;: {
+      &quot;value&quot;: 954.1505972696245,
+      &quot;validation_rmse&quot;: 536.2706281575896,
+      &quot;fit_role&quot;: &quot;train&quot;,
+      &quot;not_a_continuation_candidate&quot;: true
+    }
+  }
+}</pre></details><div class="table-wrap"><table><thead><tr><th>候选 / 状态</th><th>策略</th><th>最佳验证指标 / 检查点</th><th>成本</th><th>准入判定</th></tr></thead><tbody><tr><td><strong>01-conservative</strong><br>已完成</td><td>低学习率续训<p>安全对照：保留全部状态，仅降低学习率并选最佳轮。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;conservative&quot;,
+  &quot;label&quot;: &quot;低学习率续训&quot;,
+  &quot;reason&quot;: &quot;安全对照：保留全部状态，仅降低学习率并选最佳轮。&quot;,
+  &quot;learning_rate&quot;: 0.00027,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.0,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: false,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>RMSE: 654.713<br>MAE: 545.129<br>平均有符号误差: -319.873<br>高估比例: 0.346039<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\B-v1\round-02\01-conservative\checkpoint.npz</code></p><code title="sha256:5aa400e5bf856f2c5153218ce9a0ff4bb52557cbe815d9fdd7dc5a420a6d0071">sha256:5aa40…0a6d0071</code></td><td>训练 0.0546948 秒<br>总计 0.0840365 秒<br>轮次 5 / 步数 275</td><td>未接受<p>达到主指标改进阈值，参与本轮择优</p>改进量：6.22526</td></tr><tr><td><strong>02-device_balanced</strong><br>已完成</td><td>训练设备均衡抽样＋L2<p>跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;device_balanced&quot;,
+  &quot;label&quot;: &quot;训练设备均衡抽样＋L2&quot;,
+  &quot;reason&quot;: &quot;跨设备泛化不足；每根训练设备总采样概率相同，不改变预测输入。&quot;,
+  &quot;learning_rate&quot;: 0.00027,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.002,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: false,
+  &quot;balanced_groups&quot;: true
+}</pre></details></td><td>RMSE: 659.34<br>MAE: 541.319<br>平均有符号误差: -349.653<br>高估比例: 0.32162<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\B-v1\round-02\02-device_balanced\checkpoint.npz</code></p><code title="sha256:f11937805e7fd2b2d14d004de0b7927c50b1d10391c33393407ac3152071bb38">sha256:f1193…2071bb38</code></td><td>训练 0.0579468 秒<br>总计 0.0830817 秒<br>轮次 5 / 步数 275</td><td>未接受<p>达到主指标改进阈值，参与本轮择优</p>改进量：1.59882</td></tr><tr><td><strong>03-regularized</strong><br>已完成</td><td>L2 正则续训<p>鲁棒性对照：保持原结构和输入，抑制权重过度适配。</p><details><summary>策略参数</summary><pre>{
+  &quot;id&quot;: &quot;regularized&quot;,
+  &quot;label&quot;: &quot;L2 正则续训&quot;,
+  &quot;reason&quot;: &quot;鲁棒性对照：保持原结构和输入，抑制权重过度适配。&quot;,
+  &quot;learning_rate&quot;: 0.00027,
+  &quot;batch_size&quot;: 128,
+  &quot;epochs&quot;: 5,
+  &quot;l2&quot;: 0.003,
+  &quot;noise_std&quot;: 0.0,
+  &quot;balanced_classes&quot;: false,
+  &quot;balanced_groups&quot;: false
+}</pre></details></td><td>RMSE: 652.19<br>MAE: 543.386<br>平均有符号误差: -317.361<br>高估比例: 0.34723<p>最佳检查点：<code>D:\AppData\2026-11-14-09-31-59\outputs\harness-runs\B-v1\round-02\03-regularized\checkpoint.npz</code></p><code title="sha256:27f149eaf89c31841bedfea76f5e953366705876e312209349b229a586658be9">sha256:27f14…86658be9</code></td><td>训练 0.0499197 秒<br>总计 0.0753738 秒<br>轮次 5 / 步数 275</td><td>已接受<p>本轮主指标改进最大，接受；相同增益优先先执行的低复杂度候选</p>改进量：8.74896</td></tr></tbody></table></div><div class="decision"><h3>本轮决策：接受候选</h3><p>胜出候选：03-regularized</p><p>原因：采用本轮主指标最优且超过阈值的候选</p><p>变更前：RMSE: 660.939<br>MAE: 548.433<br>平均有符号误差: -332.032<br>高估比例: 0.343061</p><p>变更后：RMSE: 652.19<br>MAE: 543.386<br>平均有符号误差: -317.361<br>高估比例: 0.34723</p></div></section><section><h2>最终诊断</h2><ul><li>输入均值存在跨集合差异</li><li>跨设备验证误差明显高于训练误差</li><li>原模型不及训练均值常数对照</li><li>总体误差由少量长序列设备主导</li><li>RUL 真值依赖完整寿命记录</li><li>没有漂移原因标签，诊断不是因果证明</li></ul><article class="finding"><h4>输入均值存在跨集合差异</h4><p class="muted">编号：observable_input_shift · 严重程度：notice</p><p>建议：仅在训练侧尝试合理扰动与正则；不重新拟合验证集标准化，不据此断言物理原因。</p><details><summary>查看证据</summary><pre>{
+  &quot;top_features&quot;: [
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 1.0540396565527663
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;skewness\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 0.7942593046390863
+    },
+    {
+      &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+      &quot;standardized_mean_difference&quot;: 0.7620452357846174
+    }
+  ]
+}</pre></details></article><article class="finding"><h4>跨设备验证误差明显高于训练误差</h4><p class="muted">编号：generalization_gap · 严重程度：warning</p><p>建议：尝试较小学习率、L2 与训练内设备均衡抽样；不能把设备 ID 当预测特征。</p><details><summary>查看证据</summary><pre>{
+  &quot;train_rmse&quot;: 229.4455815794658,
+  &quot;validation_rmse&quot;: 652.1897942381156
+}</pre></details></article><article class="finding"><h4>原模型不及训练均值常数对照</h4><p class="muted">编号：worse_than_constant · 严重程度：warning</p><p>建议：优先检查泛化与目标偏置，常数仅作研究参照而非替换续训模型。</p><details><summary>查看证据</summary><pre>{
+  &quot;model_rmse&quot;: 652.1897942381156,
+  &quot;constant_rmse&quot;: 536.2706281575896
+}</pre></details></article><article class="finding"><h4>总体误差由少量长序列设备主导</h4><p class="muted">编号：validation_device_dominance · 严重程度：notice</p><p>建议：同时报告总体与逐设备误差；仍按原主指标门控。</p><details><summary>查看证据</summary><pre>{
+  &quot;largest_device_fraction&quot;: 0.9023228111971412,
+  &quot;counts&quot;: {
+    &quot;Bearing1_4&quot;: 122,
+    &quot;Bearing2_4&quot;: 42,
+    &quot;Bearing3_4&quot;: 1515
+  }
+}</pre></details></article><article class="finding"><h4>RUL 真值依赖完整寿命记录</h4><p class="muted">编号：rul_label_delay · 严重程度：notice</p><p>建议：当前只做离线续训，不假设在线失效前已经获得真实 RUL。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><article class="finding"><h4>没有漂移原因标签，诊断不是因果证明</h4><p class="muted">编号：no_causal_labels · 严重程度：info</p><p>建议：规则输出的是统计证据和可检验候选策略，不宣称已识别真实物理原因。</p><details><summary>查看证据</summary><pre>{}</pre></details></article><details><summary>诊断指标与详细信息</summary><pre>{
+  &quot;train_metrics&quot;: {
+    &quot;rmse&quot;: 229.4455815794658,
+    &quot;mae&quot;: 162.4268030858323,
+    &quot;mean_signed_error&quot;: 10.636387764824013,
+    &quot;overestimate_fraction&quot;: 0.48506825938566556
+  },
+  &quot;validation_metrics&quot;: {
+    &quot;rmse&quot;: 652.1897942381156,
+    &quot;mae&quot;: 543.3861434566229,
+    &quot;mean_signed_error&quot;: -317.36119143170816,
+    &quot;overestimate_fraction&quot;: 0.34723049434187014
+  },
+  &quot;details&quot;: {
+    &quot;train_rows&quot;: 7032,
+    &quot;validation_rows&quot;: 1679,
+    &quot;train_group_count&quot;: 9,
+    &quot;validation_group_count&quot;: 3,
+    &quot;feature_shift&quot;: {
+      &quot;top&quot;: [
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 1.0540396565527663
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;skewness\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7942593046390863
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_centroid\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7620452357846174
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;spectral_kurtosis\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.7350261755584536
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;vertical\&quot;],[\&quot;key\&quot;,\&quot;dominant_freq\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.5627447491474165
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;band3_energy_6k_12k\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.44762658426939467
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;dominant_freq\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.40755856413559693
+        },
+        {
+          &quot;feature&quot;: &quot;[[\&quot;key\&quot;,\&quot;features\&quot;],[\&quot;key\&quot;,\&quot;horizontal\&quot;],[\&quot;key\&quot;,\&quot;mean_abs\&quot;]]&quot;,
+          &quot;standardized_mean_difference&quot;: 0.40210391324735323
+        }
+      ],
+      &quot;median&quot;: 0.31393796865452894,
+      &quot;interpretation&quot;: &quot;descriptive_input_change_not_causal_or_conditional_drift_proof&quot;
+    },
+    &quot;train_by_device&quot;: {
+      &quot;Bearing1_1&quot;: {
+        &quot;rows&quot;: 123,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 94.70013538027689,
+          &quot;mae&quot;: 67.8733583559004,
+          &quot;mean_signed_error&quot;: 26.609623157530994,
+          &quot;overestimate_fraction&quot;: 0.4878048780487805
+        }
+      },
+      &quot;Bearing1_2&quot;: {
+        &quot;rows&quot;: 161,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 147.94399019448866,
+          &quot;mae&quot;: 97.52065881710446,
+          &quot;mean_signed_error&quot;: 39.942359385464975,
+          &quot;overestimate_fraction&quot;: 0.422360248447205
+        }
+      },
+      &quot;Bearing1_3&quot;: {
+        &quot;rows&quot;: 158,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 515.7118805878993,
+          &quot;mae&quot;: 371.0222606962012,
+          &quot;mean_signed_error&quot;: 360.8885231529917,
+          &quot;overestimate_fraction&quot;: 0.8037974683544303
+        }
+      },
+      &quot;Bearing2_1&quot;: {
+        &quot;rows&quot;: 491,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 157.41821357002863,
+          &quot;mae&quot;: 123.93980080660612,
+          &quot;mean_signed_error&quot;: 13.196098819683066,
+          &quot;overestimate_fraction&quot;: 0.49490835030549896
+        }
+      },
+      &quot;Bearing2_2&quot;: {
+        &quot;rows&quot;: 161,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 449.5090048581143,
+          &quot;mae&quot;: 258.84483072563813,
+          &quot;mean_signed_error&quot;: 219.49775329484422,
+          &quot;overestimate_fraction&quot;: 0.5590062111801242
+        }
+      },
+      &quot;Bearing2_3&quot;: {
+        &quot;rows&quot;: 533,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 110.37481912974165,
+          &quot;mae&quot;: 82.9330178518126,
+          &quot;mean_signed_error&quot;: -1.9061107720427652,
+          &quot;overestimate_fraction&quot;: 0.4596622889305816
+        }
+      },
+      &quot;Bearing3_1&quot;: {
+        &quot;rows&quot;: 2538,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 238.79963351775814,
+          &quot;mae&quot;: 181.28599176682346,
+          &quot;mean_signed_error&quot;: -20.864443192194667,
+          &quot;overestimate_fraction&quot;: 0.4747832939322301
+        }
+      },
+      &quot;Bearing3_2&quot;: {
+        &quot;rows&quot;: 2496,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 205.68392479395368,
+          &quot;mae&quot;: 155.48958128418502,
+          &quot;mean_signed_error&quot;: -6.9350434963279355,
+          &quot;overestimate_fraction&quot;: 0.4579326923076923
+        }
+      },
+      &quot;Bearing3_3&quot;: {
+        &quot;rows&quot;: 371,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 243.7112233030386,
+          &quot;mae&quot;: 174.061758800086,
+          &quot;mean_signed_error&quot;: 101.16535909386171,
+          &quot;overestimate_fraction&quot;: 0.6199460916442049
+        }
+      }
+    },
+    &quot;validation_by_device&quot;: {
+      &quot;Bearing1_4&quot;: {
+        &quot;rows&quot;: 122,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 275.8667125082154,
+          &quot;mae&quot;: 225.19180183333845,
+          &quot;mean_signed_error&quot;: 223.80423782527538,
+          &quot;overestimate_fraction&quot;: 0.9590163934426229
+        }
+      },
+      &quot;Bearing2_4&quot;: {
+        &quot;rows&quot;: 42,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 361.9402582884462,
+          &quot;mae&quot;: 293.0741280323638,
+          &quot;mean_signed_error&quot;: 288.8354459491228,
+          &quot;overestimate_fraction&quot;: 0.9285714285714286
+        }
+      },
+      &quot;Bearing3_4&quot;: {
+        &quot;rows&quot;: 1515,
+        &quot;metrics&quot;: {
+          &quot;rmse&quot;: 679.4380737068949,
+          &quot;mae&quot;: 575.949057203065,
+          &quot;mean_signed_error&quot;: -377.7456410286368,
+          &quot;overestimate_fraction&quot;: 0.28184818481848184
+        }
+      }
+    },
+    &quot;constant_training_mean_reference&quot;: {
+      &quot;value&quot;: 954.1505972696245,
+      &quot;validation_rmse&quot;: 536.2706281575896,
+      &quot;fit_role&quot;: &quot;train&quot;,
+      &quot;not_a_continuation_candidate&quot;: true
+    }
+  }
+}</pre></details></section><section><h2>运行成本</h2><p>总耗时：2.2485 秒 · 训练：0.278675 秒 · 验证：0.027246 秒 · 候选数：6</p><details><summary>运行配置</summary><pre>{
+  &quot;epochs&quot;: 5,
+  &quot;max_candidates&quot;: 3,
+  &quot;rounds&quot;: 2,
+  &quot;min_improvement&quot;: 0.0,
+  &quot;max_train_seconds&quot;: 60.0,
+  &quot;patience&quot;: 2,
+  &quot;primary_metric&quot;: &quot;rmse&quot;,
+  &quot;validation_policy&quot;: &quot;evaluation_and_selection_only&quot;,
+  &quot;rule_based&quot;: true,
+  &quot;trainer_engine&quot;: &quot;RuleDrivenHarnessTrainer&quot;,
+  &quot;decision_mode&quot;: &quot;rule&quot;
+}</pre></details></section><section><h2>来源与可追溯性</h2><p>归档：C:\Users\zhao jiahao\Downloads\cpu-b-rul-20261110-v1.zip</p><p>官方评分接口就绪：否 / 未确认</p><div class="table-wrap"><table><tr><th>归档 SHA-256</th><td><code title="sha256:68db6a72c29bac11a4f86e97d9c1f524d35695464fd5f3f6d131f1431bc69d68">sha256:68db6…1bc69d68</code></td></tr><tr><th>初始检查点 SHA-256</th><td><code title="sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4">sha256:c7d81…283314b4</code></td></tr><tr><th>训练集 SHA-256</th><td><code title="sha256:71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a">sha256:71b26…a431054a</code></td></tr><tr><th>验证集 SHA-256</th><td><code title="sha256:23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3">sha256:23673…310d9eb3</code></td></tr></table></div><p class="muted">悬停摘要可查看完整 SHA-256。</p></section><section><h2>警告</h2><ul><li>本地开发参考，不是正式比赛成绩；未访问隐藏数据。</li><li>只用 train 优化权重/构造采样权重与扰动；validation 只用于诊断、候选评估和检查点选择。</li><li>多轮针对公开验证集选策略可能过拟合；提升不保证迁移至隐藏集。</li><li>诊断是统计关联与候选假设，不是真实漂移原因或因果结论。</li><li>给定检查点已经见过全部公开 train，重新从 train 切分不能得到从未见过的独立验证。</li><li>训练预算在 mini-batch 边界检查，可能超出最后一个 batch 的耗时；诊断/评估/IO 不计入训练预算但计入总耗时。</li><li>候选早停与接受仅按任务主指标；C 的本地 NASA 常规分数仅作辅助，未确认与平台公式一致。</li></ul></section></main></body></html>

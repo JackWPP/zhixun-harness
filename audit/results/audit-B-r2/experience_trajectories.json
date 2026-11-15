@@ -1,0 +1,143 @@
+{
+  "count": 6,
+  "records": [
+    {
+      "task": "B",
+      "round_index": 1,
+      "candidate_id": "01-conservative",
+      "strategy_id": "conservative",
+      "state_vector": [
+        0.5,
+        5.456849109482362,
+        6.5252639890431094,
+        1.918950053300321,
+        0.31393796865452894,
+        1.0540396565527663,
+        9.0,
+        3.0,
+        0.0,
+        0.0,
+        0.3240023823704586,
+        1.0
+      ],
+      "improvement": 18.36869461623553,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "B",
+      "round_index": 1,
+      "candidate_id": "02-device_balanced",
+      "strategy_id": "device_balanced",
+      "state_vector": [
+        0.5,
+        5.456849109482362,
+        6.5252639890431094,
+        1.918950053300321,
+        0.31393796865452894,
+        1.0540396565527663,
+        9.0,
+        3.0,
+        0.0,
+        0.0,
+        0.3240023823704586,
+        1.0
+      ],
+      "improvement": 16.489633256368847,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "B",
+      "round_index": 1,
+      "candidate_id": "03-regularized",
+      "strategy_id": "regularized",
+      "state_vector": [
+        0.5,
+        5.456849109482362,
+        6.5252639890431094,
+        1.918950053300321,
+        0.31393796865452894,
+        1.0540396565527663,
+        9.0,
+        3.0,
+        0.0,
+        0.0,
+        0.3240023823704586,
+        1.0
+      ],
+      "improvement": 20.221083147087256,
+      "accepted": true,
+      "eligible": true
+    },
+    {
+      "task": "B",
+      "round_index": 2,
+      "candidate_id": "01-conservative",
+      "strategy_id": "conservative",
+      "state_vector": [
+        0.5,
+        5.441185160043941,
+        6.495173028177933,
+        1.877206263330728,
+        0.31393796865452894,
+        1.0540396565527663,
+        9.0,
+        3.0,
+        0.0,
+        0.0,
+        0.3430613460393091,
+        1.0
+      ],
+      "improvement": 6.225259775982977,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "B",
+      "round_index": 2,
+      "candidate_id": "02-device_balanced",
+      "strategy_id": "device_balanced",
+      "state_vector": [
+        0.5,
+        5.441185160043941,
+        6.495173028177933,
+        1.877206263330728,
+        0.31393796865452894,
+        1.0540396565527663,
+        9.0,
+        3.0,
+        0.0,
+        0.0,
+        0.3430613460393091,
+        1.0
+      ],
+      "improvement": 1.5988229165623125,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "B",
+      "round_index": 2,
+      "candidate_id": "03-regularized",
+      "strategy_id": "regularized",
+      "state_vector": [
+        0.5,
+        5.441185160043941,
+        6.495173028177933,
+        1.877206263330728,
+        0.31393796865452894,
+        1.0540396565527663,
+        9.0,
+        3.0,
+        0.0,
+        0.0,
+        0.3430613460393091,
+        1.0
+      ],
+      "improvement": 8.748955219108439,
+      "accepted": true,
+      "eligible": true
+    }
+  ]
+}

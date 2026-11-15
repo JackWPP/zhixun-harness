@@ -1,0 +1,16 @@
+{
+  "archive": "C:\\Users\\zhao jiahao\\Downloads\\cpu-c-guide-20261110-v1.zip",
+  "archive_sha256": "sha256:6cb8784e2cab7ee93453e756abf54c168721c667ca0c2c1327f5faae96e4211f",
+  "checkpoint_sha256": "sha256:98ec6e30e38aee56ca15b7d624a8f412226d46fe97b170667a567601c700bc4e",
+  "train_sha256": "sha256:fcfaeaf1e50a0cc01766dfba5fd34c7369f1fe14bf583111837e847865fac281",
+  "validation_sha256": "sha256:0cc747f9998c5d7ee1e4eac6aec0db9f5ed4d2de149a1b1cbe689cce6b6aaca7",
+  "official_scoring_ready": false,
+  "source_code_sha256": {
+    "model.py": "sha256:325026d80747eb36f39c8df1be02b640ae21b3cd082827c66aacbdf273dd61c5",
+    "data.py": "sha256:6099e312829ac3aaf48209ec1f618532c4a8552fedf73f09cf31c8876261db65",
+    "train.py": "sha256:77043a0a944efff434a690fbe4749e9fe5601c38f98e58df116a2ef6ba13ba0a",
+    "predict.py": "sha256:80e6787cd862dfefd85cd6bfcd73b5577dd90e202dd3d5bb9f18a52761807452"
+  },
+  "train_groups": 496,
+  "validation_groups": 106
+}

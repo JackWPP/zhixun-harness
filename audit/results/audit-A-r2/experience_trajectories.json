@@ -1,0 +1,143 @@
+{
+  "count": 6,
+  "records": [
+    {
+      "task": "A",
+      "round_index": 1,
+      "candidate_id": "01-conservative",
+      "strategy_id": "conservative",
+      "state_vector": [
+        0.0,
+        0.9557538394951876,
+        0.7140297220788709,
+        0.2417241174163166,
+        0.5442709682580986,
+        11.458230311024698,
+        1.0,
+        1.0,
+        0.16458764126518055,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "improvement": 0.004705740960351368,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "A",
+      "round_index": 1,
+      "candidate_id": "02-class_weighted",
+      "strategy_id": "class_weighted",
+      "state_vector": [
+        0.0,
+        0.9557538394951876,
+        0.7140297220788709,
+        0.2417241174163166,
+        0.5442709682580986,
+        11.458230311024698,
+        1.0,
+        1.0,
+        0.16458764126518055,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "improvement": 0.012642248896859276,
+      "accepted": true,
+      "eligible": true
+    },
+    {
+      "task": "A",
+      "round_index": 1,
+      "candidate_id": "03-robust_noise",
+      "strategy_id": "robust_noise",
+      "state_vector": [
+        0.0,
+        0.9557538394951876,
+        0.7140297220788709,
+        0.2417241174163166,
+        0.5442709682580986,
+        11.458230311024698,
+        1.0,
+        1.0,
+        0.16458764126518055,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "improvement": 0.012642248896859276,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "A",
+      "round_index": 2,
+      "candidate_id": "01-conservative",
+      "strategy_id": "conservative",
+      "state_vector": [
+        0.0,
+        0.9884059499509316,
+        0.7266719709757302,
+        0.26173397897520134,
+        0.5442709682580986,
+        11.458230311024698,
+        1.0,
+        1.0,
+        0.15918011905642415,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "improvement": 0.0,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "A",
+      "round_index": 2,
+      "candidate_id": "02-class_weighted",
+      "strategy_id": "class_weighted",
+      "state_vector": [
+        0.0,
+        0.9884059499509316,
+        0.7266719709757302,
+        0.26173397897520134,
+        0.5442709682580986,
+        11.458230311024698,
+        1.0,
+        1.0,
+        0.15918011905642415,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "improvement": -0.000157975068445948,
+      "accepted": false,
+      "eligible": true
+    },
+    {
+      "task": "A",
+      "round_index": 2,
+      "candidate_id": "03-robust_noise",
+      "strategy_id": "robust_noise",
+      "state_vector": [
+        0.0,
+        0.9884059499509316,
+        0.7266719709757302,
+        0.26173397897520134,
+        0.5442709682580986,
+        11.458230311024698,
+        1.0,
+        1.0,
+        0.15918011905642415,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "improvement": -0.000157975068445948,
+      "accepted": false,
+      "eligible": true
+    }
+  ]
+}
