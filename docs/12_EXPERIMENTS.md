@@ -288,7 +288,7 @@ schema（`id`/`inputs`/`answer`）的私有数据，输出整体与按 group 的
 > §12.18 为准（A 0.8884 / B 491.64 / C 41.82）。本节保留用于说明 v0.4 架构
 > 回归不改变确定性决策路径，不作为性能证据。
 
-代码冻结于 v0.4.0 后，用 `--tasks A,B,C --rounds 10 --llm off`（确定性 pipeline，
+代码冻结于 v0.5.0 前（v0.4 回归），用 `--tasks A,B,C --rounds 10 --llm off`（确定性 pipeline，
 记忆开启、schema v2）重跑 canonical，验证新架构没有改变主结果：
 
 | 任务 | selection 基线 | 最终 | report 基线 | report 最终 | 实验数 |
