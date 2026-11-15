@@ -1,0 +1,7 @@
+numpy==1.26.4
+pydantic==2.14.3
+swanlab==0.10.5
+pi-agent-core-lc==0.9.1
+pi-agent-harness-lc==0.9.1
+langchain-openai==1.8.0
+openai==3.51.0

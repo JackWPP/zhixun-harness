@@ -3,23 +3,35 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "zhixun-harness"
-version = "0.2.0"
-description = "智训引擎 Harness 原型：工业模型受控自进化（诊断 → 策略 → 续训 → 门控）"
+name = "zhixun-rsi-harness"
+version = "0.3.0"
+description = "工业模型受控递归自我改进（RSI）Harness：漂移诊断→实验设计→沙箱续训→门控上线→实验记录"
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "Proprietary" }
-authors = [{ name = "Team (original authors)" }]
-dependencies = ["numpy>=1.26.4,<3"]
+requires-python = ">=3.10"
+license = { text = "Proprietary (competition submission)" }
+authors = [{ name = "Team yxc200506" }]
+dependencies = [
+    "numpy==1.26.4",
+    "pydantic>=2,<3",
+]
 
 [project.optional-dependencies]
+agent = [
+    "pi-agent-core-lc==0.9.1",
+    "pi-agent-harness-lc==0.9.1",
+    "langchain-openai==1.8.0",
+    "openai==3.51.0",
+]
+records = ["swanlab==0.10.5"]
 dev = ["pytest>=7"]
 
-[tool.setuptools]
-packages = ["harness"]
+[project.scripts]
+rsi-harness = "rsi.cli:main"
+rsi-predict = "rsi.predict:main"
 
-[tool.setuptools.package-data]
-harness = ["*.npz", "USAGE.txt", "requirements.txt"]
+[tool.setuptools.packages.find]
+include = ["rsi*", "baselines*"]
 
 [tool.pytest.ini_options]
-testpaths = ["harness/tests"]
+testpaths = ["tests"]
+addopts = "-ra"

@@ -24,6 +24,11 @@ outputs/
 # 审计脚本的临时工作目录
 audit/.tmp/
 
+# --- 会话/构建临时目录（不入库）---
+.scratch/
+*.tar
+.pytest_cache/
+
 # --- 解包出来的数据集（由 `make unpack` 从 archives/ 重建）---
 # 如需把数据一起入库，删掉下面这一行；默认入库的是 archives/ 下的原始压缩包。
 # datasets/
