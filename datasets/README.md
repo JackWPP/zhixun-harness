@@ -2,7 +2,8 @@
 
 > 这三个目录是从 `../archives/*.zip` 解出来的**原始赛题包**，
 > 除删除 `__pycache__` 外**未做任何改动**。
-> 校验：`shasum -a 256 -c ../archives/SHA256SUMS`
+> 校验：在仓库根目录执行 `make sums`
+> （等价于 `cd archives && shasum -a 256 -c SHA256SUMS`）
 
 ## 三个包
 

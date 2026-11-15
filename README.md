@@ -17,7 +17,7 @@
 | 可选择的动作空间 | **6 个写死的配方**（conservative / class_weighted / robust_noise / device_balanced / regularized / penalize_late_rul），所有超参在源码里硬编码 | `harness/strategies.py:20`、`harness/strategies.py:111` |
 | 能不能自主迭代优化 | 能"换配方 + 续训"，但**不能发明新配方**；lr 恒为父模型的 0.3×；卡住就 `break` | `harness/runner.py:247` |
 | 策略小模型用上了吗 | **没有**。三次 demo 全部 `decision_mode="rule"`，小模型零决策 | `demo/harness-runs/*/summary.json` |
-| 训练侧做了数据工作吗 | **没有**。只有训练集 z-score + ±10 裁剪，无清洗/去重/异常值/特征选择/窗口化 | `harness/training.py`、`docs/05_findings.md` §3 |
+| 训练侧做了数据工作吗 | **没有**。只有训练集 z-score + ±10 裁剪，无清洗/去重/异常值/特征选择/窗口化 | `harness/training.py`、`docs/05_findings.md` §5 |
 | 三个任务的"提升" | A +0.0126（10 个样本翻转）、B +28.97（基线本就劣于常数）、C +1.11 | `docs/05_findings.md` §1 |
 | 运行时 | 纯 NumPy 单进程，A/B/C 分别 **1.40 / 2.25 / 23.54 秒** | `demo/harness-runs/*/summary.json` |
 | 测试 | **30 项全部通过**（需设置 `HARNESS_TEST_VENDOR_ARCHIVE`） | `make test` |
@@ -33,9 +33,10 @@ git clone <this-repo> && cd <repo>
 
 make setup          # 建 .venv 并安装 harness（可编辑模式）
 make test           # 30 项单元测试
-make verify         # 校验压缩包摘要 + 独立复算 demo 指标
+make sums           # 校验 5 个原始 zip 的 sha256
+make verify         # 复算基线分数 + demo 分数（含 sums）
 make run-a          # 在任务 A 上跑一轮完整 harness
-make audit          # 复现全部审计结论（约 40 秒）
+make audit          # 复现全部审计结论（约 1–3 分钟）
 ```
 
 不想建虚拟环境也可以直接用系统 python3（>=3.9，只需 numpy）：
@@ -81,7 +82,7 @@ export HARNESS_TEST_VENDOR_ARCHIVE="$PWD/archives/cpu-a-guide-20261110-v1.zip"
 │   ├── harness_verification.json
 │   └── harness_test_results.txt
 ├── audit/               第三方审计（本次新增）
-│   ├── scripts/         9 个可复现脚本 + run_all
+│   ├── scripts/         10 个编号脚本（00–09）+ _common + run_all
 │   └── results/         我独立重跑的 harness 输出（audit-{A,B,C}-r2）
 ├── docs/                移交文档（9 篇）
 ├── Makefile             唯一入口：make help

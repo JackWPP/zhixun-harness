@@ -24,6 +24,7 @@ SCRIPTS = [
     "06_drift_probe.py",
     "07_rul_cap_probe.py",
     "08_demo_forensics.py",
+    "09_significance.py",
 ]
 
 

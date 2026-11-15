@@ -35,7 +35,7 @@ jobs:
           du -sh archives datasets 2>/dev/null || true
 
       - name: Archive checksums
-        run: shasum -a 256 -c archives/SHA256SUMS
+        run: cd archives && shasum -a 256 -c SHA256SUMS
 
       - name: Unit tests
         # harness/tests 里默认写死了作者机器上的 Windows 路径，
@@ -82,12 +82,19 @@ jobs:
       - name: Assert it produced a deliverable
         run: |
           test -f runs/A-ci/selected/checkpoint.npz
+          test -f runs/A-ci/summary.json
           python - <<'PY'
           import json, pathlib
           s = json.loads(pathlib.Path("runs/A-ci/summary.json").read_text())
-          print(json.dumps({k: s[k] for k in ("task", "status") if k in s}, ensure_ascii=False))
-          assert s.get("status") == "completed", s.get("status")
-          assert s.get("improvement", 0) >= 0
+          assert s["status"] == "completed", s["status"]
+          sel = s["selected"]
+          assert sel["metrics"]["macro_f1"] >= s["baseline"]["metrics"]["macro_f1"]
+          assert abs(sel["improvement"] - (
+              sel["metrics"]["macro_f1"] - s["baseline"]["metrics"]["macro_f1"]
+          )) < 1e-9
+          print(f"task={s['task']} status={s['status']} "
+                f"f1 {s['baseline']['metrics']['macro_f1']:.6f} -> "
+                f"{sel['metrics']['macro_f1']:.6f} (+{sel['improvement']:.6f})")
           print("OK")
           PY
       - uses: actions/upload-artifact@v4

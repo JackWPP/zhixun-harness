@@ -39,8 +39,9 @@ make ci        # = make test（30 项单元测试）+ make verify（基线/交�
 ```bash
 make help          # 列出所有目标
 make test          # 30 项单元测试（会自动设置 HARNESS_TEST_VENDOR_ARCHIVE）
-make verify        # 复算基线分数 + demo 分数 + 校验 5 个 zip 的 sha256
-make audit         # 跑全部 13 个审计脚本，产出 docs 里所有数字（约 3 分钟）
+make sums          # 校验 5 个原始 zip 的 sha256
+make verify        # 复算基线分数 + demo 分数（含 sums）
+make audit         # 跑全部 10 个审计脚本（00–09），产出 docs 里所有数字（约 1.5 分钟）
 make run-a         # 在 A 任务上跑一次 harness（约 1.4 s）
 make run-b         # B（约 2.2 s）
 make run-c         # C（约 23 s）
@@ -70,7 +71,7 @@ make clean         # 清临时产物
 ├── demo/                团队原始交付物（3 次运行的完整轨迹）
 │   └── harness-runs/{A,B,C}-v1/
 ├── audit/
-│   ├── scripts/         13 个可复现脚本（00–09 + run_all）
+│   ├── scripts/         10 个编号脚本（00–09）+ _common + run_all
 │   └── results/         独立重跑的输出
 ├── docs/                本套文档（01–09）
 ├── Makefile
@@ -119,7 +120,7 @@ Makefile 和脚本里全部用 `grep -E`。Linux 服务器上两者都能跑。
 
 ```bash
 # 校验 5 个 zip 的 sha256
-shasum -a 256 -c archives/SHA256SUMS
+make sums          # 等价于 (cd archives && shasum -a 256 -c SHA256SUMS)
 
 # 重建 datasets/（会先删除现有目录）
 make unpack

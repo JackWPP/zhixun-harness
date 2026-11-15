@@ -10,7 +10,7 @@ ARCHIVE_B  := archives/cpu-b-rul-20261110-v1.zip
 ARCHIVE_C  := archives/cpu-c-guide-20261110-v1.zip
 export HARNESS_TEST_VENDOR_ARCHIVE := $(CURDIR)/$(ARCHIVE_A)
 
-.PHONY: help setup unpack test verify run-a run-b run-c run-all audit clean nuke ci
+.PHONY: help setup unpack sums test verify run-a run-b run-c run-all audit clean nuke ci
 
 help:                     ## 显示所有可用命令
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -31,10 +31,13 @@ unpack:                   ## 从 archives/ 重新解包三个数据包到 datase
 	done
 	@echo "✅ datasets/ 已重建"
 
+sums:                     ## 校验 archives/ 里 5 个原始 zip 的 sha256
+	@cd archives && shasum -a 256 -c SHA256SUMS
+
 test:                     ## 运行 harness 单元测试（30 项）
 	$(PY) -m unittest discover -s harness/tests -v
 
-verify:                   ## 校验原始压缩包摘要 + 复算 demo 交付指标
+verify: sums              ## 校验压缩包摘要 + 复算 demo 交付指标
 	$(PY) audit/scripts/00_verify_bundle.py
 
 run-a:                    ## 在任务 A（气体识别）上跑一轮 harness
