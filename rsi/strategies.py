@@ -73,6 +73,7 @@ def _training_matrix(context: ExperimentContext, data: str, class_balance: bool,
         x, y = x[index], y[index]
     if augment:
         x = _augment_features(context, x)
+        y = np.tile(y, 3)
     return x, y
 
 
@@ -84,19 +85,13 @@ def _augment_features(context: ExperimentContext, x):
     per-batch augmentation is the honest model of the failure mode.
     """
     rng = np.random.default_rng(context.seed + 29)
-    target = context.selection if context.selection is not None else context.calibration
-    if context.drift is not None and getattr(context.drift, "evidence", {}).get("mean_shift_sd"):
-        magnitude = float(abs(context.drift.evidence["mean_shift_sd"]))
-    else:
-        magnitude = float(np.mean(np.std(context.train.x, axis=0)))
-    rows = x.shape[0]
+    train_scale = np.maximum(1e-6, np.std(context.train.x, axis=0))
     copies = []
     for _ in range(2):
         gain = 1.0 + 0.12 * rng.standard_normal(x.shape[1])
-        offset = rng.standard_normal(x.shape[1]) * 0.25 * np.maximum(1e-6, magnitude / max(1e-6, np.std(context.train.x, axis=0)))
+        offset = rng.standard_normal(x.shape[1]) * 0.25 * train_scale
         copies.append(x * gain + offset)
-    index = rng.permutation(rows)
-    return np.vstack([x] + copies + [x[index]])
+    return np.vstack([x] + copies)
 
 
 def strategy_retain(context, params):

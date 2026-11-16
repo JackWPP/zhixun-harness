@@ -13,8 +13,10 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from rsi.inference import apply_postprocess, format_outputs
+from rsi.data import load_jsonl_dataset
 from rsi.metrics import from_predictions, primary
 from rsi.model import ExtendedModel, checkpoint_sha256
+from rsi.strategies import ExperimentContext, _augment_features, _training_matrix
 from rsi.records import Recorder
 from rsi.selection import gate
 from rsi.splits import build_splits
@@ -104,6 +106,23 @@ def test_shrink_postprocess_is_monotone():
     raw = model.predict(x)
     shrunk = apply_postprocess({"type": "shrink", "alpha": 0.2, "center": 100.0}, model, x)
     assert np.allclose(shrunk, 0.2 * np.asarray(raw).reshape(-1) + 0.8 * 100.0)
+
+
+def test_domain_augmentation_handles_featurewise_scales():
+    config = resolve_tasks(["A"])[0]
+    train = load_jsonl_dataset(config.train_path, config.task, config.classes)
+    model = ExtendedModel.from_checkpoint(config.checkpoint_path)
+    context = ExperimentContext(task_key="A", task="classification", parent=model,
+                                train=train, calibration=None, selection=None, report=None,
+                                classes=config.classes)
+    augmented = _augment_features(context, train.x[:12])
+    assert augmented.shape == (36, train.x.shape[1])
+    assert np.all(np.isfinite(augmented))
+    x, y = _training_matrix(context, "train", False, True)
+    assert len(x) == len(y) == 3 * len(train)
+    assert np.array_equal(y, np.tile(train.y, 3))
+    # A real training step catches malformed label alignment/shape.
+    model.fit(x, y, 1)
 
 
 def test_format_outputs_matches_official_contract():
