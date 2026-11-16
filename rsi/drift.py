@@ -93,6 +93,78 @@ def _classification_shift(reference_y, target_y, n_classes):
             "mean_shift": float(np.mean(tgt - ref))}
 
 
+def analyse_covariates(reference_x, target_x) -> dict:
+    """Summarize covariate drift without inspecting target labels or model loss.
+
+    This is the only drift view suitable before a streaming batch's labels are
+    revealed. Robust median/MAD location summaries reduce single-sensor-spike
+    sensitivity; KS quantiles and correlation change add complementary signals.
+    Thresholds remain heuristic until calibrated on a wider no-drift stream.
+    """
+    rx = np.asarray(reference_x, dtype=np.float64)
+    tx = np.asarray(target_x, dtype=np.float64)
+    if rx.ndim != 2 or tx.ndim != 2 or not len(rx) or not len(tx):
+        raise ValueError("covariate drift requires non-empty 2D reference and target arrays")
+    if rx.shape[1] != tx.shape[1]:
+        raise ValueError("reference and target feature widths differ")
+    if not np.isfinite(rx).all() or not np.isfinite(tx).all():
+        raise ValueError("covariate drift inputs must be finite")
+
+    ref_median = np.median(rx, axis=0)
+    target_median = np.median(tx, axis=0)
+    mad = 1.4826 * np.median(np.abs(rx - ref_median), axis=0)
+    std = np.std(rx, axis=0)
+    scale = np.where(mad > 1e-12, mad, np.where(std > 1e-12, std, 1.0))
+    location_shift = np.abs(target_median - ref_median) / scale
+    shifted_fraction = float(np.mean(location_shift > 1.0))
+    ks = np.array([_ks_statistic(rx[:, i], tx[:, i]) for i in range(rx.shape[1])])
+
+    if rx.shape[1] == 1:
+        correlation_shift = 0.0
+    else:
+        corr_r = np.nan_to_num(np.corrcoef(rx, rowvar=False))
+        corr_t = np.nan_to_num(np.corrcoef(tx, rowvar=False))
+        correlation_shift = float(np.linalg.norm(corr_r - corr_t) /
+                                  math.sqrt(max(1, rx.shape[1])))
+    feature_shift = float(np.median(location_shift))
+    ks_p95 = float(np.percentile(ks, 95))
+    score = (0.45 * min(1.0, feature_shift) +
+             0.35 * min(1.0, ks_p95 / 0.3) +
+             0.20 * min(1.0, correlation_shift / 0.5))
+    severity = "severe" if score >= 0.6 else "moderate" if score >= 0.32 else "mild"
+    causes = []
+    if feature_shift > 0.45 and shifted_fraction > 0.1:
+        causes.append("covariate_location_shift")
+    if ks_p95 > 0.3:
+        causes.append("feature_distribution_shift")
+    if correlation_shift > 0.5:
+        causes.append("feature_relationship_shift")
+    if not causes:
+        causes.append("no_material_covariate_shift_detected")
+    return {
+        "monitor_type": "prequential_covariate_only",
+        "feature_shift": feature_shift,
+        "max_feature_shift": float(np.max(location_shift)),
+        "shifted_fraction": shifted_fraction,
+        "ks_max": float(ks.max()),
+        "ks_p95": ks_p95,
+        "correlation_shift": correlation_shift,
+        "label_shift": None,
+        "performance_before": None,
+        "performance_target": None,
+        "performance_drop": None,
+        "severity": severity,
+        "causes": causes,
+        "evidence": {
+            "top_shifted_features": [int(i) for i in np.argsort(location_shift)[-8:][::-1]],
+            "rows_reference": int(len(rx)),
+            "rows_target": int(len(tx)),
+            "severity_score": score,
+            "attribution_limit": "unlabeled covariate evidence cannot establish concept drift or performance loss",
+        },
+    }
+
+
 def analyse(model, reference, target, classes=()):
     """Compare parent model behaviour and input statistics on two public splits."""
     rx, tx = reference.x, target.x

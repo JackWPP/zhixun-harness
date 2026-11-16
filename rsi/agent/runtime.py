@@ -136,21 +136,77 @@ class PIRuntime:
         """
         from pi_agent_core import Agent, langchain_stream
 
+        # The PI hook runs before every provider request, including later turns
+        # and delegated agents. Reserve the serialized prompt plus a bounded
+        # completion before making the request; after_llm_call replaces that
+        # reservation with actual provider usage. A failed call keeps no
+        # reservation once this agent exits.
+        reservations: dict[asyncio.Task, tuple[str, int]] = {}
+
+        def before_llm_call(current_context, last_budget):
+            if self.budget.exhausted():
+                raise RuntimeError("token budget exhausted")
+            fraction = getattr(last_budget, "fraction", 0.0) if last_budget is not None else 0.0
+            if fraction > 0.92:
+                raise RuntimeError(f"context window nearly full ({fraction:.0%})")
+            task = asyncio.current_task()
+            if task is None:
+                raise RuntimeError("cannot reserve token budget outside an asyncio task")
+            estimate = _estimate_context_tokens(current_context)
+            response_limit = max(1, int(self.config.max_response_tokens))
+            reservation = self.budget.reserve_request(estimate, response_limit)
+            if reservation is None:
+                raise RuntimeError("token budget cannot reserve prompt and one response token")
+            reservations[task] = reservation
+            return None
+
+        async def after_llm_call(current_context, message):
+            del current_context
+            task = asyncio.current_task()
+            reservation = reservations.pop(task, None) if task is not None else None
+            if reservation is not None:
+                self.budget.settle_request(reservation[0], _usage_dict(_block_value(message, "usage")))
+
+        async def bounded_stream(model, context, options=None):
+            from dataclasses import replace
+            from pi_agent_core.types import StreamOptions
+
+            task = asyncio.current_task()
+            reservation = reservations.get(task) if task is not None else None
+            if reservation is None:
+                raise RuntimeError("model request has no token-budget reservation")
+            current = options or StreamOptions()
+            current_limit = getattr(current, "max_tokens", None)
+            cap = reservation[1]
+            if current_limit is not None:
+                cap = min(cap, int(current_limit))
+            return await langchain_stream(model, context, replace(current, max_tokens=cap))
+
         agent = Agent(
             initial_state={"system_prompt": system_prompt,
                            "model": self.model,
                            "tools": tools},
-            stream_fn=langchain_stream,
+            stream_fn=bounded_stream,
             max_turns=int(max_turns or self.config.max_turns),
             tool_timeout=float(tool_timeout or self.config.tool_timeout),
             max_retries=1,
-            before_llm_call=self._before_llm_call,
+            before_llm_call=before_llm_call,
+            after_llm_call=after_llm_call,
         )
         prompt_coro = agent.prompt(user_prompt)
         if timeout_seconds:
             prompt_coro = asyncio.wait_for(prompt_coro, timeout=timeout_seconds)
-        await prompt_coro
-        await agent.wait_for_idle()
+        try:
+            await prompt_coro
+            await agent.wait_for_idle()
+        finally:
+            for reservation_id, _ in list(reservations.values()):
+                # A provider may have generated billable tokens before a
+                # transport error prevented usage metadata. Charge the full
+                # reservation in that ambiguous case instead of making the
+                # failed request free.
+                self.budget.settle_request(reservation_id, {})
+            reservations.clear()
         return agent
 
     def collect_agent(self, agent, *, role: str, sink: ToolSink | None = None,
@@ -179,7 +235,8 @@ class PIRuntime:
         result.text = "\n".join(t for t in texts if t).strip()[-3000:]
         if sink is not None:
             result.submitted = list(sink.payloads)
-        self.budget.add(usage)
+        # Usage is charged in after_llm_call for each provider response, before
+        # the next tool or model turn can start. Do not double-count it here.
         self.calls += 1
         result.latency = time.time() - start
         if not result.submitted and result.text and result.ok:
@@ -241,3 +298,38 @@ def _parse_json_object(text: str) -> dict | None:
     except Exception:
         return None
     return value if isinstance(value, dict) else None
+
+
+def _usage_dict(usage) -> dict:
+    """Normalize PI/LangChain usage objects without depending on one version."""
+    if usage is None:
+        return {}
+    if isinstance(usage, dict):
+        get = usage.get
+    else:
+        get = lambda key, default=None: getattr(usage, key, default)
+    return {
+        "input": get("input", 0) or 0,
+        "output": get("output", 0) or 0,
+        "reasoning_tokens": get("reasoningTokens", get("reasoning_tokens", 0)) or 0,
+    }
+
+
+def _estimate_context_tokens(context) -> int:
+    """Conservative input estimate for a hard per-request budget reservation.
+
+    The PI context includes messages and tool schemas. Counting serialized UTF-8
+    bytes is deliberately more conservative than a character-count heuristic;
+    the provider's returned usage remains the audit value.
+    """
+    if hasattr(context, "model_dump"):
+        value = context.model_dump(mode="json")
+    elif hasattr(context, "__dict__"):
+        value = vars(context)
+    else:
+        value = context
+    try:
+        serialized = json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
+    except (TypeError, ValueError):
+        serialized = repr(value)
+    return len(serialized.encode("utf-8")) + 128

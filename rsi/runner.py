@@ -31,11 +31,12 @@ from rsi.agent.guard import Guard
 from rsi.agent.kernel import Kernel
 from rsi.agent.runtime import PIRuntime
 from rsi.data import Dataset, load_jsonl_dataset
-from rsi.drift import analyse
+from rsi.drift import analyse_covariates
 from rsi.executor import ExperimentProposal, Executor
 from rsi.inference import apply_postprocess, predict_for_split, resolve_postprocess
 from rsi.memory import (MemoryReviewer, MemoryStore, Recall, SkillCurator,
                         SkillStore, StateDB)
+from rsi.memory.skill_candidates import SkillCandidateStore
 from rsi.metrics import from_predictions, primary
 from rsi.model import ExtendedModel, checkpoint_sha256, code_sha256
 from rsi.planner import (fallback_proposals, postprocess_catalog_text,
@@ -161,6 +162,7 @@ class Runner:
         self.experiments_used = 0
         self.global_cpu = 0.0
         self.swan_run = None
+        self.swanlab_error: str | None = None
         # -- controller selection (kernel needs a live LLM) ----------------
         if controller not in ("auto", "kernel", "pipeline"):
             raise ValueError(f"unknown controller {controller!r}")
@@ -182,6 +184,10 @@ class Runner:
                             or (self.state_dir / "rsi_state.db"))
         self.memory = MemoryStore(self.memory_root) if self.memory_enabled else None
         self.skills = self._build_skill_store() if self.memory_enabled else None
+        self.skill_candidates = (SkillCandidateStore(
+            self.skills, self.run_dir / "skill-candidates",
+            max_candidates=int(os.environ.get("RSI_SKILL_CANDIDATE_CAP", 3)))
+            if self.skills is not None else None)
         self.db = StateDB(self.db_path) if self.memory_enabled else None
         if self.db is not None and hasattr(self.recorder, "attach_db"):
             self.recorder.attach_db(self.db)
@@ -237,10 +243,11 @@ class Runner:
             import swanlab
 
             self.swan_run = swanlab.init(project=os.environ.get("SWANLAB_PROJECT", "zhixun-rsi"),
-                                         mode="offline",
+                                         mode=os.environ.get("SWANLAB_MODE", "offline"),
                                          log_dir=str(self.run_dir / "swanlab"))
-            self.log("info", "-", "SwanLab offline run initialised")
+            self.log("info", "-", f"SwanLab {os.environ.get('SWANLAB_MODE', 'offline')} run initialised")
         except Exception as exc:  # pragma: no cover - optional dependency
+            self.swanlab_error = f"{exc.__class__.__name__}: {exc}"
             self.log("warn", "-", f"SwanLab disabled: {exc}")
 
     def _swan_log(self, data: dict) -> None:
@@ -250,6 +257,38 @@ class Runner:
             self.swan_run.log(data)
         except Exception:
             pass
+
+    def _swan_metrics(self, state: TaskState, round_number: int, decision: dict,
+                      results: list[dict]) -> dict:
+        """Log model lifecycle evidence, not only the driver-agent's outcome."""
+        candidates = []
+        for result in results:
+            metrics = result.get("metrics") or {}
+            candidates.append({
+                "experiment_id": result.get("experiment_id"),
+                "proposal": result.get("proposal"),
+                "parent_checkpoint_sha256": result.get("parent_checkpoint"),
+                "candidate_checkpoint_sha256": result.get("checkpoint_sha256"),
+                "code_sha256": result.get("code_sha256"),
+                "selection": metrics.get("selection"),
+                "report": metrics.get("report"),
+                "probe": metrics.get("probe"),
+                "cpu_seconds": result.get("cpu_seconds"),
+                "wall_seconds": result.get("wall_seconds"),
+                "error": result.get("error"),
+            })
+        return {
+            "task": state.config.key,
+            "round": round_number,
+            "decision": decision.get("decision"),
+            "decision_reason": decision.get("reason"),
+            "champion_checkpoint_sha256": state.parent_sha,
+            "postprocess": state.postprocess,
+            "metrics": {"selection": state.selection_metrics,
+                        "report": state.report_metrics,
+                        "probe": state.probe_metrics},
+            "candidates": candidates,
+        }
 
     # -- evaluation --------------------------------------------------------
     def evaluate(self, model: ExtendedModel, dataset: Dataset | None,
@@ -268,17 +307,16 @@ class Runner:
 
     # -- drift -------------------------------------------------------------
     def drift_report(self, state: TaskState, round_index: int) -> dict:
-        model = ExtendedModel.from_checkpoint(state.parent_path)
-        order = np.random.default_rng(self.seed + round_index).permutation(len(state.selection))
-        window_rows = max(16, int(len(state.selection) * (round_index + 1) / self.rounds))
-        index = np.sort(order[:window_rows])
-        window = Dataset(f"stream-r{round_index}", [state.selection.ids[i] for i in index],
-                         state.selection.x[index], state.selection.y[index],
-                         state.selection.paths, state.selection.sha256,
-                         [state.selection.groups[i] for i in index])
-        report = analyse(model, state.train, window, state.config.classes)
-        payload = report.to_dict()
-        payload["window_rows"] = int(window_rows)
+        # Preserve public validation row order and keep this view label blind.
+        # Labels remain available only to the separate evaluator/selection gate.
+        n = len(state.selection)
+        start = min(n - 1, int(n * round_index / max(1, self.rounds)))
+        end = min(n, max(start + 1, int(n * (round_index + 1) / max(1, self.rounds))))
+        target_x = state.selection.x[start:end]
+        payload = analyse_covariates(state.train.x, target_x)
+        payload["window_rows"] = int(end - start)
+        payload["window_start"] = int(start)
+        payload["window_end"] = int(end)
         payload["round_index"] = round_index + 1
         payload["reference"] = "train"
         return payload
@@ -395,8 +433,8 @@ class Runner:
             self.runtime.close()
             if self.db is not None:
                 self.db.close()
-        self.log("info", "-", f"run finished: {_compact({'cpu': round(self.global_cpu, 1),
-                                                          'tokens': self.budget.used})}")
+        run_totals = {"cpu": round(self.global_cpu, 1), "tokens": self.budget.used}
+        self.log("info", "-", f"run finished: {_compact(run_totals)}")
         return summary
 
 
@@ -461,7 +499,8 @@ class Runner:
         kernel = None
         if state.controller == "kernel" and self.llm_ready:
             kernel = Kernel(config, self.runtime, guard, memory=self.memory,
-                            skills=self.skills, recall=self.recall,
+                            skills=self.skills, skill_candidates=self.skill_candidates,
+                            recall=self.recall,
                             recorder=self.recorder, run_id=self.run_id,
                             max_turns=self.round_turns,
                             round_timeout=float(os.environ.get("RSI_ROUND_TIMEOUT", 1800)),
@@ -675,10 +714,8 @@ class Runner:
         record = self._record_round(state, round_number, drift, diagnosis, proposals, review,
                                     results, decision.to_dict(), parent_sha_before, token_before,
                                     started, best=best)
-        self._swan_log({"task": key, "round": round_number,
-                        "primary": state.selection_metrics["primary"],
-                        "baseline": state.config.baseline_primary,
-                        "decision": decision.decision})
+        self._swan_log(self._swan_metrics(
+            state, round_number, decision.to_dict(), results))
         if state.stall_rounds >= 2 and len(state.panel) < 2 and self.budget.remaining() > 20000:
             issue = (f"连续 {state.stall_rounds} 轮未提升（当前 {state.config.primary_metric}="
                      f"{state.selection_metrics['primary']:.6f}，基线 {state.config.baseline_primary:.6f}，"
@@ -862,10 +899,8 @@ class Runner:
             state, round_number, drift, diagnosis, proposals, review, results, decision,
             parent_sha_before, token_before, started,
             best=(promote_target or best), roles=["kernel"], agent=agent_record)
-        self._swan_log({"task": key, "round": round_number,
-                        "primary": state.selection_metrics["primary"],
-                        "baseline": state.config.baseline_primary,
-                        "decision": decision["decision"], "controller": "kernel"})
+        self._swan_log(self._swan_metrics(
+            state, round_number, {**decision, "controller": "kernel"}, results))
         if state.stall_rounds >= 2 and len(state.panel) < 2 and self.budget.remaining() > 20000:
             issue = (f"连续 {state.stall_rounds} 轮未提升（当前 {state.config.primary_metric}="
                      f"{state.selection_metrics['primary']:.6f}，基线 {state.config.baseline_primary:.6f}，"
@@ -1010,6 +1045,10 @@ class Runner:
                     "available": self.runtime.available(),
                     "model": self.llm_config.model, "base_url": self.llm_config.base_url,
                     "budget": self.budget.to_dict()},
+            "swanlab": {"enabled": self.swan_run is not None,
+                        "mode": os.environ.get("SWANLAB_MODE", "offline") if self.swanlab else None,
+                        "error": self.swanlab_error,
+                        "local_dir": str(self.run_dir / "swanlab") if self.swanlab else None},
             "budget": {"cpu_seconds": round(self.global_cpu, 2), "wall_seconds": round(time.time() - self.started_at, 2),
                        "experiments_used": self.experiments_used,
                        "experiments_cap": self.experiments_cap_total},

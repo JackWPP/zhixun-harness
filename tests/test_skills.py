@@ -89,3 +89,51 @@ def test_runner_skill_store_is_run_local(tmp_path):
     assert source.read_text(encoding="utf-8") == original
     assert store.load("drift-diagnosis").body != before
     assert store.root == runner.memory_root / "skills"
+
+
+def test_agent_skill_edits_are_staged_then_gated_and_rollbackable(tmp_path):
+    from rsi.memory.skill_candidates import SkillCandidateStore, _file_hash
+
+    active = SkillStore(tmp_path / "active")
+    active.create("my-skill", _text("my-skill", "## Procedure\nParent."))
+    before = (active.root / "my-skill" / "SKILL.md").read_text()
+    candidates = SkillCandidateStore(active, tmp_path / "candidates")
+    candidate = candidates.patch("my-skill", "Parent.", "Candidate.")
+
+    assert candidate["status"] == "staged"
+    assert (active.root / "my-skill" / "SKILL.md").read_text() == before
+    report = tmp_path / "evaluation.json"
+    report.write_text('{"independent":true}\n')
+    evaluation = {
+        "independent": True,
+        "candidate_id": candidate["candidate_id"],
+        "parent_skill_hashes": candidate["parent_skill_hashes"],
+        "candidate_skill_hashes": candidate["candidate_skill_hashes"],
+        "report_path": str(report),
+        "report_sha256": _file_hash(report),
+        "seeds": [42, 43],
+        "seed_metrics": [
+            {"seed": 42, "baseline": 0.7, "candidate": 0.72, "worst_group_delta": -0.01},
+            {"seed": 43, "baseline": 0.71, "candidate": 0.73, "worst_group_delta": 0.0},
+        ],
+        "direction": "higher",
+        "minimum_delta": 0.01,
+        "max_group_regression": 0.02,
+    }
+    promoted = candidates.promote(candidate["candidate_id"], evaluation)
+    assert promoted["status"] == "promoted"
+    assert "Candidate." in active.read_text("my-skill")
+    rolled = candidates.rollback(candidate["candidate_id"])
+    assert rolled["status"] == "rolled_back"
+    assert active.read_text("my-skill").find("Parent.") >= 0
+
+
+def test_skill_candidate_requires_independent_multiseed_gate(tmp_path):
+    from rsi.memory.skill_candidates import SkillCandidateStore
+
+    active = SkillStore(tmp_path / "active")
+    active.create("my-skill", _text("my-skill"))
+    candidates = SkillCandidateStore(active, tmp_path / "candidates")
+    candidate = candidates.patch("my-skill", "Do X.", "Do X safely.")
+    with pytest.raises(ValueError, match="independent evaluation"):
+        candidates.promote(candidate["candidate_id"], {})

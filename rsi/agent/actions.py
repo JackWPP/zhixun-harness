@@ -43,6 +43,7 @@ class KernelEnv:
     runtime: PIRuntime
     memory: object = None
     skills: object = None
+    skill_candidates: object = None
     recall: object = None
     brief: dict = field(default_factory=dict)
     proposals: dict[str, ExperimentProposal] = field(default_factory=dict)
@@ -84,6 +85,7 @@ class KernelEnv:
             "finished": self.finished,
             "memory_writes": self.memory_writes,
             "skill_writes": self.skill_writes,
+            "skill_candidate_ids": list(getattr(self.skill_candidates, "candidate_ids", [])),
             "delegates": self.delegates,
             "panels": self.panels,
             "used_skills": list(dict.fromkeys(self.used_skills)),
@@ -398,14 +400,17 @@ def build_kernel_tools(env: KernelEnv):
 
     async def h_skill(tool_call_id, params, signal, on_update):
         try:
+            if env.skill_candidates is None:
+                return _result({"ok": False,
+                                "error": "skill candidate staging is unavailable; active skills are read-only"})
             if params.action == "create":
                 env.guard.check_skill_text(params.text)
-                result = env.skills.create(params.name, params.text)
+                result = env.skill_candidates.create(params.name, params.text)
             elif params.action == "patch":
                 env.guard.check_skill_text(params.new_string)
-                result = env.skills.patch(params.name, params.old_string, params.new_string)
+                result = env.skill_candidates.patch(params.name, params.old_string, params.new_string)
             else:
-                result = env.skills.delete(params.name)
+                result = env.skill_candidates.delete(params.name)
         except GuardViolation as exc:
             return _result({"ok": False, "error": str(exc)})
         except Exception as exc:

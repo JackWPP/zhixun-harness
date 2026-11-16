@@ -48,6 +48,7 @@ class RoundOutcome:
 class Kernel:
     def __init__(self, task: TaskConfig, runtime: PIRuntime, guard: Guard, *,
                  memory=None, skills=None, recall=None, recorder=None,
+                 skill_candidates=None,
                  run_id: str = "", max_turns: int = 20,
                  round_timeout: float = 1800.0, experiment_timeout: float = 900.0,
                  verbose: bool = True):
@@ -56,6 +57,7 @@ class Kernel:
         self.guard = guard
         self.memory = memory
         self.skills = skills
+        self.skill_candidates = skill_candidates
         self.recall = recall
         self.recorder = recorder
         self.run_id = run_id
@@ -78,7 +80,8 @@ class Kernel:
                                 latency=time.time() - start)
         env = KernelEnv(task=self.task, host=host, guard=self.guard,
                         runtime=self.runtime, memory=self.memory,
-                        skills=self.skills, recall=self.recall, brief=brief)
+                        skills=self.skills, skill_candidates=self.skill_candidates,
+                        recall=self.recall, brief=brief)
         env.experiments_total = int(experiments_total)
         env.max_experiments_round = self.guard.max_experiments_per_round
         tools = build_kernel_tools(env)
