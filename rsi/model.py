@@ -95,7 +95,7 @@ class Model:
         hidden = np.tanh(x @ self.params["w1"] + self.params["b1"])
         return hidden, hidden @ self.params["w2"] + self.params["b2"]
 
-    def fit(self, x, y, epochs):
+    def fit(self, x, y, epochs, class_weight=None):
         if type(epochs) is not int or not 1 <= epochs <= 10000:
             raise ValueError("epochs must be between 1 and 10000")
         x = self.normalized(x)
@@ -103,10 +103,18 @@ class Model:
             raise ValueError("target shape mismatch")
         if self.meta["task"] == "regression":
             target = (y - self.meta["target_mean"]) / self.meta["target_scale"]
+            if class_weight is not None:
+                raise ValueError("class weights are only supported for classification")
         else:
             if np.any(y < 0) or np.any(y >= len(self.meta["classes"])):
                 raise ValueError("unknown class")
             target = y
+        if class_weight is not None:
+            weights = np.asarray(class_weight, dtype=np.float64)
+            if weights.shape != (len(self.meta["classes"]),) or not np.all(np.isfinite(weights)) or np.any(weights <= 0):
+                raise ValueError("invalid class weights")
+        else:
+            weights = None
         epoch_losses = []
         for _ in range(epochs):
             # Epoch-indexed shuffling makes split/resumed execution reproduce a continuous run.
@@ -121,10 +129,18 @@ class Model:
                     logits -= logits.max(axis=1, keepdims=True)
                     probabilities = np.exp(logits)
                     probabilities /= probabilities.sum(axis=1, keepdims=True)
-                    loss_sum -= float(np.log(np.maximum(probabilities[np.arange(len(indices)), expected], 1e-300)).sum())
-                    delta = probabilities
-                    delta[np.arange(len(indices)), expected] -= 1
-                    delta /= len(indices)
+                    if weights is None:
+                        loss_sum -= float(np.log(np.maximum(probabilities[np.arange(len(indices)), expected], 1e-300)).sum())
+                        delta = probabilities
+                        delta[np.arange(len(indices)), expected] -= 1
+                        delta /= len(indices)
+                    else:
+                        sample_weight = weights[expected]
+                        loss_sum -= float((sample_weight * np.log(np.maximum(
+                            probabilities[np.arange(len(indices)), expected], 1e-300))).sum())
+                        delta = probabilities * sample_weight[:, None]
+                        delta[np.arange(len(indices)), expected] -= sample_weight
+                        delta /= float(sample_weight.sum())
                 else:
                     error = logits[:, 0] - expected
                     loss_sum += float(np.sum(error ** 2))

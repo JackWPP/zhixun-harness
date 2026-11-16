@@ -86,10 +86,16 @@ case "$COMMAND" in
         STREAM_DIR=${RSI_STREAM_DIR:-$STATE_DIR/stream}
         EXTRA_ARGS=""
         [ -n "${RSI_LLM_ENV:-}" ] && [ -f "${RSI_LLM_ENV}" ] && EXTRA_ARGS="--llm-env $RSI_LLM_ENV"
-        echo "[harness] stream source=$SOURCE batches=$BATCHES tasks=$TASKS state=$STREAM_DIR"
+        # History adaptation: continue-train on the cumulative labelled history of
+        # earlier batches before scoring the current one (no current-batch labels).
+        ADAPT_ARGS=""
+        if [ "${RSI_STREAM_ADAPT:-1}" = "1" ]; then
+            ADAPT_ARGS="--adapt-history --adapt-epochs ${RSI_STREAM_ADAPT_EPOCHS:-30} --adapt-lr ${RSI_STREAM_ADAPT_LR:-0.0005} --adapt-weight ${RSI_STREAM_ADAPT_WEIGHT:-0.5}"
+        fi
+        echo "[harness] stream source=$SOURCE batches=$BATCHES tasks=$TASKS state=$STREAM_DIR adapt=${RSI_STREAM_ADAPT:-1}"
         python -m rsi.cli stream --source "$SOURCE" --tasks "$TASKS" --batches "$BATCHES" \
             --holdout "$HOLDOUT" --llm "${RSI_LLM:-off}" --controller "${RSI_CONTROLLER:-auto}" \
-            --state-dir "$STREAM_DIR" $EXTRA_ARGS "$@"
+            --state-dir "$STREAM_DIR" $ADAPT_ARGS $EXTRA_ARGS "$@"
         ;;
     predict)
         python -m rsi.predict "$@"

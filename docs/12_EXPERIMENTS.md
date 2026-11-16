@@ -464,3 +464,40 @@ LLM 467,689 tokens（in 430,552 / out 37,137 / reasoning 29,014）、3 次调用
   （Δ−268.9）——说明“策略库 + 知识候选清单”仍需把强配方显式喂给 Agent，这是
   v0.6 已知差距（已记入 docs/18 §10.5 与 OVERNIGHT_LOG 的后续项）。
 - 严格口径：仅官方 train 拟合；validation 只用于 selection/report。
+
+## 12.23 A 提升：历史标签自适应（P0）与 weighted-CE（P1，门控未采纳）
+
+命令：
+
+```bash
+# P0 外部测试床（标签延后一批，leak-free）
+RSI_ALLOW_EXTENDED_DATA=1 ./.venv/bin/python -m rsi.cli stream --source external-a \
+  --tasks A --batches 8 --external-start 3 --external-end 10 --holdout 0.5 \
+  --experiments-cap 1 --retention-every 0 --adapt-history --adapt-epochs 30 \
+  --external-root extra/uci-gas/Dataset --state-dir .scratch/stream-adapt
+
+# P0 官方流（无外部数据）
+./.venv/bin/python -m rsi.cli stream --source official --tasks A --batches 8 \
+  --experiments-cap 1 --retention-every 0 --adapt-history --adapt-epochs 30 \
+  --state-dir .scratch/stream-official-adapt
+
+# P1 静态配方试跑（10 轮 canonical）
+./.venv/bin/python -m rsi.cli run --tasks A --rounds 10 --llm off --no-memory --state-dir .scratch/a-p1
+```
+
+**P0 外部测试床（UCI batch3–10，8 批，leak-free）**：frozen macro 均值 .3977 →
+仅 recenter .5046 → **history-adapt .7733**（micro .3797/.4851/.7417）；8 批 0 error、
+wall 333.7s。逐批与决策见 docs/23 §8.1。
+
+**P0 官方 validation 顺序 8 批**：frozen .6158 → **history-adapt .6361**（+0.020，
++3.3% 相对）；仅 recenter 在 155 行小批次上反而降到 .4454。结论：历史自适应在
+外部多类批次上收益巨大、在官方小偏批次上不回归；recenter-only 在类偏小批上不可靠。
+
+**P1 weighted-CE（负结果）**：A canonical r3 尝试 `class_weight_beta=0.5, lr=5e-4,
+epochs=30 + recenter w=0.3`，selection 0.7226 < 父 0.7346 → 门控 rollback；该候选
+全量 validation 0.7279（w.3）/0.7289（w.4）vs 部署 0.7199。更强变体 full 0.7368
+但 selection 0.7224。按协议不使用全量 validation 反向选型，故**不采纳、不改 submission**，
+配方保留为 opt-in 能力（`continue_train.class_weight_beta`）。
+
+**默认策略**：stream 模式默认 `--adapt-history`（entrypoint `RSI_STREAM_ADAPT=1`，
+30 epoch/lr 5e-4/recenter 0.5）；不影响单次 `run`/submission。

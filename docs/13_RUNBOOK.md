@@ -7,9 +7,9 @@
 
 ```bash
 docker load -i harness.tar
-# 期望：Loaded image: zhixun-rsi-harness:0.6.0
+# 期望：Loaded image: zhixun-rsi-harness:0.7.0
 docker images | grep zhixun-rsi-harness
-docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixun-rsi-harness:0.6.0
+docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixun-rsi-harness:0.7.0
 # 期望：amd64 linux [/opt/zhixun/bin/entrypoint.sh]
 ```
 
@@ -20,7 +20,7 @@ docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixu
 
 ```bash
 mkdir -p /host/work
-docker run --rm -v /host/work:/work zhixun-rsi-harness:0.6.0
+docker run --rm -v /host/work:/work zhixun-rsi-harness:0.7.0
 ```
 
 等价于：
@@ -28,7 +28,7 @@ docker run --rm -v /host/work:/work zhixun-rsi-harness:0.6.0
 ```bash
 docker run --rm -v /host/work:/work \
   -e RSI_TASKS=A,B,C -e RSI_ROUNDS=10 -e RSI_LLM=auto \
-  zhixun-rsi-harness:0.6.0 run
+  zhixun-rsi-harness:0.7.0 run
 ```
 
 完成后在宿主机可见：
@@ -77,10 +77,10 @@ docker run --rm -v /host/work:/work \
 ```bash
 # 单任务，2 轮，离线
 docker run --rm -v /host/work:/work -e RSI_TASKS=A -e RSI_ROUNDS=2 -e RSI_LLM=off \
-  zhixun-rsi-harness:0.6.0 run
+  zhixun-rsi-harness:0.7.0 run
 
 # 自检：加载 checkpoint，复算三层切分与探针的主指标
-docker run --rm zhixun-rsi-harness:0.6.0 selftest A
+docker run --rm zhixun-rsi-harness:0.7.0 selftest A
 ```
 
 ## 13.4b v0.4 新增命令
@@ -89,7 +89,7 @@ docker run --rm zhixun-rsi-harness:0.6.0 selftest A
 # Agent 自主内核（需要可用 OpenAI 兼容端点；单轮 2-4 分钟）
 docker run --rm -v /host/work:/work -e RSI_LLM=on -e RSI_LLM_ENV=/work/llm.env \
   -e RSI_CONTROLLER=kernel -e RSI_TASKS=A -e RSI_ROUNDS=3 \
-  zhixun-rsi-harness:0.6.0 run
+  zhixun-rsi-harness:0.7.0 run
 
 # 私有/隐藏风格 JSONL 探针（只推理，不训练）
 python -m rsi.cli probe --task A --path private.jsonl --checkpoint <ckpt> --output probe.json
@@ -112,7 +112,7 @@ bash scripts/rehearse.sh --skip-build
 ## 13.5 预测入口（平台 quote 用）
 
 ```bash
-docker run --rm -i -v /host/work:/work zhixun-rsi-harness:0.6.0 \
+docker run --rm -i -v /host/work:/work zhixun-rsi-harness:0.7.0 \
   predict --checkpoint /work/A/checkpoint.npz \
           --postprocess /work/A/postprocess.json --mode batch < /host/inputs.jsonl
 ```
@@ -127,7 +127,7 @@ docker run --rm -i -v /host/work:/work zhixun-rsi-harness:0.6.0 \
 
 ```bash
 docker run --rm -p 7861:7861 -v /host/work:/work \
-  zhixun-rsi-harness:0.6.0 serve /work/rsi-runs/latest/state.json 7861
+  zhixun-rsi-harness:0.7.0 serve /work/rsi-runs/latest/state.json 7861
 ```
 
 浏览器打开 `http://<host>:7861`。看板纯静态 + 标准库，无外网依赖；只读
@@ -189,15 +189,18 @@ python -m rsi.cli synth --task A --batches 3 --drift 2.5 --noise 0.25 \
 
 ```bash
 docker run --rm -v /host/work:/work -e RSI_STREAM_SOURCE=official \
-  -e RSI_STREAM_BATCHES=10 zhixun-rsi-harness:0.6.0 stream
+  -e RSI_STREAM_BATCHES=10 zhixun-rsi-harness:0.7.0 stream
 ```
 
 * 每批产物：`$RSI_STREAM_DIR/tasks/<key>/batch_XXXX/{decision.json,predictions.jsonl,run/}`；
   `decision.json` 同时含扁平平台字段（`decision` 字符串、`round_index`、父/候选/最终
   checkpoint sha256、`validation_metrics`）与 `decision_detail`；
+* **历史标签自适应默认开启**（`RSI_STREAM_ADAPT=1`）：第 i 批先用“官方 train + 前 i-1 批
+  已返回标签”连续训练 30 epoch（lr 5e-4），再做当前批 recenter（w 0.5）；不会使用当前批
+  标签。可调 `RSI_STREAM_ADAPT_EPOCHS/LR/WEIGHT`，离线对照可设 `RSI_STREAM_ADAPT=0`；
 * 本地/开发：`python -m rsi.cli stream --source official --tasks A,B,C --batches 10`；
 * 外部数据测试床：`--source external-a --external-root extra/uci-gas/Dataset`（Track X，
-  默认不进入正式谱系；需 `RSI_ALLOW_EXTENDED_DATA=1`）；
+  默认不进入正式谱系；需 `RSI_ALLOW_EXTENDED_DATA=1`；外部批的标签在下一批才进入训练）；
 * 平台真实挂载路径未知（docs/19 H1/H2），上线前用 `scripts/emulate_stream_platform.py`
   彩排，并用 `scripts/contract_check.py --online` 复核规则/公告。
 

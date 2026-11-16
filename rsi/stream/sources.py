@@ -11,9 +11,11 @@ Two families of sources are supported:
   Training at batch *i* may use the official train split plus the *labels of
   batches 0..i-1* (already delivered), never batch *i*'s validation rows.
 * ``external-a`` – the UCI gas batches 3..10 as a Track X continual-adaptation
-  test-bed.  Each external batch is split into train/eval rows; the harness may
-  adapt its industrial model on the labelled train rows and is scored on the
-  eval rows.  This never feeds the official submission lineage.
+  test-bed.  Each external batch is split into train/eval rows; the harness is
+  scored on the eval rows using only the official train split plus the labelled
+  rows of *earlier* batches (batch i's own labels are released only after its
+  prediction, mirroring the platform protocol).  This never feeds the official
+  submission lineage.
 """
 
 from __future__ import annotations
@@ -190,7 +192,11 @@ def external_a_batches(
         if len(all_rows) < 8:
             continue
         train_part, eval_part = _stratified_rows(all_rows, 1.0 - holdout, seed + batch_no)
-        batch_train = prev_train + train_part
+        # Labels of batch i only become trainable when batch i+1 arrives, mirroring
+        # the platform protocol (the current batch is scored before its labels are
+        # released to us). This prevents the test-bed from leaking current-batch
+        # labels into the current prediction.
+        batch_train = list(prev_train)
         batches.append(
             Batch(
                 index=i,
@@ -202,10 +208,12 @@ def external_a_batches(
                     "file": str(path),
                     "validation_rows": len(eval_part),
                     "train_rows": len(batch_train),
+                    "pending_rows": len(train_part),
+                    "labels_released_after_batch": True,
                 },
             )
         )
-        prev_train = batch_train
+        prev_train = prev_train + train_part
     return batches
 
 

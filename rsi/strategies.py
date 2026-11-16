@@ -99,6 +99,22 @@ def _augment_features(context: ExperimentContext, x):
     return np.vstack([x] + copies + [x[index]])
 
 
+def _class_weight_vector(y, n_classes, beta):
+    """Inverse-frequency class weights raised to ``beta`` (0 = uniform).
+
+    The weights are normalised to mean 1 so the effective gradient scale is
+    comparable to the unweighted objective. Only official-train labels are
+    counted; this is a loss reweighting, not a data or architecture change.
+    """
+    beta = float(beta)
+    if beta <= 0:
+        return None
+    counts = np.bincount(np.asarray(y, dtype=np.int64), minlength=int(n_classes)).astype(np.float64)
+    counts[counts == 0] = 1.0
+    weights = (len(y) / (int(n_classes) * counts)) ** beta
+    return weights / float(np.mean(weights))
+
+
 def strategy_retain(context, params):
     return Candidate(context.parent.clone(), postprocess={"type": "none"},
                      notes={"why": "parent retained unchanged"})
@@ -108,10 +124,15 @@ def strategy_continue_train(context, params):
     model = context.parent.clone()
     model.set_learning_rate(float(params["learning_rate"]))
     x, y = _training_matrix(context, params["data"], bool(params.get("class_balance")), bool(params.get("augment")))
-    model.fit(x, y, int(params["epochs"]))
+    beta = float(params.get("class_weight_beta", 0.0) or 0.0)
+    weights = None
+    if context.task == "classification" and beta > 0:
+        weights = _class_weight_vector(y, len(context.classes or []), beta)
+    model.fit(x, y, int(params["epochs"]), class_weight=weights)
     return Candidate(model, postprocess={"type": "none"},
                      notes={"rows": int(len(x)), "epochs": int(params["epochs"]),
-                            "learning_rate": float(params["learning_rate"])})
+                            "learning_rate": float(params["learning_rate"]),
+                            "class_weight_beta": beta})
 
 
 def strategy_extended_pretrain(context, params):
@@ -214,6 +235,7 @@ STRATEGIES = {
             "epochs": {"type": "int", "min": 1, "max": 300, "default": 20},
             "data": {"type": "choice", "choices": ["train"], "default": "train"},
             "class_balance": {"type": "bool", "default": False},
+            "class_weight_beta": {"type": "float", "min": 0.0, "max": 2.0, "default": 0.0},
             "augment": {"type": "bool", "default": False},
         },
         cost="low"),

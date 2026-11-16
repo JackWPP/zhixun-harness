@@ -27,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..model import checkpoint_sha256
+from ..model import ExtendedModel, checkpoint_sha256
 from ..runner import Runner
 from ..tasks import TaskConfig, resolve_tasks
 from .protocol import (
@@ -73,6 +73,33 @@ def _read_primary(path: Path) -> float | None:
         return None
 
 
+def _adapt_on_history(batch_dir: Path, config: TaskConfig, parent_checkpoint: Path,
+                      epochs: int, learning_rate: float) -> Path:
+    """Continue-train the parent on the cumulative labelled history of a batch.
+
+    ``Batch.train`` already contains the official train split plus every earlier
+    batch that the platform delivered with labels, so this is a plain
+    continuation on data the harness is allowed to fit. It changes no
+    architecture, normalisation or checkpoint schema.
+    """
+    from ..data import load_jsonl_dataset
+
+    model = ExtendedModel.from_checkpoint(parent_checkpoint)
+    dataset = load_jsonl_dataset(batch_dir / "package" / "public" / "train.jsonl",
+                                 config.task, config.classes)
+    if dataset.x.shape[1] != len(model.meta["paths"]):
+        raise ValueError("adapted history feature width does not match the parent checkpoint")
+    adapted = model.clone()
+    adapted.set_learning_rate(float(learning_rate))
+    adapted.fit(dataset.x, dataset.y, int(epochs))
+    out = batch_dir / "adapted_parent.npz"
+    if out.exists():
+        out.unlink()
+    adapted.save(out)
+    shutil.copy2(out, batch_dir / "package" / "checkpoint.npz")
+    return out
+
+
 def run_task_stream(payload: dict) -> dict:
     key = payload["key"]
     source_kind = payload.get("source", "official")
@@ -86,6 +113,10 @@ def run_task_stream(payload: dict) -> dict:
     batch_wall = float(payload.get("batch_wall", 1800.0))
     retention_every = int(payload.get("retention_every", 2))
     verbose = bool(payload.get("verbose", True))
+    adapt_history = bool(payload.get("adapt_history", False))
+    adapt_epochs = int(payload.get("adapt_epochs", 30))
+    adapt_lr = float(payload.get("adapt_lr", 0.0005))
+    adapt_weight = float(payload.get("adapt_weight", 0.5))
 
     configs = resolve_tasks([key])
     if not configs:
@@ -122,6 +153,12 @@ def run_task_stream(payload: dict) -> dict:
               f"val={len(batch.validation)} parent={parent_checkpoint.name}", flush=True)
         try:
             spec = materialise_package(batch_dir, config, batch, parent_checkpoint)
+            if adapt_history and index > 0:
+                adapted = _adapt_on_history(batch_dir, config, parent_checkpoint, adapt_epochs, adapt_lr)
+                parent_checkpoint = adapted
+                parent_postprocess = {"type": "recenter", "mode": "batch_mean", "weight": adapt_weight}
+                print(f"[stream:{key}] batch {index} history-adapt epochs={adapt_epochs} "
+                      f"lr={adapt_lr} rows={len(batch.train)}", flush=True)
             runner = Runner(
                 keys=(key,), rounds=1, llm_mode=llm_mode, seed=seed + index,
                 state_dir=batch_dir, wall_cap=batch_wall, cpu_cap=36000.0,

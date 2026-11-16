@@ -114,3 +114,18 @@ RSI_ALLOW_EXTENDED_DATA=1 ./.venv/bin/python -m rsi.cli stream --tasks A --sourc
   docs/19 的平台假设一致。
 - 边界：Track X 只在 `RSI_ALLOW_EXTENDED_DATA=1` 下运行；外部数据仅用于测试床，不进入
   Track S 的 checkpoint 谱系、manifest 或 workspace_report；正式提交仍为严格官方数据口径。
+
+## 7. 历史标签自适应（P0 落地，v0.7 起）
+
+> 说明：§6 的 external-a 源在 v0.6 时把当前批 train 行也纳入了训练（存在当前批标签泄漏，
+> 数字偏乐观）。v0.7 起 `external_a_batches` 改为“batch i 的标签在 batch i+1 才释放”
+> （meta 新增 `pending_rows` / `labels_released_after_batch`），§6 保留为历史记录。
+
+- `stream --adapt-history`：第 i 批（i>0）先以「官方 train + 前 i-1 批标签」连续训练
+  30 epoch（lr 5e-4，无结构改变），再做当前批 `recenter(batch_mean, w=0.5)`；当前批
+  标签从不参与当前批预测。entrypoint 默认开启（`RSI_STREAM_ADAPT=1`）。
+- 证据（leak-free，8 批）：外部 UCI b3–b10 macro-F1 均值 frozen .3977 / recenter .5046 /
+  **history-adapt .7733**；官方 validation 顺序 8 批 frozen .6158 → adapt .6361。
+  逐批表与决策见 docs/23 §8、docs/12 §12.23。
+- 边界：checkpoint 结构/归一化/格式不变、父谱系连续；仍走完整 Runner/Guard/记忆/记录；
+  只影响批次流路径，不改变单次 run 或 submission 的 predict 契约。

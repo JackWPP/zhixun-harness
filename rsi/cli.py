@@ -94,6 +94,10 @@ def cmd_stream(args) -> int:
         batch_wall=args.batch_wall,
         retention_every=args.retention_every,
         round_turns=args.round_turns,
+        adapt_history=args.adapt_history,
+        adapt_epochs=args.adapt_epochs,
+        adapt_lr=args.adapt_lr,
+        adapt_weight=args.adapt_weight,
         external_root=args.external_root or None,
         external_start=args.external_start,
         external_end=args.external_end,
@@ -276,6 +280,14 @@ def build_parser() -> argparse.ArgumentParser:
     stream.add_argument("--batch-wall", type=float, default=float(os.environ.get("RSI_BATCH_WALL", 1800)))
     stream.add_argument("--retention-every", type=int, default=2,
                         help="re-evaluate deployed model on all earlier batches every N batches (0=off)")
+    stream.add_argument("--adapt-history", action="store_true",
+                        help="continue-train the parent on cumulative labelled history before each batch")
+    stream.add_argument("--adapt-epochs", type=int, default=30,
+                        help="epochs for the history-adaptation continuation (default 30)")
+    stream.add_argument("--adapt-lr", type=float, default=0.0005,
+                        help="learning rate for the history-adaptation continuation")
+    stream.add_argument("--adapt-weight", type=float, default=0.5,
+                        help="recenter blend weight after history adaptation")
     stream.add_argument("--round-turns", type=int, default=int(os.environ.get("RSI_ROUND_TURNS", 20)))
     stream.add_argument("--token-cap", type=int, default=None)
     stream.add_argument("--no-memory", action="store_true")
