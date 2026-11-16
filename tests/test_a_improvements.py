@@ -75,27 +75,23 @@ def test_weighted_continuation_recipe_is_available():
 
 
 def test_history_adaptation_writes_compatible_checkpoint(tmp_path):
+    from rsi.stream import Batch, materialise_package
+
     config = _task()
     dataset = load_jsonl_dataset(config.train_path, config.task, config.classes)
     rows = []
-    # reconstruct JSONL rows from the dataset so the package writer can be exercised
     for i in range(160):
         rows.append({
             "id": dataset.ids[i],
             "inputs": {"features": dataset.x[i].tolist()},
             "answer": config.classes[int(dataset.y[i])],
         })
-    batch = Batch(index=1, train=rows[:128], validation=rows[128:160], meta={"case": "unit"})
+    batch = Batch(index=1, train=rows[:128], dev=rows[128:160],
+                  prediction=[{"id": r["id"], "inputs": r["inputs"]} for r in rows],
+                  answers={r["id"]: r["answer"] for r in rows}, meta={"case": "unit"})
     batch_dir = tmp_path / "batch_0001"
-    package = batch_dir / "package" / "public"
-    package.mkdir(parents=True)
-    write_jsonl(package / "train.jsonl", batch.train)
-    write_jsonl(package / "validation.jsonl", batch.validation)
-    import shutil
-
-    parent = tmp_path / "parent.npz"
-    shutil.copy2(config.checkpoint_path, parent)
-    adapted = _adapt_on_history(batch_dir, config, parent, epochs=1, learning_rate=5e-4)
+    materialise_package(batch_dir, config, batch, config.checkpoint_path)
+    adapted = _adapt_on_history(batch_dir, config, config.checkpoint_path, epochs=1, learning_rate=5e-4)
     assert adapted.exists()
     loaded = ExtendedModel.from_checkpoint(adapted)
     assert loaded.params["w1"].shape == (128, 32)

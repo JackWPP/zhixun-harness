@@ -1,21 +1,18 @@
-"""Batch sources for streaming evaluation.
+"""Batch sources for honest streaming evaluation.
 
-A *Batch* is a labelled slice that a platform would release.  The harness is
-allowed to train on the batch's train rows and to evaluate on its validation
-rows; the cumulative training set grows as batches arrive, mirroring the
-competition rule "every time you get a batch, all earlier data is re-sent".
+Every ``Batch`` follows the platform protocol:
 
-Two families of sources are supported:
+* ``train``       labelled rows whose labels were revealed in *earlier* batches
+* ``dev``         a labelled hold-out from earlier revealed batches, used for
+                  model selection / postprocess fitting inside the harness
+* ``prediction``  the current batch inputs (NO labels)
+* ``answers``     current-batch labels, kept outside the harness package and
+                  only used by the scoring routine after predictions are made
+* ``meta``        phase (arrival|hidden), batch number, reveal policy, ...
 
-* ``official``   – slice the official package validation stream into N batches.
-  Training at batch *i* may use the official train split plus the *labels of
-  batches 0..i-1* (already delivered), never batch *i*'s validation rows.
-* ``external-a`` – the UCI gas batches 3..10 as a Track X continual-adaptation
-  test-bed.  Each external batch is split into train/eval rows; the harness is
-  scored on the eval rows using only the official train split plus the labelled
-  rows of *earlier* batches (batch i's own labels are released only after its
-  prediction, mirroring the platform protocol).  This never feeds the official
-  submission lineage.
+Nothing in ``train``/``dev`` comes from the current or a hidden batch.  The
+legacy eager sources are replaced by this interface because the old one leaked
+current-batch labels into the Runner's selection split.
 """
 
 from __future__ import annotations
@@ -32,11 +29,14 @@ from ..tasks import TaskConfig
 
 @dataclass
 class Batch:
-    """One labelled slice handed to the harness."""
+    """One batch under the honest protocol."""
 
     index: int
     train: list[dict]
-    validation: list[dict]
+    dev: list[dict]
+    prediction: list[dict]
+    answers: dict[str, str]
+    reveal: list[dict] = field(default_factory=list)
     meta: dict = field(default_factory=dict)
 
 
@@ -93,23 +93,96 @@ def _partition_indices(groups: list[str], n_batches: int) -> list[list[int]]:
     return buckets
 
 
-def _stratified_rows(rows: list[dict], fraction: float, seed: int) -> tuple[list[dict], list[dict]]:
+def _strip(rows: Iterable[dict]) -> list[dict]:
+    return [{"id": str(r.get("id", "")), "inputs": r.get("inputs", {})} for r in rows]
+
+
+def _answers(rows: Iterable[dict]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for row in rows:
+        out[str(row.get("id", ""))] = str(row.get("answer", ""))
+    return out
+
+
+def _strat(rows: list[dict], fraction: float, seed: int) -> tuple[list[dict], list[dict]]:
+    """Stratified (by answer when present) split; fraction goes to the first part."""
+
     rng = random.Random(seed)
     by_label: dict[str, list[dict]] = {}
     for row in rows:
-        by_label.setdefault(str(row.get("answer")), []).append(row)
-    left: list[dict] = []
-    right: list[dict] = []
-    for label, group in by_label.items():
+        by_label.setdefault(str(row.get("answer", "")), []).append(row)
+    first: list[dict] = []
+    second: list[dict] = []
+    for group in by_label.values():
         rng.shuffle(group)
         cut = int(round(len(group) * fraction))
-        left.extend(group[:cut])
-        right.extend(group[cut:])
-    return left, right
+        if len(group) >= 2:
+            cut = max(1, min(len(group) - 1, cut))
+        first.extend(group[:cut])
+        second.extend(group[cut:])
+    return first, second
 
 
-def official_batches(config: TaskConfig, n_batches: int) -> list[Batch]:
-    """Slice the official validation stream; cumulative labelled history."""
+def _add_history(state: dict, rows: list[dict], dev_fraction: float, seed: int) -> None:
+    """Reveal labelled rows into the persistent train/dev pools (25% dev by default)."""
+
+    if not rows:
+        return
+    dev_rows, train_rows = _strat(list(rows), max(0.0, min(0.5, dev_fraction)), seed)
+    state["train"].extend(train_rows)
+    state["dev"].extend(dev_rows)
+
+
+def _perturb(rows: list[dict], kind: str, seed: int) -> list[dict]:
+    """Apply a sensor-style feature perturbation to a row list (label unchanged)."""
+
+    if kind in (None, "", "none"):
+        return rows
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    n = len(rows)
+    if n == 0:
+        return rows
+    width = len((rows[0].get("inputs") or {}).get("features") or [])
+    if width == 0:
+        return rows
+    gain = 1.0 + rng.normal(0.0, 0.05, size=(1, width))
+    offset = rng.normal(0.0, 0.02, size=(1, width))
+    out = []
+    for row in rows:
+        features = list((row.get("inputs") or {}).get("features") or [])
+        vec = np.asarray(features, dtype=np.float64)
+        if kind == "gain":
+            vec = vec * gain.reshape(-1)
+        elif kind == "offset":
+            vec = vec + offset.reshape(-1)
+        elif kind == "noise":
+            vec = vec + rng.normal(0.0, 0.01, size=vec.shape)
+        elif kind == "gain_offset":
+            vec = vec * gain.reshape(-1) + offset.reshape(-1)
+        else:
+            raise ValueError(f"unknown perturb kind: {kind}")
+        out.append({"id": row.get("id"), "inputs": {"features": [float(v) for v in vec]},
+                    **({"answer": row["answer"]} if "answer" in row else {})})
+    return out
+
+
+def _missing(rows: list[dict], class_name: str | None) -> list[dict]:
+    if not class_name:
+        return rows
+    return [r for r in rows if str(r.get("answer")) != class_name]
+
+
+def _initial_pools(config: TaskConfig, dev_fraction: float, seed: int) -> dict:
+    train_rows = read_jsonl(config.train_path)
+    dev_rows, train_rows = _strat(train_rows, max(0.0, min(0.5, dev_fraction)), seed) if dev_fraction > 0 else ([], train_rows)
+    return {"train": train_rows, "dev": dev_rows}
+
+
+def official_batches(config: TaskConfig, n_batches: int, dev_fraction: float = 0.25,
+                     seed: int = 42, hidden_tail: int = 0, **_kwargs) -> list[Batch]:
+    """Official validation rows sliced into a stream; labels released after each batch."""
 
     train_rows = read_jsonl(config.train_path)
     val_rows = read_jsonl(config.validation_path)
@@ -119,26 +192,43 @@ def official_batches(config: TaskConfig, n_batches: int) -> list[Batch]:
         )
     groups = _group_order(val_rows)
     buckets = _partition_indices(groups, n_batches)
-    prev: list[dict] = []
+    state = _initial_pools(config, dev_fraction, seed)
     batches: list[Batch] = []
+    hidden_from = max(n_batches - max(0, int(hidden_tail)), 0)
     for i, idxs in enumerate(buckets):
-        batch_validation = [val_rows[j] for j in idxs]
-        batch_train = list(train_rows) + list(prev)
-        batches.append(
-            Batch(
-                index=i,
-                train=batch_train,
-                validation=batch_validation,
-                meta={
-                    "source": "official",
-                    "validation_ids": [str(r.get("id")) for r in batch_validation],
-                    "train_rows": len(batch_train),
-                    "cumulative_prev_rows": len(prev),
-                },
-            )
-        )
-        prev.extend(batch_validation)
+        rows = [val_rows[j] for j in idxs]
+        hidden = i >= hidden_from and hidden_tail > 0
+        batches.append(Batch(
+            index=i,
+            train=list(state["train"]),
+            dev=list(state["dev"]),
+            prediction=_strip(rows),
+            answers=_answers(rows),
+            reveal=[] if hidden else list(rows),
+            meta={"source": "official", "batch": i, "revealed": not hidden, "hidden": hidden,
+                  "prediction_rows": len(rows), "train_rows": len(state["train"]),
+                  "dev_rows": len(state["dev"])},
+        ))
+        if not hidden:
+            _add_history(state, rows, dev_fraction, seed + i + 1)
     return batches
+
+
+def _default_gas_root() -> Path:
+    """Locate the vendored UCI gas .dat files when no explicit root is given."""
+
+    import os
+
+    candidates = []
+    env = os.environ.get("RSI_GAS_ROOT", "")
+    if env:
+        candidates.append(Path(env))
+    here = Path(__file__).resolve().parents[2]
+    candidates.extend([here / "extra" / "uci-gas" / "Dataset", here / ".scratch" / "gas" / "Dataset"])
+    for candidate in candidates:
+        if candidate.is_dir() and list(candidate.glob("batch*.dat")):
+            return candidate
+    return candidates[0] if candidates else Path(".")
 
 
 def _uci_rows(dataset, classes: list[str], batch_no: int) -> list[dict]:
@@ -147,90 +237,130 @@ def _uci_rows(dataset, classes: list[str], batch_no: int) -> list[dict]:
         label = int(dataset.y[i])
         if label < 0 or label >= len(classes):
             continue
-        rows.append(
-            {
-                "id": f"uci-b{batch_no}-{i:06d}",
-                "inputs": {"features": [float(v) for v in dataset.x[i].tolist()]},
-                "answer": classes[label],
-            }
-        )
+        rows.append({
+            "id": f"uci-b{batch_no}-{i:06d}",
+            "inputs": {"features": [float(v) for v in dataset.x[i].tolist()]},
+            "answer": classes[label],
+        })
     return rows
 
 
-def external_a_batches(
+def private_sim_batches(
     config: TaskConfig,
     root: str | Path,
-    n_batches: int | None = None,
-    start: int = 3,
-    end: int = 10,
-    holdout: float = 0.3,
+    arrival: tuple[int, int] = (3, 7),
+    hidden: tuple[int, int] = (8, 10),
+    dev_fraction: float = 0.25,
+    label_every: int = 1,
+    label_fraction: float = 1.0,
+    perturb: str = "none",
+    missing_class: str | None = None,
+    repeat: int = 1,
     seed: int = 42,
+    **_kwargs,
 ) -> list[Batch]:
-    """UCI gas sensor drift, batches 3..10, as a Track X test-bed."""
+    """UCI batches as a private-set simulator.
+
+    Arrival batches are scored under the platform protocol (labels revealed only
+    after predictions).  Hidden batches are never revealed to the harness; they
+    are scored once at the end and never enter any history pool.
+    """
 
     from ..data import read_uci_gas_dat
-    from ..tasks import TASKS
 
-    class_cfg = config.classes or TASKS["A"].classes
-    root = Path(root)
+    class_cfg = list(config.classes or [])
+    root = Path(root) if str(root or "").strip() else _default_gas_root()
     if not root.exists():
         raise FileNotFoundError(f"external data root not found: {root}")
-    wanted = list(range(start, end + 1))
-    if n_batches:
-        wanted = wanted[:n_batches]
     paths = sorted(root.glob("batch*.dat"), key=lambda p: int(p.stem.replace("batch", "")))
-    chosen = [p for p in paths if int(p.stem.replace("batch", "")) in wanted]
-    if not chosen:
-        raise FileNotFoundError(f"no batch*.dat files in {root}")
-    train_rows = read_jsonl(config.train_path)
+    if not paths:
+        raise FileNotFoundError(f"no batch*.dat files under {root}")
+    path_map = {int(p.stem.replace("batch", "")): p for p in paths}
+    state = _initial_pools(config, dev_fraction, seed)
     batches: list[Batch] = []
-    prev_train = list(train_rows)
-    for i, path in enumerate(chosen):
-        batch_no = int(path.stem.replace("batch", ""))
-        dataset = read_uci_gas_dat(path)
-        all_rows = _uci_rows(dataset, class_cfg, batch_no)
-        if len(all_rows) < 8:
+    index = 0
+    arrival_numbers = [b for b in range(int(arrival[0]), int(arrival[1]) + 1) if b in path_map]
+    hidden_numbers = [b for b in range(int(hidden[0]), int(hidden[1]) + 1) if b in path_map]
+    for round_no in range(max(1, int(repeat))):
+        for pos, batch_no in enumerate(arrival_numbers):
+            dataset = read_uci_gas_dat(path_map[batch_no])
+            rows = _uci_rows(dataset, class_cfg, batch_no)
+            if missing_class:
+                rows = _missing(rows, missing_class)
+            if not rows:
+                continue
+            rows = _perturb(rows, perturb, seed + batch_no)
+            rows = _strat(rows, 1.0, seed)[0]  # shuffle deterministically
+            revealed = (label_fraction > 0) and ((pos + 1) % max(1, int(label_every)) == 0)
+            reveal_rows: list[dict] = []
+            if revealed and label_fraction > 0:
+                keep = max(1, min(len(rows), int(round(len(rows) * float(label_fraction)))))
+                # keep a stratified subset for the history pool
+                selected = _strat(rows, float(label_fraction), seed + 100 + batch_no)[0]
+                if not selected:
+                    selected = rows[:keep]
+                reveal_rows = selected
+            batches.append(Batch(
+                index=index,
+                train=list(state["train"]),
+                dev=list(state["dev"]),
+                prediction=_strip(rows),
+                answers=_answers(rows),
+                reveal=list(reveal_rows),
+                meta={"source": "private-sim", "phase": "arrival", "batch": batch_no,
+                      "round": round_no, "revealed": bool(revealed), "hidden": False,
+                      "prediction_rows": len(rows), "reveal_rows": len(reveal_rows),
+                      "train_rows": len(state["train"]), "dev_rows": len(state["dev"]),
+                      "label_every": label_every, "label_fraction": label_fraction,
+                      "perturb": perturb, "missing_class": missing_class},
+            ))
+            if reveal_rows:
+                _add_history(state, reveal_rows, dev_fraction, seed + 200 + batch_no)
+            index += 1
+    for batch_no in hidden_numbers:
+        dataset = read_uci_gas_dat(path_map[batch_no])
+        rows = _uci_rows(dataset, class_cfg, batch_no)
+        if missing_class:
+            rows = _missing(rows, missing_class)
+        if not rows:
             continue
-        train_part, eval_part = _stratified_rows(all_rows, 1.0 - holdout, seed + batch_no)
-        # Labels of batch i only become trainable when batch i+1 arrives, mirroring
-        # the platform protocol (the current batch is scored before its labels are
-        # released to us). This prevents the test-bed from leaking current-batch
-        # labels into the current prediction.
-        batch_train = list(prev_train)
-        batches.append(
-            Batch(
-                index=i,
-                train=batch_train,
-                validation=eval_part,
-                meta={
-                    "source": "external-a",
-                    "batch": batch_no,
-                    "file": str(path),
-                    "validation_rows": len(eval_part),
-                    "train_rows": len(batch_train),
-                    "pending_rows": len(train_part),
-                    "labels_released_after_batch": True,
-                },
-            )
-        )
-        prev_train = prev_train + train_part
+        rows = _perturb(rows, perturb, seed + batch_no)
+        batches.append(Batch(
+            index=index,
+            train=list(state["train"]),
+            dev=list(state["dev"]),
+            prediction=_strip(rows),
+            answers=_answers(rows),
+            meta={"source": "private-sim", "phase": "hidden", "batch": batch_no,
+                  "revealed": False, "hidden": True, "prediction_rows": len(rows),
+                  "train_rows": len(state["train"]), "dev_rows": len(state["dev"]),
+                  "perturb": perturb, "missing_class": missing_class},
+        ))
+        index += 1
     return batches
 
 
 def make_source(kind: str, config: TaskConfig, n_batches: int, **kwargs) -> list[Batch]:
+    """Build a batch list for one of the supported sources."""
+
     if kind == "official":
-        return official_batches(config, n_batches)
+        return official_batches(config, n_batches, **kwargs)
+    if kind == "private-sim":
+        root = kwargs.pop("external_root", None) or ""
+        if config.key != "A" or (root and not Path(root).is_dir()):
+            return official_batches(config, n_batches, hidden_tail=2, **kwargs)
+        return private_sim_batches(config, root, **kwargs)
     if kind == "external-a":
-        root = kwargs.get("external_root")
-        if not root:
-            raise ValueError("external-a source requires --external-root")
-        return external_a_batches(
+        # Track-X alias: replay UCI batches as an arrival stream with hidden tail.
+        start = int(kwargs.pop("external_start", 3))
+        end = int(kwargs.pop("external_end", 10))
+        hidden_tail = max(0, int(kwargs.pop("hidden_tail", 2)))
+        arrival_end = max(start, end - hidden_tail)
+        return private_sim_batches(
             config,
-            root,
-            n_batches=n_batches,
-            start=int(kwargs.get("external_start", 3)),
-            end=int(kwargs.get("external_end", 10)),
-            holdout=float(kwargs.get("holdout", 0.3)),
-            seed=int(kwargs.get("seed", 42)),
+            kwargs.pop("external_root", None) or "",
+            arrival=(start, arrival_end),
+            hidden=(arrival_end + 1, end),
+            **kwargs,
         )
-    raise ValueError(f"unknown stream source: {kind}")
+    raise ValueError(f"unknown batch source: {kind}")

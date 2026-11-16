@@ -64,14 +64,21 @@ def atomic_write_json(path: str | Path, payload) -> None:
 
 def materialise_package(work_dir: str | Path, config: TaskConfig, batch: Batch,
                         parent_checkpoint: str | Path) -> TaskConfig:
-    """Write ``work_dir/package`` and return a TaskConfig pointing at it."""
+    """Write ``work_dir/package`` and return a TaskConfig pointing at it.
+
+    Honest protocol: the package contains only *revealed historical* labels
+    (``batch.train`` for fitting, ``batch.dev`` for selection) and the current
+    batch inputs without labels (``prediction.jsonl``).  Current/hidden answers
+    never enter the package directory.
+    """
 
     work_dir = Path(work_dir)
     package = work_dir / "package"
     public = package / "public"
     public.mkdir(parents=True, exist_ok=True)
     write_jsonl(public / "train.jsonl", batch.train)
-    write_jsonl(public / "validation.jsonl", batch.validation)
+    write_jsonl(public / "validation.jsonl", batch.dev)
+    write_jsonl(public / "prediction.jsonl", batch.prediction)
     target = package / "checkpoint.npz"
     shutil.copy2(Path(parent_checkpoint), target)
     spec = replace(
@@ -87,6 +94,68 @@ def materialise_package(work_dir: str | Path, config: TaskConfig, batch: Batch,
         rounds=1,
     )
     return spec
+
+
+def predict_rows(rows_path: str | Path, checkpoint: str | Path,
+                 postprocess: dict | None, config: TaskConfig,
+                 out_path: str | Path) -> int:
+    """Predict an unlabeled JSONL file and write official-shape predictions."""
+
+    from ..data import flatten
+
+    rows = read_jsonl(rows_path)
+    if not rows:
+        write_jsonl(out_path, [])
+        return 0
+    vectors = []
+    identities = []
+    for row in rows:
+        _, values = flatten(row.get("inputs") or {})
+        vectors.append(values)
+        identities.append(str(row.get("id", "")))
+    x = np.asarray(vectors, dtype=np.float64)
+    model = ExtendedModel.from_checkpoint(Path(checkpoint))
+    spec = resolve_postprocess(postprocess or {"type": "none"}, model)
+    predicted = apply_postprocess(spec, model, x)
+    out = []
+    for i, identity in enumerate(identities):
+        formatted = format_outputs(predicted[i], config.task, config.classes)
+        out.append({"id": identity, "outputs": formatted["outputs"]})
+    write_jsonl(out_path, out)
+    return len(out)
+
+
+def score_predictions(predictions_path: str | Path, answers: dict[str, str],
+                      task: str, classes: list[str] | None) -> dict:
+    """Post-hoc scoring of submitted predictions; never fed back to the harness."""
+
+    rows = read_jsonl(predictions_path)
+    if not rows:
+        return {"rows": 0, "primary": None}
+    try:
+        if task == "classification":
+            label_index = {str(name): i for i, name in enumerate(classes or [])}
+            probabilities = np.zeros((len(rows), len(label_index)), dtype=np.float64)
+            expected = np.zeros(len(rows), dtype=np.int64)
+            for i, row in enumerate(rows):
+                scores = {}
+                for item in row.get("outputs") or []:
+                    name = str(item.get("label"))
+                    if name in label_index:
+                        scores[label_index[name]] = float(item.get("score", 0.0))
+                for j, value in scores.items():
+                    probabilities[i, j] = value
+                expected[i] = label_index[str(answers.get(str(row.get("id")), ""))]
+            values = from_predictions(task, probabilities, expected, classes)
+        else:
+            predicted = np.asarray([float((row.get("outputs") or {}).get("value", 0.0)) for row in rows])
+            expected = np.asarray([float(answers.get(str(row.get("id")), "nan")) for row in rows])
+            values = from_predictions(task, predicted, expected, classes)
+    except (KeyError, TypeError, ValueError) as exc:
+        return {"rows": len(rows), "primary": None, "error": f"{type(exc).__name__}: {exc}"}
+    values["primary"] = primary(task, values)
+    values["rows"] = len(rows)
+    return values
 
 
 def latest_run_dir(root: str | Path) -> Path | None:

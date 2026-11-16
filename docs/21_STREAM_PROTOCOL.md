@@ -138,3 +138,15 @@ RSI_ALLOW_EXTENDED_DATA=1 ./.venv/bin/python -m rsi.cli stream --tasks A --sourc
 - 官方 8 批对照：off 0.7269 → on 0.7680（第 5 批 .333→.662，其余不变）。
 - 关闭：CLI `--no-pair-calibration`；镜像环境变量 `RSI_STREAM_PAIR=0,3` 可改 pair。
 - 注意：该机制只改善“判定方向”，不改变 checkpoint；decision 记录里保留 delta/rows/score 便于审计。
+
+## 9. v0.8 诚实协议、门控与 auto 路由
+
+- **协议**：`Batch(train, dev, prediction, answers, reveal)`；当前批无标签，预测后才评分；hidden 批永不揭示。
+  `materialise_package` 写 `public/{train,validation,prediction}.jsonl`，Runner 不再接触当前批标签。
+- **arms**：`frozen/recenter/pair/adapt/full`；`adapt` 用已揭示历史续训父模型后做当前批 recenter；
+  `full` 另走 Runner 实验选型。`decision.json` 与 `evaluation.json` 分离（决策不含答案依赖字段）。
+- **滚动门控**：`adapt_gate_mode="recent"`，用最近一次已揭示批次（≤2000 行）比较 before/after，
+  不改善则回滚父 checkpoint；证据：A external full .781→.787，B/C 无法救回 → 门控只作安全网。
+- **auto 路由**（默认）：A official `pair` / external `full`；B `adapt`；C `frozen`。
+  实现 `rsi.stream.runner.resolve_arm`，单元测试固化；显式 `--arm` 可覆盖。
+- **证据**：`docs/evidence/private_sim.md`；实验表 docs/12 §12.24；防泄漏 E0 PASS、未知任务 E7、kernel E8。

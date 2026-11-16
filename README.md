@@ -10,6 +10,16 @@ checkpoint**，不改变网络结构、不改变归一化协议，保证与平�
 
 ---
 
+## Private-Sim 诚实批次测试床（v0.8）
+
+- 目的：用外部同域数据模拟"平台分批下发、每批预测后返回标签"的流程，检验 harness 的**跨批适应**能力，而不是静态打榜。
+- 协议：每批只用官方 train + 已揭示历史训练；当前批无标签、预测后才评分；hidden 批永不揭示；打乱答案不影响决策（E0 PASS）。
+- 关键结果（A，UCI b3–b7 arrival / b8–b10 hidden，macro-F1）：frozen .277 → adapt .758 → full（gated）**.787**；
+  官方 validation 8 批上 A 默认 `pair` 达 **.657**（frozen .616）；B 上 adapt arrival 收益大但 hidden 证据混合；C 默认 frozen。
+- 默认路由：`arm="auto"`（A official→pair / external→full；B→adapt；C→frozen）。
+- 证据与边界：`docs/25_PRIVATE_SIM.md`、`docs/evidence/private_sim.md`、`docs/12_EXPERIMENTS.md §12.24`；
+  外部数据仅开发期测试床，正式提交仍严格只用官方 train（`RSI_ALLOW_EXTENDED_DATA=0`）。
+
 ## 1. 交付物
 
 | 交付物 | 位置 | 说明 |

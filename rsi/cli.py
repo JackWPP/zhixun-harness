@@ -98,8 +98,20 @@ def cmd_stream(args) -> int:
         adapt_epochs=args.adapt_epochs,
         adapt_lr=args.adapt_lr,
         adapt_weight=args.adapt_weight,
+        recenter_weight=args.recenter_weight,
         pair_calibration=not args.no_pair_calibration,
         pair=[int(v) for v in args.pair.split(",")],
+        arm=args.arm,
+        arrival_start=args.arrival_start,
+        arrival_end=args.arrival_end,
+        hidden_start=args.hidden_start,
+        hidden_end=args.hidden_end,
+        dev_fraction=args.dev_fraction,
+        label_every=args.label_every,
+        label_fraction=args.label_fraction,
+        perturb=args.perturb,
+        missing_class=args.missing_class,
+        repeat=args.repeat,
         external_root=args.external_root or None,
         external_start=args.external_start,
         external_end=args.external_end,
@@ -115,7 +127,8 @@ def cmd_stream(args) -> int:
                 "batches": task.get("final", {}).get("batches"),
                 "first_primary": task.get("final", {}).get("first_primary"),
                 "final_primary": task.get("final", {}).get("final_primary"),
-                "deployed": task.get("final", {}).get("deployed_batches"),
+                "hidden_mean_primary": task.get("final", {}).get("hidden_mean_primary"),
+                "hidden_metrics": task.get("final", {}).get("hidden_metrics"),
                 "errors": task.get("errors", []),
             }
             for key, task in report.get("tasks", {}).items()
@@ -268,7 +281,7 @@ def build_parser() -> argparse.ArgumentParser:
     stream.add_argument("--task-spec", action="append", metavar="PATH",
                         help="portable task.json (file or directory); repeatable")
     stream.add_argument("--tasks", default="A")
-    stream.add_argument("--source", choices=("official", "external-a"), default="official")
+    stream.add_argument("--source", choices=("official", "external-a", "private-sim"), default="official")
     stream.add_argument("--batches", type=int, default=6)
     stream.add_argument("--state-dir", default=os.environ.get("RSI_STREAM_DIR", ".scratch/rsi-stream"))
     stream.add_argument("--llm", choices=("auto", "on", "off"), default="off")
@@ -290,6 +303,24 @@ def build_parser() -> argparse.ArgumentParser:
                         help="learning rate for the history-adaptation continuation")
     stream.add_argument("--adapt-weight", type=float, default=0.5,
                         help="recenter blend weight after history adaptation")
+    stream.add_argument("--arm", default="auto",
+                        choices=["auto", "frozen", "recenter", "pair", "adapt", "full"],
+                        help="adaptation arm under test (default: auto route selection)")
+    stream.add_argument("--arrival-start", type=int, default=3)
+    stream.add_argument("--arrival-end", type=int, default=7)
+    stream.add_argument("--hidden-start", type=int, default=8)
+    stream.add_argument("--hidden-end", type=int, default=10)
+    stream.add_argument("--dev-fraction", type=float, default=0.25,
+                        help="fraction of revealed history reserved as labelled dev")
+    stream.add_argument("--label-every", type=int, default=1,
+                        help="reveal labels only every N arrival batches (1=always)")
+    stream.add_argument("--label-fraction", type=float, default=1.0,
+                        help="fraction of a revealed batch added to history")
+    stream.add_argument("--perturb", default="none",
+                        choices=["none", "gain", "offset", "noise", "gain_offset"])
+    stream.add_argument("--missing-class", default="")
+    stream.add_argument("--repeat", type=int, default=1)
+    stream.add_argument("--recenter-weight", type=float, default=0.4)
     stream.add_argument("--no-pair-calibration", action="store_true",
                         help="disable history-calibrated pair threshold (A: Ethanol vs Acetaldehyde)")
     stream.add_argument("--pair", default=os.environ.get("RSI_STREAM_PAIR", "0,3"),

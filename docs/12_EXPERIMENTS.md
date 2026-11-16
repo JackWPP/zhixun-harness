@@ -501,3 +501,45 @@ epochs=30 + recenter w=0.3`，selection 0.7226 < 父 0.7346 → 门控 rollback�
 
 **默认策略**：stream 模式默认 `--adapt-history`（entrypoint `RSI_STREAM_ADAPT=1`，
 30 epoch/lr 5e-4/recenter 0.5）；不影响单次 `run`/submission。
+
+## 12.24 Private-Sim 诚实批次协议（v0.8）
+
+**协议**：修复旧 stream 测试床"把当前批 validation 标签写进 package，Runner 用它拟合/选型"的泄漏。
+现在每批只有 `train`（官方 train + 已揭示历史）、`dev`（历史 holdout）、`prediction`（当前批输入，无标签）；
+`answers` 只用于预测后评分，hidden 批永不揭示。E0 不变性测试：打乱当前批 answers 后
+`decision.json`/`predictions.jsonl` 逐字节不变（PASS）。
+
+**A（UCI b3–b7 arrival，b8–b10 hidden）**：
+
+| arm | hidden 均值 |
+|---|---|
+| frozen | .2774 |
+| recenter w=.4 | .4453 |
+| pair（历史标签阈值） | .3539 |
+| adapt（历史续训+recenter） | .7578（两 seed .7647） |
+| full（Runner 选型+adapt+pair） | .7810（gated .7866） |
+
+**B/C（官方 validation 最后 2 段 hidden，B 单位分钟、C 单位循环）**：
+
+| task | frozen | recenter | adapt | gated adapt |
+|---|---|---|---|---|
+| B | **357.47** | 473.12 | 446.96 | 454.22 |
+| C | **56.29** | 57.54 | 58.68 | 57.87 |
+
+注意：B 的 arrival 批均值 adapt 476 vs frozen 702，但 hidden 段 frozen 更好（357 vs 447）——
+不能把 arrival 收益当 hidden 泛化；B 的 `adapt` 标注为"混合/待更多隐藏批验证"，C 默认 frozen。
+
+**官方 validation 8 批（A，arrival only）**：frozen .6158、pair **.6571**、adapt .5974、full .6192。
+
+**敏感性（A，adapt）**：标签减半 .5812（every=2）/.7597（fraction=.5）；缺 Acetaldehyde 批 .7495；
+gain/offset/noise/gain_offset .757–.763；两轮长流 .7631。
+
+**路由（`arm="auto"`，默认）**：A official→pair / external→full；B→adapt（混合）；C→frozen。
+实跑 A/official pair .6571、B/private adapt (arrival 479.4/hidden 454.2)、C/private frozen (49.93/56.29)，
+0 errors。E7 未知任务 D 零代码 4 批 0 errors；E8 kernel LLM 2+1 批 0 errors（wall 1431.6s）。
+
+**E10 回归**：strict 3×10 `.scratch/regress-honest/rsi-20261117-063318` → A .734555 / B 409.736985 /
+C 40.523699，与 v0.5.1/v0.6 逐位一致（wall 2104.3s、CPU 1165.5s、56 实验）。
+
+**边界**：private-sim/external 仅开发期测试床，不进入提交训练谱系；不改变官方 checkpoint 交付约定；
+正式评分仍只用官方 train（`RSI_ALLOW_EXTENDED_DATA=0`）。
