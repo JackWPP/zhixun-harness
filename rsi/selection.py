@@ -36,7 +36,7 @@ def _classification_stability(parent_metrics: dict | None,
     candidate_support = candidate_metrics.get("per_class_support") or {}
     rows = min(int(parent_metrics.get("rows", 0)), int(candidate_metrics.get("rows", 0)))
     minimum_support = max(10, int(rows * 0.05 + 0.999999))
-    labels = [label for label in parent_scores.keys() & candidate_scores.keys()
+    labels = [label for label in sorted(parent_scores.keys() & candidate_scores.keys())
               if int(parent_support.get(label, 0)) >= minimum_support
               and int(candidate_support.get(label, 0)) >= minimum_support]
     if not labels:

@@ -204,9 +204,17 @@ class Executor:
         result_path = Path(job["result"])
         if completed.returncode != 0 or not result_path.is_file():
             tail = log_path.read_text(errors="replace")[-2000:]
+            failure = {}
+            if result_path.is_file():
+                try:
+                    failure = json.loads(result_path.read_text())
+                except (OSError, ValueError):
+                    pass
+            error = str(failure.get("error") or f"worker failed (exit {completed.returncode})")
             return ExperimentResult(False, experiment_id, job["proposal"], str(parent_checkpoint), None, None,
                                     code_sha256(self.harness_root), {}, job["proposal"]["postprocess"],
-                                    0.0, wall, f"worker failed (exit {completed.returncode})", {"log_tail": tail}, str(log_path))
+                                    float(failure.get("cpu_seconds", 0.0)), wall, error,
+                                    {"log_tail": tail}, str(log_path))
         raw = json.loads(result_path.read_text())
         self.cpu_seconds += float(raw.get("cpu_seconds", 0.0))
         return ExperimentResult(

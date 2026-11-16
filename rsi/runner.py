@@ -788,7 +788,14 @@ class Runner:
                     if result.ok and result.metrics.get("selection") else ""))
         # Keep the complete result for audit artifacts. Agent-facing tool
         # responses apply the selection-only projection in rsi.agent.views.
-        return result.to_dict()
+        payload = result.to_dict()
+        if result.ok and result.metrics.get("selection"):
+            candidate_metrics = result.metrics["selection"]
+            payload["promotion_gate"] = gate(
+                state.config.task, state.selection_metrics["primary"],
+                candidate_metrics["primary"], state.config.margin,
+                state.selection_metrics, candidate_metrics).to_dict()
+        return payload
 
     def _apply_promotion(self, state: TaskState, best: dict) -> None:
         state.parent_path = Path(best["candidate_checkpoint"])
@@ -886,18 +893,31 @@ class Runner:
             expected_effect=p.get("expected_effect", ""),
             risk=p.get("risk", "")) for p in outcome.proposals]
         results = outcome.results
-        best = best_candidate(results, state.config.direction) if results else None
+        best = best_candidate(results, state.config.direction, task=state.config.task,
+                              parent_metrics=state.selection_metrics,
+                              margin=state.config.margin) if results else None
         decision = dict(outcome.decision or {
             "decision": "retain", "reason": outcome.error or "kernel produced no decision",
             "delta": 0.0, "source": "supervisor"})
         promote_target = None
         if decision.get("decision") == "promote":
             chosen_id = decision.get("experiment_id")
-            promote_target = next((r for r in results if r.get("experiment_id") == chosen_id), None) or best
+            promote_target = next((r for r in results if r.get("experiment_id") == chosen_id), None)
             if promote_target is None or not promote_target.get("ok") or not promote_target.get("candidate_checkpoint"):
                 promote_target = None
                 decision = {"decision": "retain", "delta": 0.0, "source": "supervisor",
                             "reason": "kernel promote downgraded: no successful candidate"}
+            else:
+                candidate_metrics = (promote_target.get("metrics") or {}).get("selection") or {}
+                verified = gate(state.config.task, state.selection_metrics["primary"],
+                                candidate_metrics.get("primary", float("nan")), state.config.margin,
+                                state.selection_metrics, candidate_metrics)
+                decision["gate_reason"] = verified.reason
+                decision["delta"] = verified.delta
+                if verified.decision != "promote":
+                    promote_target = None
+                    decision.update(decision="retain", source="supervisor",
+                                    reason=f"supervisor rejected promotion: {verified.reason}")
         if promote_target is not None:
             self._apply_promotion(state, promote_target)
             self.log("info", key, f"round {round_number}: promoted -> {state.parent_sha[:22]}... "
