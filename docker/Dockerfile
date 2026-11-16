@@ -19,10 +19,13 @@ ENV PYTHONUNBUFFERED=1 \
     RSI_ROUNDS=10 \
     RSI_LLM=auto
 
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
 WORKDIR /opt/zhixun/app
 
 COPY docker/requirements.txt /opt/zhixun/requirements.txt
-RUN pip install --no-cache-dir --target /opt/zhixun/site-packages -r /opt/zhixun/requirements.txt
+RUN pip install --no-cache-dir --index-url "$PIP_INDEX_URL" \
+    --target /opt/zhixun/site-packages -r /opt/zhixun/requirements.txt
 
 COPY rsi /opt/zhixun/app/rsi
 # The runtime uses rsi.model/data_official. Reference baselines are retained
