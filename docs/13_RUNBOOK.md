@@ -214,3 +214,5 @@ docker run --rm -v /host/work:/work -e RSI_STREAM_SOURCE=official \
 | 外网 | 评测期禁网，仅 PyTRiO | LLM 只在 `RSI_LLM_ENV` 提供时启用；知识库/技能/数据全部离线 |
 | 大模型 | 仅 PyTRiO Qwen3.8-27B / 3.5-4B | 通过 OpenAI 兼容 env 切换，不打包权重 |
 | 时限 | 6 h（wall_seconds=21600） | 时间感知降级：<1500s 剩余时每轮 1 实验、缩 round-turns，保证输出 |
+
+- 批次流默认开启延迟标签校准 `pair_threshold`（A：Ethanol vs Acetaldehyde）。用已返回的历史批标签拟合判定阈值，仅作用于之后批次；关闭：`--no-pair-calibration`；镜像环境变量 `RSI_STREAM_PAIR=0/1`、`RSI_STREAM_PAIR_CLASSES=0,3`。

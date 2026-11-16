@@ -92,6 +92,11 @@ case "$COMMAND" in
         if [ "${RSI_STREAM_ADAPT:-1}" = "1" ]; then
             ADAPT_ARGS="--adapt-history --adapt-epochs ${RSI_STREAM_ADAPT_EPOCHS:-30} --adapt-lr ${RSI_STREAM_ADAPT_LR:-0.0005} --adapt-weight ${RSI_STREAM_ADAPT_WEIGHT:-0.5}"
         fi
+        if [ "${RSI_STREAM_PAIR:-1}" = "1" ]; then
+            ADAPT_ARGS="$ADAPT_ARGS --pair ${RSI_STREAM_PAIR_CLASSES:-0,3}"
+        else
+            ADAPT_ARGS="$ADAPT_ARGS --no-pair-calibration"
+        fi
         echo "[harness] stream source=$SOURCE batches=$BATCHES tasks=$TASKS state=$STREAM_DIR adapt=${RSI_STREAM_ADAPT:-1}"
         python -m rsi.cli stream --source "$SOURCE" --tasks "$TASKS" --batches "$BATCHES" \
             --holdout "$HOLDOUT" --llm "${RSI_LLM:-off}" --controller "${RSI_CONTROLLER:-auto}" \

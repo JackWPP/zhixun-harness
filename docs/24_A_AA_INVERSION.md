@@ -112,3 +112,39 @@ $PY scripts/research/stream_thr.py   # 历史标签校准流式模拟
 ```
 
 局限：官方 validation 仅 batch2 一个批；UCI 外部批与官方隐藏流分布未必一致；oracle 上限使用了 validation 标签，仅作潜力量化；历史校准模拟未接完整 Runner（尚未包含实验/门控/记忆），因此是保守下界。
+
+## 6. 外部调研结论（2016-11-16 晚）
+
+调研方核查了 UCI #224/#270 说明、Vergara 2012、Zenodo 22820993 基准仓库及若干复现论文，结论：
+
+1. **没有公开记载**过 “Acetaldehyde(class 3) 对 Ethanol 在 batch2 后方向反转”或该两类标签语义互换；UCI 只记录了 Batch10.dat 末尾 120 行损坏的**文件更正**，与类别语义无关。→ 我们的观测是一个**未被公开报告的数据现象**，可以按“发现”写进技术报告，但需要自行给出可复现证据与谨慎表述（不能断言传感器物理极性翻转或标签错置）。
+2. UCI 原始标签是 **1-based**（Ethanol=1、Acetaldehyde=4）；我们的接口用 0-based，class3=Acetaldehyde 与此一致。
+3. 方法侧建议与本方案一致：**延迟标签校准**（上一批标签→下一批）、**滚动验证门控**、**类条件监控**；并明确“只有无标签目标批时，类别方向在原理上不可识别”（Kong 2023 部分可识别性、Ben-David 2010 不可能性定理），与我们无监督实验失败一致。
+4. 评估规范：延迟标签场景应分别报告“预测当时分数”和“标签返回并更新后的下一批分数”（Grzenda 2020），不能把后者算作前者提升。
+5. 基线口径：本地 `training.json` 为 `purpose=development_reference`、`official_scoring_ready=false`，`baselines/predict.py` 无任何校准逻辑，因此本地静态基线就是 checkpoint 直接 predict；平台隐藏评分是否有额外处理无法从公开材料确认。
+
+## 7. P1 实现与端到端证据（已落地）
+
+按调研建议实现了 `pair_threshold` 延迟标签校准：
+
+- `rsi/inference.py`：新增 `fit_pair_threshold(x, y, model, pair=(0,3), min_left=30, min_right=10)` 与 `pair_threshold` 后处理。规则：`score = logit[a] − logit[b]`，模型判为 a/b 的行中 `score < delta` 改判 b，否则 a；可 `base` 叠加 recenter。delta 只能由**已返回的历史批标签**拟合。
+- `rsi/stream/runner.py`：每批预测前用已揭示历史（累计 `X/y`）重新拟合 delta（要求 Eth≥30、AA≥10、历史校准相对基线提升≥0.02，否则禁用）；将该后处理叠加到父模型与候选模型上重新计分，再走正常门控；`decision.json` 增加 `pair_calibration: {delta, score, rows, ...}`。
+- `rsi/cli.py`：`--no-pair-calibration`、`--pair 0,3`；默认开启。`tests/test_pair_threshold.py` 5 用例。
+
+**官方 validation 顺序 8 批对照**（`--experiments-cap 1 --retention-every 0`，无外部数据）：
+
+| 配置 | 均值 macro-F1 | 逐批 |
+|---|---|---|
+| pair off | 0.7269 | .981 / .948 / .481 / .577 / **.333** / 1.0 / 1.0 / .495 |
+| **pair on** | **0.7680** | .981 / .948 / .481 / .577 / **.662** / 1.0 / 1.0 / .495 |
+
+- 增益 +0.041，全部来自含 105 行 AA 的第 5 批（.333→.662），其余批次零回归；delta 从第 5 批起触发（−3.756 → −3.830），与此前离线模拟一致。
+- 叠加 `--adapt-history` 时，历史连续训练已重新学到 AA 方向，pair 校准不再触发（delta=None），两者互补而非叠加：adapt 均值 0.7406（本机同协议）。
+- 复现：`python -m rsi.cli stream --source official --tasks A --batches 8 --state-dir .scratch/stream-pair-frozen --experiments-cap 1 --retention-every 0 --no-memory`。
+
+## 8. 局限与后续
+
+1. 首批没有历史标签（delta 不可用），只能裸模型；竞赛若首批即含足够 AA 且允许先训练再预测，可先用 batches=1 的 train split 做初始校准（需按协议确认标签时序）。
+2. 若隐藏流方向与公开流不同（例如始终不反转），pair 校准会因历史提升不足自动关闭，不会硬套。
+3. delta 的拟合目标是 AA/Eth 二类平衡准确率；若官方 metric 对某些类有更高权重，可把目标换成加权 F1。
+4. 静态 `predict.py` 无隐藏标签，不启用该机制；提交模型仍是 checkpoint + 现有 postprocess。

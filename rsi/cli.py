@@ -98,6 +98,8 @@ def cmd_stream(args) -> int:
         adapt_epochs=args.adapt_epochs,
         adapt_lr=args.adapt_lr,
         adapt_weight=args.adapt_weight,
+        pair_calibration=not args.no_pair_calibration,
+        pair=[int(v) for v in args.pair.split(",")],
         external_root=args.external_root or None,
         external_start=args.external_start,
         external_end=args.external_end,
@@ -288,6 +290,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="learning rate for the history-adaptation continuation")
     stream.add_argument("--adapt-weight", type=float, default=0.5,
                         help="recenter blend weight after history adaptation")
+    stream.add_argument("--no-pair-calibration", action="store_true",
+                        help="disable history-calibrated pair threshold (A: Ethanol vs Acetaldehyde)")
+    stream.add_argument("--pair", default=os.environ.get("RSI_STREAM_PAIR", "0,3"),
+                        help="class-index pair for threshold calibration (default 0,3)")
     stream.add_argument("--round-turns", type=int, default=int(os.environ.get("RSI_ROUND_TURNS", 20)))
     stream.add_argument("--token-cap", type=int, default=None)
     stream.add_argument("--no-memory", action="store_true")

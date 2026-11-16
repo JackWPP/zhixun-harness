@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import os
+
+import numpy as np
 import shutil
 import time
 import traceback
@@ -27,6 +29,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..data import load_jsonl_dataset
+from ..inference import fit_pair_threshold
 from ..model import ExtendedModel, checkpoint_sha256
 from ..runner import Runner
 from ..tasks import TaskConfig, resolve_tasks
@@ -117,6 +121,8 @@ def run_task_stream(payload: dict) -> dict:
     adapt_epochs = int(payload.get("adapt_epochs", 30))
     adapt_lr = float(payload.get("adapt_lr", 0.0005))
     adapt_weight = float(payload.get("adapt_weight", 0.5))
+    pair_calibration = bool(payload.get("pair_calibration", True))
+    pair_left, pair_right = (int(v) for v in payload.get("pair", [0, 3]))
 
     configs = resolve_tasks([key])
     if not configs:
@@ -139,10 +145,22 @@ def run_task_stream(payload: dict) -> dict:
     db_path = task_root / "stream.db"
     result = TaskStreamResult(key=key, source=source_kind)
     parent_checkpoint = Path(config.checkpoint_path)
+    parent_base_postprocess: dict = {"type": "none"}
     parent_postprocess: dict = {"type": "none"}
     parent_primary: float | None = None
+    pair_delta: float | None = None
+    pair_meta: dict = {}
+    history_x: list = []
+    history_y: list = []
     cumulative_rows = 0
     started = time.time()
+
+    def _compose(base: dict, delta: float | None) -> dict:
+        if delta is None:
+            return base
+        return {"type": "pair_threshold", "pair": [pair_left, pair_right],
+                "delta": round(float(delta), 6), "base": base,
+                "source": "history_labels", "history_rows": int(pair_meta.get("rows", 0))}
 
     for batch in batch_source:
         index = batch.index
@@ -156,9 +174,23 @@ def run_task_stream(payload: dict) -> dict:
             if adapt_history and index > 0:
                 adapted = _adapt_on_history(batch_dir, config, parent_checkpoint, adapt_epochs, adapt_lr)
                 parent_checkpoint = adapted
-                parent_postprocess = {"type": "recenter", "mode": "batch_mean", "weight": adapt_weight}
+                parent_base_postprocess = {"type": "recenter", "mode": "batch_mean", "weight": adapt_weight}
                 print(f"[stream:{key}] batch {index} history-adapt epochs={adapt_epochs} "
                       f"lr={adapt_lr} rows={len(batch.train)}", flush=True)
+            pair_delta = None
+            pair_meta = {}
+            if pair_calibration and config.task == "classification" and history_x:
+                model = ExtendedModel.from_checkpoint(parent_checkpoint)
+                fit = fit_pair_threshold(
+                    np.concatenate(history_x), np.concatenate(history_y), model,
+                    pair=(pair_left, pair_right),
+                )
+                if fit:
+                    pair_delta = float(fit["delta"])
+                    pair_meta = fit
+                    print(f"[stream:{key}] batch {index} pair-calibration delta={pair_delta:.3f} "
+                          f"rows={fit['rows']}", flush=True)
+            parent_postprocess = _compose(parent_base_postprocess, pair_delta)
             runner = Runner(
                 keys=(key,), rounds=1, llm_mode=llm_mode, seed=seed + index,
                 state_dir=batch_dir, wall_cap=batch_wall, cpu_cap=36000.0,
@@ -177,7 +209,8 @@ def run_task_stream(payload: dict) -> dict:
             task_state = (state.get("tasks") or [{}])[0]
             candidate_primary = (dataset_row.get("metrics") or {}).get("primary")
             candidate_checkpoint = task_state.get("checkpoint_path")
-            candidate_postprocess = task_state.get("postprocess") or {"type": "none"}
+            candidate_base_postprocess = task_state.get("postprocess") or {"type": "none"}
+            candidate_postprocess = _compose(candidate_base_postprocess, pair_delta)
             selection_path = batch_dir / "run" / key / "splits" / "selection.jsonl"
             if parent_primary is None:
                 parent_primary = _read_primary(selection_path)  # noqa: F841 - replaced below
@@ -185,6 +218,13 @@ def run_task_stream(payload: dict) -> dict:
                 config.task, selection_path, parent_checkpoint, parent_postprocess, config.classes,
             ) if selection_path.exists() else {"primary": parent_primary}
             parent_primary = parent_sel.get("primary")
+            if pair_delta is not None and candidate_checkpoint and selection_path.exists():
+                candidate_rescaled = evaluate_rows(
+                    config.task, selection_path, Path(candidate_checkpoint),
+                    candidate_postprocess, config.classes,
+                )
+                if candidate_rescaled.get("primary") is not None:
+                    candidate_primary = candidate_rescaled.get("primary")
             decision = decision_for(
                 config.task, config.direction, parent_primary, candidate_primary, config.margin,
             )
@@ -221,6 +261,7 @@ def run_task_stream(payload: dict) -> dict:
                 "meta": batch.meta,
                 "started_at": batch_started,
                 "wall_seconds": round(time.time() - batch_started, 3),
+                "pair_calibration": ({"delta": pair_delta, **pair_meta} if pair_delta is not None else {"enabled": False}),
                 "parent": {"checkpoint": str(parent_checkpoint), "primary": parent_primary,
                            "postprocess": parent_postprocess},
                 "candidate": {"checkpoint": candidate_checkpoint,
@@ -239,9 +280,19 @@ def run_task_stream(payload: dict) -> dict:
             atomic_write_json(batch_dir / "decision.json", record)
             result.batches.append(record)
             parent_checkpoint = deployed
-            parent_postprocess = chosen_postprocess
+            parent_base_postprocess = (candidate_base_postprocess
+                                       if decision["decision"] == "promote" else parent_base_postprocess)
+            parent_postprocess = _compose(parent_base_postprocess, pair_delta)
             parent_primary = chosen_primary
             cumulative_rows = len(batch.train)
+            if pair_calibration and config.task == "classification":
+                try:
+                    revealed = load_jsonl_dataset(validation_path, config.task,
+                                                  config.classes, expected_paths=None)
+                    history_x.append(np.asarray(revealed.x, dtype=np.float64))
+                    history_y.append(np.asarray(revealed.y, dtype=np.int64))
+                except Exception as exc:  # calibration is best-effort, never fatal
+                    print(f"[stream:{key}] warning: cannot index revealed labels: {exc}", flush=True)
         except Exception as exc:  # keep the stream alive: record and stop this task
             error = f"batch {index} failed: {type(exc).__name__}: {exc}"
             result.errors.append(error)

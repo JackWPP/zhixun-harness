@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import numpy as np
 
-POSTPROCESS_KINDS = ("none", "recenter", "shrink", "damage_shrink")
+POSTPROCESS_KINDS = ("none", "recenter", "shrink", "damage_shrink", "pair_threshold")
 DAMAGE_SCORE_DIMS = (0, 17)
 DAMAGE_DEFAULT_DETECTOR = {"rel": 0.15, "ratio": 0.10, "min_rows": 8, "window": 20}
 
@@ -186,6 +186,28 @@ def resolve_postprocess(spec, model, calibration=None, train=None):
         center = float(model.meta.get("target_mean", 0.0))
         return {"type": "shrink", "alpha": round(alpha, 6), "center": round(center, 6),
                 "center_source": "train_target_mean", "calibration_rows": 0}
+    if kind == "pair_threshold":
+        if model.meta["task"] != "classification":
+            raise ValueError("pair_threshold only applies to classification")
+        classes = list(model.meta.get("classes") or [])
+        pair = spec.get("pair", [0, 3])
+        try:
+            left, right = int(pair[0]), int(pair[1])
+        except (TypeError, ValueError, IndexError) as exc:
+            raise ValueError("pair_threshold pair must be two class indices") from exc
+        if left == right or not (0 <= left < len(classes)) or not (0 <= right < len(classes)):
+            raise ValueError("pair_threshold pair must be two distinct valid class indices")
+        if spec.get("delta") is None:
+            raise ValueError("pair_threshold requires a fitted delta")
+        delta = float(spec["delta"])
+        if not np.isfinite(delta):
+            raise ValueError("pair_threshold delta must be finite")
+        base = spec.get("base") or {"type": "none"}
+        resolved_base = resolve_postprocess(base, model, calibration=calibration, train=train)
+        return {"type": "pair_threshold", "pair": [left, right], "delta": round(delta, 6),
+                "base": resolved_base,
+                "source": str(spec.get("source", "history_labels")),
+                "history_rows": int(spec.get("history_rows", 0))}
     if kind == "damage_shrink":
         if model.meta["task"] != "regression":
             raise ValueError("damage_shrink only applies to regression")
@@ -230,6 +252,48 @@ def _recentered_features(model, x, mode):
     return x - mean + model.mean
 
 
+def fit_pair_threshold(x, y, model, pair=(0, 3), min_left=30, min_right=10, grid=161):
+    """Fit a decision-boundary threshold for a class pair from revealed labels.
+
+    Only labels already returned by the platform may be passed here; the batch
+    being predicted must never be included. Returns ``None`` when there are not
+    enough samples of both classes to calibrate safely.
+    """
+    if model.meta["task"] != "classification":
+        return None
+    y = np.asarray(y, dtype=np.int64)
+    x = np.asarray(x, dtype=np.float64)
+    if len(y) == 0:
+        return None
+    left, right = int(pair[0]), int(pair[1])
+    if int((y == left).sum()) < int(min_left) or int((y == right).sum()) < int(min_right):
+        return None
+    logits = model.predict_logits(x)
+    score = logits[:, right] - logits[:, left]
+    predicted = np.argmax(logits, axis=1)
+    mask = (y == left) | (y == right)
+    if not mask.any():
+        return None
+    baseline = float(((predicted[y == left] == left).mean() + (predicted[y == right] == right).mean()) / 2.0)
+    lo, hi = np.percentile(score[mask], [0.5, 99.5])
+    if not np.isfinite(lo) or not np.isfinite(hi) or lo == hi:
+        return None
+    best_score, best_delta = -1.0, None
+    for delta in np.linspace(lo, hi, int(grid)):
+        flipped = predicted.copy()
+        in_pair = (predicted == left) | (predicted == right)
+        flipped[in_pair & (score < delta)] = right
+        flipped[in_pair & (score >= delta)] = left
+        score_now = float(((flipped[y == left] == left).mean() + (flipped[y == right] == right).mean()) / 2.0)
+        if score_now > best_score:
+            best_score, best_delta = score_now, float(delta)
+    if best_delta is None or best_score < baseline + 0.02:
+        return None
+    return {"delta": best_delta, "score": best_score, "baseline_score": baseline,
+            "rows": int(mask.sum()), "left_rows": int((y == left).sum()),
+            "right_rows": int((y == right).sum())}
+
+
 def apply_postprocess(postprocess, model, x):
     """Predict a full feature matrix with the resolved postprocess applied.
 
@@ -256,6 +320,23 @@ def apply_postprocess(postprocess, model, x):
         alpha = float(spec["alpha"])
         center = float(spec["center"])
         return alpha * model.predict(x) + (1.0 - alpha) * center
+    if kind == "pair_threshold":
+        if model.meta["task"] != "classification":
+            raise ValueError("pair_threshold only applies to classification")
+        base = spec.get("base") or {"type": "none"}
+        output = apply_postprocess(base, model, x) if base.get("type", "none") != "none" else model.predict(x)
+        output = np.array(output, dtype=np.float64, copy=True)
+        left, right = (int(v) for v in spec["pair"])
+        logits = model.predict_logits(x)
+        score = logits[:, right] - logits[:, left]
+        predicted = np.argmax(output, axis=1)
+        mask = (predicted == left) | (predicted == right)
+        target = np.where(score < float(spec["delta"]), right, left)
+        changed = mask & (predicted != target)
+        if changed.any():
+            output[changed] = 0.0
+            output[np.arange(len(output))[changed], target[changed]] = 1.0
+        return output
     if kind == "damage_shrink":
         return apply_damage_shrink(spec, model, x)
     raise ValueError(f"unsupported postprocess: {kind}")  # pragma: no cover

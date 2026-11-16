@@ -129,3 +129,12 @@ RSI_ALLOW_EXTENDED_DATA=1 ./.venv/bin/python -m rsi.cli stream --tasks A --sourc
   逐批表与决策见 docs/23 §8、docs/12 §12.23。
 - 边界：checkpoint 结构/归一化/格式不变、父谱系连续；仍走完整 Runner/Guard/记忆/记录；
   只影响批次流路径，不改变单次 run 或 submission 的 predict 契约。
+
+## 8. 延迟标签的 pair_threshold 校准（v0.7+，默认开启）
+
+- 数据流：`batch_0..batch_n`，每批预测后返回该批标签；`decision.json` 在预测时生成，`pair_calibration` 只使用**更早批次**的标签。
+- 每批开始时：`fit_pair_threshold` 在累计历史 `X/y` 上搜索 AA/Eth 判定阈值 `delta`；门槛：Eth≥30、AA≥10、且历史二类平衡准确率提升≥0.02，否则禁用。
+- 叠加顺序：`recenter`（若有）→ `pair_threshold`（按 raw logits 的 `logit[3]-logit[0]` 重判 AA/Eth）。
+- 官方 8 批对照：off 0.7269 → on 0.7680（第 5 批 .333→.662，其余不变）。
+- 关闭：CLI `--no-pair-calibration`；镜像环境变量 `RSI_STREAM_PAIR=0,3` 可改 pair。
+- 注意：该机制只改善“判定方向”，不改变 checkpoint；decision 记录里保留 delta/rows/score 便于审计。
