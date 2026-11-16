@@ -52,7 +52,18 @@ baseline 指标来自现存基线复算记录；report 是独立审计集，不�
 2. runner 仍从公开包构建离线切分，不是平台隐藏批次流；不能据此声称已实现完整的隐藏流自主闭环。
 3. PyTRiO 的真实 endpoint、模型 ID、tool calling、usage 解析和断网行为未验证。Tokenplus 不用于本次运行。
 4. SwanLab 在线记录已验证上传和链接可访问；比赛要求的公开权限、最终记录字段和封闭评测出站规则仍待平台确认。
-5. Linux/amd64 镜像加载及 4 核/8 GiB 限额彩排仍待完成；端口 7861 只读面板尚未启动。
+5. Linux/amd64 镜像加载及 4 核/8 GiB 限额彩排已完成；端口 7861 只读面板已绑定 Tailscale 地址并通过健康检查。
 6. 平台提交校验尚未运行；不消耗试运行额度前仍需在账户页面复核协议、配额和提交状态。
 
-下一步先在远端构建并实际启动 Linux/amd64 镜像，施加 4 核/8 GiB 限制运行 A/B/C 快速彩排，同时启动只绑定 `100.114.169.50:7861` 的只读状态面板。取得官方协议后再做最小适配；只有协议、资源、云端记录和镜像预检全绿后才进行一次试运行。
+## Linux/amd64 彩排
+
+- 远端镜像：`zhixun-rsi-harness:rsi-5099370`
+- 镜像摘要：`sha256:8a01feb3d8a958cd76c94aa56cd158bf330eb18ae98c951a276d4dd6ebdb48c3`
+- 架构与大小：`linux/amd64`，约 420 MB
+- 运行约束：`--cpus=4 --memory=8g`；资产自检通过，观测内存约 546 MiB
+- 运行：`rsi-20261116-075350`，A/B/C 各 1 轮、6 个候选、CPU 350.6 秒、wall 388.42 秒
+- 容器内最终 selection：A `0.720696`、B RMSE `409.736985`、C RMSE `40.523699`
+- 看板数据源：容器产物 `/home/yanp/rsi-docker-preflight/rsi-runs/rsi-20261116-075350/state.json`
+- 看板健康检查：`http://100.114.169.50:7861/api/health` 返回 `state=ready`、`run_status=done`
+
+下一步仍受官方 workspace 契约、PyTRiO endpoint 和平台提交校验约束。获得官方 schema 后做最小适配；只有协议、资源、云端记录和镜像预检全绿后才进行一次试运行。
