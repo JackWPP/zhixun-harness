@@ -116,6 +116,9 @@ class KernelHost:
     def parent_primary(self) -> float:
         return float(self.state.selection_metrics["primary"])
 
+    def parent_metrics(self) -> dict:
+        return dict(self.state.selection_metrics)
+
     def run_experiment(self, proposal: ExperimentProposal) -> dict:
         return self.runner._execute_proposal(self.state, proposal, self.drift)
 
@@ -700,7 +703,9 @@ class Runner:
                                          "delta": 0.0}, parent_sha_before, token_before, started)
             return
 
-        best = best_candidate(results, state.config.direction)
+        best = best_candidate(results, state.config.direction, task=state.config.task,
+                              parent_metrics=state.selection_metrics,
+                              margin=state.config.margin)
         if best is None:
             self.log("warn", key, f"round {round_number}: all candidates failed")
             self._record_round(state, round_number, drift, diagnosis, proposals, review,
@@ -710,7 +715,8 @@ class Runner:
 
         candidate_primary = best["metrics"]["selection"]["primary"]
         parent_primary = state.selection_metrics["primary"]
-        decision = gate(state.config.task, parent_primary, candidate_primary, state.config.margin)
+        decision = gate(state.config.task, parent_primary, candidate_primary, state.config.margin,
+                        state.selection_metrics, best["metrics"]["selection"])
         # boundary arbitration: only when two candidates are within 2 margins
         ok_results = [r for r in results if r.get("ok") and r.get("metrics", {}).get("selection")]
         if len(ok_results) >= 2:

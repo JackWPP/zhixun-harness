@@ -98,7 +98,8 @@ class Guard:
     # -- decisions ---------------------------------------------------------
     def check_decision(self, decision: str, chosen_experiment: str | None,
                        candidates: dict[str, dict], parent_primary: float,
-                       used_experiments_this_round: int) -> GateDecision:
+                       used_experiments_this_round: int,
+                       parent_metrics: dict | None = None) -> GateDecision:
         if decision not in ("promote", "retain", "rollback"):
             raise GuardViolation(f"unknown decision: {decision}")
         if used_experiments_this_round == 0:
@@ -113,7 +114,8 @@ class Guard:
             if "primary" not in selection:
                 raise GuardViolation("chosen experiment has no selection metric")
             deterministic = gate(self.task.task, float(parent_primary),
-                                 float(selection["primary"]), self.task.margin)
+                                 float(selection["primary"]), self.task.margin,
+                                 parent_metrics, selection)
             if deterministic.decision != "promote":
                 raise GuardViolation(
                     f"gate rejects promotion: {deterministic.reason} "

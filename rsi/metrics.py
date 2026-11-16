@@ -8,12 +8,15 @@ def classification_metrics(probabilities: np.ndarray, expected: np.ndarray, clas
     labels = probabilities.argmax(axis=1)
     observed = sorted(set(expected.tolist()) | set(labels.tolist()))
     f1 = []
+    support = {}
     for label in observed:
         true_positive = np.sum((labels == label) & (expected == label))
         denominator = np.sum(labels == label) + np.sum(expected == label)
         f1.append(2 * true_positive / denominator if denominator else 0.0)
+        support[str(int(label))] = int(np.sum(expected == label))
     result = {"accuracy": float(np.mean(labels == expected)), "macro_f1": float(np.mean(f1)),
-              "per_class_f1": {str(int(label)): float(value) for label, value in zip(observed, f1)}}
+              "per_class_f1": {str(int(label)): float(value) for label, value in zip(observed, f1)},
+              "per_class_support": support}
     if "SevereFault" in classes:
         severe = classes.index("SevereFault")
         count = int(np.sum(expected == severe))

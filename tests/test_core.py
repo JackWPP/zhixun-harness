@@ -28,6 +28,31 @@ def test_gate_classification_promote():
     assert decision.delta == pytest.approx(0.02)
 
 
+def test_classification_gate_rejects_gain_from_tiny_class_when_common_classes_regress():
+    parent = {"primary": 0.70, "rows": 100,
+              "per_class_f1": {"0": 0.70, "1": 0.80, "2": 0.50},
+              "per_class_support": {"0": 50, "1": 48, "2": 2}}
+    candidate = {"primary": 0.72, "rows": 100,
+                 "per_class_f1": {"0": 0.65, "1": 0.80, "2": 0.71},
+                 "per_class_support": {"0": 50, "1": 48, "2": 2}}
+    decision = gate("classification", parent["primary"], candidate["primary"], 0.004,
+                    parent, candidate)
+    assert decision.decision == "retain"
+    assert "support-qualified class macro_f1 regressed" in decision.reason
+
+
+def test_classification_gate_allows_tiny_class_gain_without_common_class_regression():
+    parent = {"primary": 0.70, "rows": 100,
+              "per_class_f1": {"0": 0.70, "1": 0.80, "2": 0.50},
+              "per_class_support": {"0": 50, "1": 48, "2": 2}}
+    candidate = {"primary": 0.72, "rows": 100,
+                 "per_class_f1": {"0": 0.71, "1": 0.80, "2": 1.00},
+                 "per_class_support": {"0": 50, "1": 48, "2": 2}}
+    decision = gate("classification", parent["primary"], candidate["primary"], 0.004,
+                    parent, candidate)
+    assert decision.decision == "promote"
+
+
 def test_gate_regression_promote_needs_lower_rmse():
     assert gate("regression", 52.0, 51.0, margin=0.3).decision == "promote"
     assert gate("regression", 52.0, 52.1, margin=0.3).decision == "retain"

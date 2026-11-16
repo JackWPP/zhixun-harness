@@ -151,7 +151,10 @@ class Kernel:
         if not env.results:
             return None
         direction = self.task.direction
-        best = best_candidate(list(env.results.values()), direction)
+        parent_metrics = host.parent_metrics() if hasattr(host, "parent_metrics") else None
+        best = best_candidate(list(env.results.values()), direction,
+                              task=self.task.task, parent_metrics=parent_metrics,
+                              margin=self.task.margin)
         if best is None:
             return None
         primary = ((best.get("metrics") or {}).get("selection") or {}).get("primary")
@@ -159,7 +162,9 @@ class Kernel:
             return None
         try:
             deterministic = gate(self.task.task, float(host.parent_primary()),
-                                 float(primary), self.task.margin)
+                                 float(primary), self.task.margin,
+                                 parent_metrics,
+                                 (best.get("metrics") or {}).get("selection"))
         except Exception:
             deterministic = None
         if deterministic is None:

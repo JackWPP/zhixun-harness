@@ -318,7 +318,8 @@ def build_kernel_tools(env: KernelEnv):
         try:
             gate_decision = env.guard.check_decision(
                 params.decision, params.experiment_id or None, env.results,
-                env.host.parent_primary(), env.experiments_round)
+                env.host.parent_primary(), env.experiments_round,
+                (env.host.parent_metrics() if hasattr(env.host, "parent_metrics") else None))
         except GuardViolation as exc:
             env.violations.append({"tool": "decide", "decision": params.decision,
                                    "reason": str(exc)})
