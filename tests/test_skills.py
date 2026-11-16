@@ -84,7 +84,7 @@ def test_runner_skill_store_is_run_local(tmp_path):
     original = source.read_text(encoding="utf-8")
     before = store.load("drift-diagnosis").body
 
-    store.patch("drift-diagnosis", "每轮诊断至少引用 2 个数值字段", "临时实验更新")
+    store.patch("drift-diagnosis", "无标签阶段不得引用 label_shift 或性能 drop", "临时实验更新")
 
     assert source.read_text(encoding="utf-8") == original
     assert store.load("drift-diagnosis").body != before

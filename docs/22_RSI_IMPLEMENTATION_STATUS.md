@@ -10,7 +10,7 @@
 - 新增 `rsi.streaming.BatchSession`，以原子状态文件保存批次输入、预测摘要、champion、决定和标签哈希；只有提交决定后才可揭示标签。相同批次重放幂等，模型/输入冲突、顺序错误、坏负载会被拒绝；标签正文放在权限为 0700/0600 的独立目录。它实现时序不变量，但**不是** `contest.harness.workspace.v2` 官方适配器。
 - Agent 对技能的 create/patch/delete 操作先写入隔离候选副本。候选带父版、候选内容哈希和状态；晋升必须附带哈希匹配的独立评估报告、至少两个 seed 的逐 seed 指标和最差组退化门槛，晋升后可恢复原技能库。
 - runner 漂移摘要按公开 selection 行的既定顺序取窗口，只传特征给 `analyse_covariates()`；报告不再包含目标标签分布或性能损失。标签揭示后的 prequential 性能监测仍需由正式批次协议接入。
-- SwanLab 模式可经 `SWANLAB_MODE` 设为 online 并记录决策、假设、候选父子 checkpoint/code SHA、selection/report/probe 指标及 CPU/wall 字段。本轮尚无 SwanLab 凭据，未确认云端链接或公开权限。
+- SwanLab 模式可经 `SWANLAB_MODE` 设为 online 并记录决策、假设、候选父子 checkpoint/code SHA、selection/report/probe 指标及 CPU/wall 字段。在线日志改为数值字段走图表、完整结构走文本事件，避免字符串/None/嵌套列表被 SDK 丢弃。
 
 ## 验证和快速实验
 
@@ -36,12 +36,22 @@ baseline 指标来自现存基线复算记录；report 是独立审计集，不�
 
 为控制进度，本轮 seed 43 在用户要求停止跨 seed 复验后中断。A/B 已完成，C 正在 staged continuation 时中断；该 run 为不完整记录，不纳入效果汇总。A/B 结果可见对应 `.scratch/rsi-closed-loop/seed43/`。
 
+## 在线实验记录
+
+已完成完整 A/B/C 两轮在线 SwanLab 回放（仍是本地公开数据、`controller=pipeline`、0 LLM token，不是比赛封闭流）：
+
+- 项目：[zhixun-rsi](https://swanlab.cn/@wppjkwbuct/zhixun-rsi)
+- Run：`large-tiger-3`，ID `1lmjutiy`，[打开 run](https://swanlab.cn/@wppjkwbuct/zhixun-rsi/runs/1lmjutiy)
+- 运行目录：`.scratch/rsi-online/full-seed42b/rsi-20261116-152408/`
+- 2 轮 × 3 任务、9 个候选；CPU 154.59 秒、wall 185.17 秒；上传完成 6 个文件、17.8 KB。
+- 在线记录包含轮级数值图表和 `rsi_event` 文本事件；没有写入 API key、原始数据或标签正文。
+
 ## 尚未通过的提交门槛
 
 1. 官方 `contest.harness.workspace.v2` 契约和 SDK 尚未找到；状态机暂未映射 `start/candidate/save_state/complete` 方法。
 2. runner 仍从公开包构建离线切分，不是平台隐藏批次流；不能据此声称已实现完整的隐藏流自主闭环。
 3. PyTRiO 的真实 endpoint、模型 ID、tool calling、usage 解析和断网行为未验证。Tokenplus 不用于本次运行。
-4. SwanLab 云端同步和公开可读链接未验证。
+4. SwanLab 在线记录已验证上传和链接可访问；比赛要求的公开权限、最终记录字段和封闭评测出站规则仍待平台确认。
 5. Linux/amd64 镜像加载及 4 核/8 GiB 限额彩排仍待完成；端口 7861 只读面板尚未启动。
 6. 平台提交校验尚未运行；不消耗试运行额度前仍需在账户页面复核协议、配额和提交状态。
 

@@ -30,6 +30,7 @@ SEED_SKILLS = (
     "leakage-audit",
     "stall-recovery",
     "reporter",
+    "sequential-rsi",
 )
 
 _BLOCKED_PATTERNS = [

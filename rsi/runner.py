@@ -163,6 +163,7 @@ class Runner:
         self.global_cpu = 0.0
         self.swan_run = None
         self.swanlab_error: str | None = None
+        self.swan_step = 0
         # -- controller selection (kernel needs a live LLM) ----------------
         if controller not in ("auto", "kernel", "pipeline"):
             raise ValueError(f"unknown controller {controller!r}")
@@ -254,9 +255,30 @@ class Runner:
         if self.swan_run is None:
             return
         try:
-            self.swan_run.log(data)
-        except Exception:
-            pass
+            # SwanLab scalar logging rejects strings, None, and arbitrary
+            # nested lists. Keep the full audit payload as text and emit a
+            # numeric-only view for charts. This preserves hashes/decisions
+            # without turning an otherwise valid run into a partial upload.
+            numeric = {}
+
+            def collect(value, prefix=""):
+                if isinstance(value, bool):
+                    numeric[prefix] = int(value)
+                elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                    if np.isfinite(value):
+                        numeric[prefix] = float(value)
+                elif isinstance(value, dict):
+                    for key, item in value.items():
+                        collect(item, f"{prefix}/{key}" if prefix else str(key))
+
+            collect(data)
+            if numeric:
+                self.swan_run.log(numeric, step=self.swan_step)
+            self.swan_run.log_text(key="rsi_event", data=json.dumps(
+                data, ensure_ascii=False, default=str), step=self.swan_step)
+            self.swan_step += 1
+        except Exception as exc:
+            self.swanlab_error = f"log: {exc.__class__.__name__}: {exc}"
 
     def _swan_metrics(self, state: TaskState, round_number: int, decision: dict,
                       results: list[dict]) -> dict:
