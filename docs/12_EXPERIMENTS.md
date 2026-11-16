@@ -381,3 +381,32 @@ run：`.scratch/rsi-v052/rsi-20261115-210157`；wall 1825.5s、CPU 1059.1s、56 
   后继续训练”；单次约 200s。
 - 与 §12.18 的差异：A 0.8884→0.7346（关闭外部数据），B 491.6→409.7（新后处理），
   C 41.82→40.52（两阶段续训）；外部数据消融仍保留在 §12.18 作为加分证据。
+
+## 12.20 2026-11-16 恢复审计与 Tokenplus Kernel 冒烟
+
+恢复审计发现：A/B/C 官方训练包和基线检查点仍在工作区；检查点字节与本地归档、
+`baseline-info.json`、`training.json` 中的 SHA-256 一致。但本文引用的 2026-11-15
+全量 canonical run、合规 Kernel run 和 `harness.tar` 不在当前工作区，因此需重跑，
+不能作为当前 checkout 的交付证据。今日现存离线结果为 A×2、B×3、C×2，selection
+指标已独立复算。
+
+为检查真实 Agent 工具闭环，2026-11-16 在开发端点
+`https://api.tokenplus.cn/v1`、模型 `qwen/qwen-3.8-27b` 上运行 A×1 kernel，
+`RSI_ALLOW_EXTENDED_DATA=0`，运行产物位于
+`.scratch/tokenplus-kernel-socks-20261116/rsi-20261116-113024/`。请求包含任务定义、
+聚合漂移统计、策略目录和公开 selection 候选指标，不包含 API 凭据或原始样本行。
+
+| 项 | 结果 |
+|---|---|
+| kernel | 1 轮真实 PI Agent；10 次工具调用；提出并执行 3 个受限候选 |
+| 候选 selection macro-F1 | ridge 0.645688；train-only class-balanced continuation 0.674194；batch_std recenter 0.500097 |
+| 决策 | Agent 比较候选后未在 6-turn 上限前显式 decide；supervisor 按统计门控自动 rollback，保留 baseline 0.703220 |
+| 用量与时间 | 62,237 tokens；234.93s wall；3.74 CPU 秒 |
+| 安全检查 | 三个训练提案均声明 `data=train`；JSONL 审计保留完整 selection/report/probe，Agent view 移除 report/probe |
+
+该运行证明 Tokenplus Qwen3.8 能通过 PI/OpenAI-compatible adapter 调用受限工具，
+并依据实验结果比较候选；它未证明显式 decide/finish、跨轮技能写入、真实时间流漂移
+闭环或 PyTRiO 端点兼容。第一次 kernel 尝试在本机 SOCKS 代理依赖检查阶段失败，
+没有发出模型请求；已将 `socksio==1.0.0` 加入 `pyproject.toml` 与镜像依赖。
+下一轮冒烟使用至少 10 个 agent turns，再验证显式决策及技能读取；切换 PyTRiO 前
+重复相同的兼容性测试。

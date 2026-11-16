@@ -182,3 +182,15 @@ python -m rsi.cli synth --task A --batches 3 --drift 2.5 --noise 0.25 \
 外部预训练（任务 A 的 UCI batch3–7）在镜像中默认**关闭**（`RSI_ALLOW_EXTENDED_DATA=0`），
 正式评分只拟合官方 train；需要复现扩展消融时显式设 `RSI_ALLOW_EXTENDED_DATA=1`。
 验证/隐藏标签永不参与拟合；训练隔离由 Guard 与 `rsi/policy.py` 双重强制。
+
+## 13.11 驱动模型端点切换
+
+工业模型 checkpoint 与驱动 Harness 的大模型是两条独立链路。开发期可使用兼容
+OpenAI Chat Completions 的 Tokenplus 端点：Base URL 填 `https://api.tokenplus.cn/v1`，
+模型填 `qwen/qwen-3.8-27b`，密钥只从进程环境或 `.scratch/llm.env` 读取；不要把密钥
+写入仓库、镜像、实验记录或提交包。
+
+比赛提交前，按提交页选择 PyTRiO 的 `Qwen/Qwen3.8-27B` 或获准的 Sampler，并将
+`LLM_BASE_URL`、`LLM_MODEL`、`LLM_API_KEY` 切换到主办方发放的配置。至少执行一次
+kernel 工具调用、usage 解析、显式 decide/finish、预算计账和离线降级测试；模型名
+可相同，但 endpoint、鉴权和 tool calling 兼容性不能据此假定相同。

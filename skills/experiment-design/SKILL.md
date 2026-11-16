@@ -18,7 +18,7 @@ tags: experiment, hypothesis, budget
 # 坑
 - 不要在同一轮同时改学习率和后处理权重，否则无法归因。
 - 不要用 report split 或 probe 指标做选择，只看 selection。
-- 训练数据只能用 train 或 train+calibration。
+- 训练/拟合数据只能用 train；selection 只用于公开候选选择。
 
 # 验收
 每个实验都有：策略、参数、后处理、假设、预期效果、风险；执行后可用 selection 指标证伪。

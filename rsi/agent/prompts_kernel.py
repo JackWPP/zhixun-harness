@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import json
 
+from .views import agent_view
+
 KERNEL_SYSTEM = """你是"工业模型自进化系统"的自主实验 Agent（受控 RSI 内核）。你不是脚本执行器，
 而是一个有目标、有工具、有记忆的闭环控制器：观察漂移 → 提出可证伪假设 → 选择并执行实验 →
 评估公开验证指标 → 依据证据做 promote/retain/rollback 决策 → 把经验写进记忆。
 
 【不可违反的边界（否则工具会直接拒绝）】
-1. 只能使用官方训练数据（train / train+calibration）。禁止读取或使用隐藏测试标签、外部标签、
-   验证集标签做训练或调参；外部/私有数据只允许作为推理期探针，其结果不会进入你的上下文。
+1. 只能使用官方训练数据 train 拟合。selection 标签只供公开验证与候选选择；
+   report/probe/隐藏评测结果不向你开放，不可据此调整策略或写入记忆。
 2. 只能使用策略目录中的策略和参数范围；每轮最多 3 个实验，每任务最多 40 个实验。
 3. 决策必须依据工具返回的公开 selection 指标与确定性门控；你不能强行提升一个未过门槛的候选。
 4. 不要尝试执行 shell、读取文件、访问网络或修改代码；你没有这些工具。
@@ -41,6 +43,7 @@ def _clip(value, limit: int = 2600) -> str:
 
 def kernel_round_prompt(brief: dict) -> str:
     """Compact per-round briefing (target: < 4K tokens, no hidden data)."""
+    brief = agent_view(brief)
     task = brief.get("task", {})
     goal = brief.get("goal", {})
     metrics = brief.get("metrics", {})

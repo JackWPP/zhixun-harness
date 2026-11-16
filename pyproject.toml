@@ -21,6 +21,7 @@ agent = [
     "pi-agent-harness-lc==0.9.1",
     "langchain-openai==1.8.0",
     "openai==3.51.0",
+    "socksio==1.0.0",
 ]
 records = ["swanlab==0.10.5"]
 dev = ["pytest>=7"]

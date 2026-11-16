@@ -9,7 +9,7 @@ tags: leakage, compliance, audit
 每轮 decide 之前，以及任务收尾写报告之前。
 
 # 步骤
-1. 核对本轮实验的 data 参数：只允许 train 或 train+calibration。
+1. 核对本轮实验的 data 参数：只允许 train；selection 只用于公开候选选择。
 2. 核对选择依据：只使用 selection split 的公开指标；report split 只用于汇报，不能据此改参数。
 3. 核对历史：promote 决策的候选必须来自父 checkpoint 的真实续训或推理期校准。
 4. 核对记录：每轮写下 hypothesis、change_summary、父/候选 checkpoint sha、指标、decision。

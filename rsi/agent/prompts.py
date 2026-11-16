@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+from .views import agent_view
+
 ROLE_NAMES = {
     "diagnostician": "漂移诊断师 Diagnostician",
     "experimenter": "实验设计师 Experimenter",
@@ -54,7 +56,7 @@ OUTPUT_CONTRACT = {
 
 
 def _dump(value, limit: int = 3500) -> str:
-    text = json.dumps(value, ensure_ascii=False, default=str)
+    text = json.dumps(agent_view(value), ensure_ascii=False, default=str)
     if len(text) > limit:
         text = text[:limit] + "...(truncated)"
     return text
@@ -116,7 +118,7 @@ def standpoint_prompt(context: dict, role: str, issue: str) -> str:
     return "\n".join([
         _base_block(context),
         f"你的角色: {role}",
-        "卡点: " + issue,
+        "卡点: " + agent_view(issue),
         "最近历史: " + _dump(context.get("history", []), 2500),
         "请调用 submit_standpoint。",
     ])

@@ -25,8 +25,8 @@ COPY docker/requirements.txt /opt/zhixun/requirements.txt
 RUN pip install --no-cache-dir --target /opt/zhixun/site-packages -r /opt/zhixun/requirements.txt
 
 COPY rsi /opt/zhixun/app/rsi
-COPY baselines /opt/zhixun/app/baselines
-COPY config /opt/zhixun/app/config
+# The runtime uses rsi.model/data_official. Reference baselines are retained
+# inside the task packages under datasets/, not as top-level source folders.
 COPY skills /opt/zhixun/app/skills
 COPY scripts /opt/zhixun/app/scripts
 COPY docs /opt/zhixun/app/docs

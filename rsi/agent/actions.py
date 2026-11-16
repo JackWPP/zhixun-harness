@@ -22,15 +22,17 @@ from . import delegate as delegate_mod
 from .guard import Guard, GuardViolation
 from .prompts_kernel import KERNEL_SYSTEM, kernel_round_prompt
 from .runtime import PIRuntime
+from .views import agent_view, search_selection_records
 
 
 def _result(payload, details: dict | None = None):
     from pi_agent_core.types import AgentToolResult
+    payload = agent_view(payload)
     text = json.dumps(payload, ensure_ascii=False, default=str)
     if len(text) > 7000:
         text = text[:7000] + "...(truncated)"
     return AgentToolResult(content=[{"type": "text", "text": text}],
-                           details=details or {"ok": bool(payload.get("ok", True))})
+                           details=agent_view(details) if details else {"ok": bool(payload.get("ok", True))})
 
 
 @dataclass
@@ -229,9 +231,10 @@ def build_kernel_tools(env: KernelEnv):
         return _result({"ok": True, "lessons": text})
 
     async def h_search(tool_call_id, params, signal, on_update):
-        text = env.recall.search_text(params.query, limit=params.limit)
+        rows = search_selection_records(env.recall, params.query,
+                                        task=env.task.key, limit=params.limit)
         env.note("search_records", {"query": params.query})
-        return _result({"ok": True, "results": text})
+        return _result({"ok": True, "results": rows})
 
     async def h_context(tool_call_id, params, signal, on_update):
         context = env.host.context()
@@ -374,8 +377,12 @@ def build_kernel_tools(env: KernelEnv):
         return _result(result)
 
     async def h_memory_replace(tool_call_id, params, signal, on_update):
+        try:
+            text = env.guard.scan_text(params.text, "memory")
+        except GuardViolation as exc:
+            return _result({"ok": False, "error": str(exc)})
         target, task_key = mem_target(params.scope)
-        result = env.memory.replace(params.old_text, params.text, target=target,
+        result = env.memory.replace(params.old_text, text, target=target,
                                     task_key=task_key).to_dict()
         env.memory_writes += 1
         env.note("memory_replace", {"scope": params.scope}, ok=result["ok"])
@@ -415,7 +422,7 @@ def build_kernel_tools(env: KernelEnv):
              HistoryParams, h_history),
         tool("get_lessons", "读取跨轮次沉淀的经验教训（可按策略过滤）。",
              LessonsParams, h_lessons),
-        tool("search_records", "在当前 run 的历史记录中做全文检索。",
+        tool("search_records", "检索本任务的 selection 实验记录；不检索保留评测结果。",
              SearchParams, h_search),
         tool("get_context", "读取某一节上下文包（drift/history/catalog/memory 等）。",
              ContextParams, h_context),
@@ -425,7 +432,7 @@ def build_kernel_tools(env: KernelEnv):
              ReadSkillParams, h_read_skill),
         tool("propose_experiment", "登记一个实验方案（不执行）。参数必须来自策略目录。",
              ProposeParams, h_propose),
-        tool("run_experiment", "执行已登记的实验并返回公开 selection/report 指标。",
+        tool("run_experiment", "执行已登记的实验并返回公开 selection 指标。",
              RunParams, h_run),
         tool("compare_candidates", "按主指标方向比较已执行候选。",
              CompareParams, h_compare),
