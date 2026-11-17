@@ -154,3 +154,22 @@ cd vendor/contest_harness-1.0.2 && ../../.venv/bin/python -m unittest \
 - 产物：`.scratch/image/harness.tar`，**378,224,640 B**，sha256
   `e1e6133ebb1c6c47d83fa5b6174d782eaaa5e863fe7094309d55ff18dbab30f9`（tags `0.10.2/latest`）。
 - 该镜像尚未上传平台；正式提交/重跑前需用户确认（trial 仍在 1/10 额度内，0.10.1 那次 running）。
+
+### 7.4 v0.10.3 韧性修复（平台 trial 失败后的第一轮加固）
+
+平台 trial（0.10.1 镜像）返回 `status=failed / failure_kind=unknown`，`failure_detail` 在 1000 字符处被截断，
+只能看到 Preflight 与训练侧已通过；平台不提供更细日志（仅 `/runs/{id}/report` 有效，无 logs/events 端点）。
+因此这一轮按“最可能被隐藏数据打穿的地方”做防御性加固，再重建镜像验证：
+
+- **网关调用重试**：`_gateway_model()` 对 `rnd.model(...)` 做 3 次有界重试（0.5s/1.0s 退避）；
+  每轮至少一次真实调用，取最后一次成功 receipt 的 `call_id` 上报。避免一次瞬时网关错误直接判整轮失败。
+- **单行预测兜底**：`predict()` 外层捕获单行异常（键缺失/类型异常/NaN 等），回退到
+  `_fallback_prediction()`——分类输出各类均分（`_uniform_scores` 保证唯一最高分、score∈[0,1]），
+  回归输出 `target_mean`（非负有限），并写一行 stderr 说明。坏一行不再拖垮整条隐藏流。
+- **本地 30 轮复跑暴露的 emulator 问题（SIM-010）已合并**：`scripts/emulate_workspace_v2.py` 增加
+  `install_previous()`，每轮把选中候选复制为下一轮 `/previous`；此前 C 任务（continue_train）第二轮
+  因父挂载仍是 baseline 而误报 `PARENT_DIGEST_MISMATCH`，A/B（retain）不受影响。修复后 A/B/C 各 10 轮
+  v2 复跑 **PASS**（A 4s / B 6s / C 24s）。
+- 测试：新增 `test_predict_fallback_keeps_stream_valid`、`test_gateway_call_retries_transient_errors`；
+  `tests/test_platform_v2.py` **11 passed**；全量 `pytest -m "not integration"` 140 passed / 3 deselected。
+- 版本 0.10.3；镜像重建与 verify 结果见 §7.5（本轮上传/重跑 trial 仍需用户确认）。

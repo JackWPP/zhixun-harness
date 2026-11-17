@@ -33,7 +33,9 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
@@ -311,6 +313,23 @@ def _state_payload(rnd, plans, chosen, note: str) -> dict:
     }
 
 
+def _gateway_model(rnd, messages, max_tokens: int):
+    """One real gateway call with bounded retries.
+
+    The platform requires at least one real call per round; transient gateway
+    errors should not turn into a failed round.  Each retry receives its own
+    real ``call_id`` and the last successful receipt is the one reported.
+    """
+    last_error = None
+    for attempt in range(3):
+        try:
+            return rnd.model(messages, max_tokens=max_tokens, temperature=0)
+        except Exception as error:  # pragma: no cover - depends on host gateway
+            last_error = error
+            time.sleep(0.5 * (attempt + 1))
+    raise last_error
+
+
 def _new_state_dir(work: Path, rnd) -> Path:
     """Copy the previous native state into a fresh writable directory when the
     host mounted one (workspace-v2 recommends ``rnd.state_workspace``)."""
@@ -360,10 +379,10 @@ def train(rnd):
         "请只用一行 JSON 回复：{\"choice\": <候选编号>, \"hypothesis\": \"...\", \"reason\": \"...\"}。"
         "只能选改进父模型的候选；不确定时选 0。"
     ) % (task_key, int(rnd.round_index), metric, direction, table, table)
-    receipt = rnd.model(
+    receipt = _gateway_model(
+        rnd,
         [{"role": "user", "content": prompt[:6000]}],
         max_tokens=min(256, int(rnd.max_output_tokens)),
-        temperature=0,
     )
     llm_choice = _parse_choice(receipt.text, len(plans))
     fallback = _choose(plans, direction, defaults["margin"])
@@ -390,7 +409,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.10.2",
+        "version": "0.10.3",
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -515,9 +534,33 @@ def _uniform_scores(scores: np.ndarray) -> np.ndarray:
     return values
 
 
+def _fallback_prediction(artifact: dict):
+    """Never let one malformed row kill the whole prediction stream."""
+    if artifact["task"] == "classification":
+        classes = list(artifact["classes"])
+        if not classes:
+            raise ValueError("classification artifact has no classes")
+        values = _uniform_scores(np.ones(len(classes), dtype=np.float64))
+        return [{"label": label, "score": float(values[position])}
+                for position, label in enumerate(classes)]
+    mean = float(artifact["model"].meta.get("target_mean") or 0.0)
+    if not np.isfinite(mean) or mean < 0:
+        mean = 0.0
+    return {"value": float(mean)}
+
+
 def predict(sample, model_dir):
     """One validated prediction line; keep it allocation-light and streaming."""
     artifact = _load_artifact(model_dir)
+    try:
+        return _predict_one(sample, artifact)
+    except Exception as error:  # one bad row must not fail the hidden stream
+        print("predict fallback: %s: %s" % (type(error).__name__, error),
+              file=sys.stderr, flush=True)
+        return _fallback_prediction(artifact)
+
+
+def _predict_one(sample, artifact: dict):
     model: ExtendedModel = artifact["model"]
     task = sample.task or artifact["task"]
     if task != artifact["task"]:

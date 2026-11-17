@@ -127,6 +127,7 @@ dev 选型在回归任务上仍有冒烟风险，与 L1 的结论一致）。
 | SIM-007 | 长流 full 在 batch10 因仓库文档改名报 `FileNotFoundError: docs/27_PPT_REPORT.md` | `code_sha256` 对消失文件跳过；新增回归测试；重跑 lane |
 | SIM-008 | repeat=2 长流在 batch11 报重复 sample id（官方 loader 拒绝） | `_add_history` 按 id 去重；新增回归测试；重跑长流 |
 | SIM-009 | PyTRiO 真实模型触发的 augment+weight 组合崩溃（`max(标量, 数组)` ambiguous，且扩增后 x/y 不对齐） | `_augment_features` 改 `np.maximum` 并同步扩增标签；新增回归测试 |
+| SIM-010 | 本地 v2 emulator 未把上一轮候选挂载为下一轮 `/previous`：A/B（retain，checkpoint 字节不变）通过，C（continue_train，重新训练出不同 checkpoint）第二轮报 `PARENT_DIGEST_MISMATCH` | emulator 增加 `install_previous()`，每轮把选中产物复制为下一轮父挂载；C 10 轮 PASS（0.10.2 代码） |
 
 ## 7. 复现
 

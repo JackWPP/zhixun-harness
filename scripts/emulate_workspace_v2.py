@@ -21,6 +21,7 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -89,6 +90,24 @@ def write_artifact(directory: Path, files: dict[str, bytes]) -> dict:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
     return declaration(directory.name, files)
+
+
+def install_previous(previous: Path, artifact_dir: Path) -> None:
+    """Mount exactly what the host would mount for the next round.
+
+    The v2 contract gives each round a fresh container with ``/previous`` set
+    to the selected parent artifact.  The fake host must therefore replace the
+    previous directory with the candidate files as well; otherwise a
+    ``continue_train`` candidate (different checkpoint bytes) fails the next
+    round with ``PARENT_DIGEST_MISMATCH``.
+    """
+    previous.mkdir(parents=True, exist_ok=True)
+    for stale in previous.iterdir():
+        if stale.is_file() or stale.is_symlink():
+            stale.unlink()
+    for path in artifact_dir.iterdir():
+        if path.is_file():
+            shutil.copyfile(path, previous / path.name)
 
 
 def materialise_sitecustomize(root: Path) -> None:
@@ -387,6 +406,7 @@ def main(argv=None) -> int:
         served = run_train(root, args.task, package, round_index, previous, work,
                            artifact_dir, state_dir, parent, history, reply, args.timeout)
         validate_artifact(served)
+        install_previous(previous, artifact_dir)
         checkpoint = artifact_dir / "checkpoint.npz"
         if not checkpoint.is_file():
             raise RuntimeError("candidate checkpoint missing")

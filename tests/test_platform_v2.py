@@ -132,3 +132,40 @@ def test_change_summary_is_honest_for_retain():
     assert "保留父模型" in _change_summary({"kind": "retain"})
     assert "续训" in _change_summary({"kind": "continue_train"})
     assert "未改 checkpoint" in _change_summary({"kind": "recenter"})
+
+
+def test_predict_fallback_keeps_stream_valid():
+    from rsi.platform.submission import _fallback_prediction
+
+    classification = _fallback_prediction({
+        "task": "classification", "classes": ["a", "b", "c"],
+        "model": SimpleNamespace(meta={}),
+    })
+    scores = [item["score"] for item in classification]
+    assert {item["label"] for item in classification} == {"a", "b", "c"}
+    assert sum(score == max(scores) for score in scores) == 1
+    assert all(0.0 <= score <= 1.0 for score in scores)
+    regression = _fallback_prediction({
+        "task": "regression", "classes": [],
+        "model": SimpleNamespace(meta={"target_mean": 123.0}),
+    })
+    assert regression == {"value": 123.0}
+
+
+def test_gateway_call_retries_transient_errors():
+    from rsi.platform.submission import _gateway_model
+
+    class FakeRound:
+        def __init__(self):
+            self.calls = 0
+
+        def model(self, messages, max_tokens=None, temperature=None):
+            self.calls += 1
+            if self.calls < 3:
+                raise RuntimeError("temporary gateway error")
+            return SimpleNamespace(call_id="call-%d" % self.calls, text="{}")
+
+    rnd = FakeRound()
+    receipt = _gateway_model(rnd, [{"role": "user", "content": "x"}], max_tokens=16)
+    assert receipt.call_id == "call-3"
+    assert rnd.calls == 3
