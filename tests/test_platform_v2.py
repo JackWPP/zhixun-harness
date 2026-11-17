@@ -104,3 +104,31 @@ def test_emulator_regression_task_c():
     result = run_python([str(REPO / "scripts" / "emulate_workspace_v2.py"), "--task", "C", "--rounds", "1"])
     assert result.returncode == 0, result.stderr
     assert "workspace v2 emulation PASS" in result.stdout
+
+
+def test_contract_field_variants_are_tolerated():
+    from rsi.platform.submission import _contract_value
+
+    contract = {"task_type": "regression", "metric_name": "rmse", "metric_direction": "lower"}
+    assert _contract_value(contract, ("task", "task_type"), "classification") == "regression"
+    assert _contract_value(contract, ("metric", "metric_name"), "macro_f1") == "rmse"
+    assert _contract_value(contract, ("direction", "metric_direction"), "higher") == "lower"
+    assert _contract_value(None, ("task",), "classification") == "classification"
+
+
+def test_uniform_scores_always_have_single_top():
+    import numpy as np
+    from rsi.platform.submission import _uniform_scores
+
+    for raw in ([0.0, 0.0, 0.0], [0.5, 0.5, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]):
+        scores = _uniform_scores(np.asarray(raw, dtype=np.float64))
+        assert np.all(scores >= 0.0) and np.all(scores <= 1.0)
+        assert int((scores == scores.max()).sum()) == 1, (raw, scores)
+
+
+def test_change_summary_is_honest_for_retain():
+    from rsi.platform.submission import _change_summary
+
+    assert "保留父模型" in _change_summary({"kind": "retain"})
+    assert "续训" in _change_summary({"kind": "continue_train"})
+    assert "未改 checkpoint" in _change_summary({"kind": "recenter"})

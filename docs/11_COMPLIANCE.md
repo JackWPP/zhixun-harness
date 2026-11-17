@@ -32,7 +32,7 @@
 | drift_detection | 8 | `rsi/drift.py`：均值/方差偏移、KS、相关性、标签分布 JS、窗口性能跌幅、severity、causes、top features |
 | route_selection | 6 | 策略库分"模型层"（续训/ridge/SWA）与"推理期"（recenter/shrink）；Diagnostician 归因 + Experimenter 选路线 + Critic 审查 |
 | safety_controls | 6 | Agent 无 shell/文件/网络工具；执行器二次校验；预算 tripwire；rollback；隐藏标签不可见；镜像离线 |
-| system_quality | 6 | 135 项 pytest（核心/记忆/看板/适配器/提交包/平台 v2/全量模拟回归）；模块分层；原子状态；checkpoint 重加载校验；docs/10–18 齐全 |
+| system_quality | 6 | 138 项 pytest（核心/记忆/看板/适配器/提交包/平台 v2/全量模拟回归）；模块分层；原子状态；checkpoint 重加载校验；docs/10–18 齐全 |
 | technical_report | 6 | `docs/12_EXPERIMENTS.md` + `README.md` + 架构文档 |
 | controlled_experiments | 5 | 三层互斥切分 + 噪声阈值 margin + 固定 seed + 单变量策略库 + 失败实验留痕 |
 | experiment_records | 5 | `records.jsonl` / `rounds.jsonl` / `state.json` / `workspace_report.json` / SwanLab 可选 |

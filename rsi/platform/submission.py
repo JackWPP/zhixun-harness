@@ -180,6 +180,16 @@ def _parse_choice(text: str, upper: int) -> int | None:
     return None
 
 
+def _contract_value(contract, keys, default):
+    """Read a frozen-contract field by name, tolerating naming variants."""
+    if isinstance(contract, dict):
+        for key in keys:
+            value = contract.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return default
+
+
 def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> list[dict]:
     """Build candidate plan descriptors sorted by expected value (cheap first)."""
     task = model.meta.get("task")
@@ -280,6 +290,15 @@ def _format_plan_table(plans: list[dict], metric: str) -> str:
     return "\n".join(lines)
 
 
+def _change_summary(chosen: dict) -> str:
+    kind = chosen["kind"]
+    if kind == "retain":
+        return "保留父模型，不改权重与推理期后处理"
+    if kind == "continue_train":
+        return "基于官方 train 的短续训，父谱系与结构兼容"
+    return "仅推理期后处理（%s），未改 checkpoint" % kind
+
+
 def _state_payload(rnd, plans, chosen, note: str) -> dict:
     return {
         "round_index": int(rnd.round_index),
@@ -292,14 +311,30 @@ def _state_payload(rnd, plans, chosen, note: str) -> dict:
     }
 
 
+def _new_state_dir(work: Path, rnd) -> Path:
+    """Copy the previous native state into a fresh writable directory when the
+    host mounted one (workspace-v2 recommends ``rnd.state_workspace``)."""
+    destination = work / ("state-round-%d-%d" % (int(rnd.round_index), os.getpid()))
+    try:
+        return rnd.state_workspace(str(destination))
+    except Exception:  # first round may omit /state; fall back to an empty dir
+        destination.mkdir(parents=True, exist_ok=True)
+        return destination
+
+
 def train(rnd):
     """One workspace v2 round."""
     task_key = str(rnd.dataset_key).upper()
     if task_key not in TASK_DEFAULTS:
         raise ValueError(f"unsupported dataset key: {task_key}")
     contract = rnd.task or {}
-    task = contract.get("task") or TASK_DEFAULTS[task_key]["task"]
-    metric = contract.get("metric") or TASK_DEFAULTS[task_key]["metric"]
+    defaults = TASK_DEFAULTS[task_key]
+    task = _contract_value(contract, ("task", "task_type", "type"), defaults["task"])
+    if task not in TASKS:
+        task = defaults["task"]
+    metric = _contract_value(contract, ("metric", "metric_name"), defaults["metric"])
+    direction = _contract_value(contract, ("direction", "metric_direction"),
+                                defaults["direction"])
 
     parent_path = rnd.parent.path(CHECKPOINT_NAME)
     model = ExtendedModel.from_checkpoint(parent_path)
@@ -324,28 +359,27 @@ def train(rnd):
         "候选如下（数字为本机公开验证评估，平台会独立复测）：\n%s\n"
         "请只用一行 JSON 回复：{\"choice\": <候选编号>, \"hypothesis\": \"...\", \"reason\": \"...\"}。"
         "只能选改进父模型的候选；不确定时选 0。"
-    ) % (task_key, int(rnd.round_index), metric,
-         TASK_DEFAULTS[task_key]["direction"], table, table)
+    ) % (task_key, int(rnd.round_index), metric, direction, table, table)
     receipt = rnd.model(
         [{"role": "user", "content": prompt[:6000]}],
         max_tokens=min(256, int(rnd.max_output_tokens)),
         temperature=0,
     )
     llm_choice = _parse_choice(receipt.text, len(plans))
-    fallback = _choose(plans, TASK_DEFAULTS[task_key]["direction"], TASK_DEFAULTS[task_key]["margin"])
+    fallback = _choose(plans, direction, defaults["margin"])
     chosen = plans[fallback]
     if llm_choice is not None and llm_choice != fallback:
         candidate = plans[llm_choice]
         parent_primary = float(plans[0]["primary"])
-        is_better = (candidate["primary"] > parent_primary + TASK_DEFAULTS[task_key]["margin"]
-                     if TASK_DEFAULTS[task_key]["direction"] == "higher"
-                     else candidate["primary"] < parent_primary - TASK_DEFAULTS[task_key]["margin"])
+        is_better = (candidate["primary"] > parent_primary + defaults["margin"]
+                     if direction == "higher"
+                     else candidate["primary"] < parent_primary - defaults["margin"])
         if is_better:
             chosen = candidate
 
     work = _work_dir()
     candidate_dir = Path(tempfile.mkdtemp(prefix="candidate-", dir=work))
-    state_dir = Path(tempfile.mkdtemp(prefix="state-", dir=work))
+    state_dir = _new_state_dir(work, rnd)
     checkpoint_model = chosen.get("model") or model
     if chosen["kind"] in ("continue_train",):
         checkpoint_model.save(candidate_dir / CHECKPOINT_NAME)
@@ -356,7 +390,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.9.0",
+        "version": "0.10.2",
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -373,8 +407,7 @@ def train(rnd):
     submitted = rnd.submit_candidate(
         candidate_dir,
         hypothesis="本轮候选：%s" % chosen["label"],
-        change_summary=("仅推理期后处理，未改 checkpoint" if chosen["kind"] != "continue_train"
-                        else "基于官方 train 的短续训，父谱系与结构兼容"),
+        change_summary=_change_summary(chosen),
         configuration={"candidates": [{"kind": plan["kind"], "primary": float(plan["primary"])}
                                       for plan in plans],
                        "chosen": chosen["kind"],
@@ -389,13 +422,13 @@ def train(rnd):
     rnd.finish(
         selected_artifact_id=submitted["artifact_id"],
         hypothesis="本轮候选：%s" % chosen["label"],
-        change_summary=("仅推理期后处理，未改 checkpoint" if chosen["kind"] != "continue_train"
-                        else "基于官方 train 的短续训，父谱系与结构兼容"),
+        change_summary=_change_summary(chosen),
         reason="依公开验证指标与模型网关选择 %s（%s=%.6f）；模型调用 %s。" % (
             chosen["kind"], metric, float(chosen["primary"]), receipt.call_id),
         configuration={"chosen": chosen["kind"], "postprocess": postprocess},
         seed=20261117,
         history_ids=[item["id"] for item in history],
+        model_call_ids=[receipt.call_id],
     )
 
 
@@ -469,9 +502,16 @@ def _uniform_scores(scores: np.ndarray) -> np.ndarray:
     else:
         values = values / total
     top = int(np.argmax(values))
-    if int((values == values[top]).sum()) != 1:
+    tied = np.flatnonzero(values == values[top])
+    if len(tied) > 1:
+        # The host rejects a non-unique top score; break ties deterministically
+        # without leaving [0, 1] or altering the argmax class.
         values = values.copy()
-        values[top] = min(1.0, float(values[top]) + 1e-9)
+        if values[top] <= 0.0:
+            values[top] = 1e-7
+        else:
+            for offset, index in enumerate((int(i) for i in tied if int(i) != top), start=1):
+                values[index] = max(0.0, float(values[top]) - 1e-7 * offset)
     return values
 
 
