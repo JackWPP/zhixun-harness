@@ -832,9 +832,25 @@ class StateStore:
             "entries": _safe_int(run_memory.get("entries")),
             "usage": run_memory.get("usage"),
         }
+        if not memory["entries"] and memory_files:
+            memory["entries"] = sum(_safe_int(item.get("entries")) for item in memory_files)
+        usage_text = str(memory.get("usage") or "")
+        if memory["entries"] and (not usage_text.strip() or usage_text.startswith("0% — 0/")):
+            total_chars = sum(_safe_int(item.get("characters")) for item in memory_files)
+            memory["usage"] = f"{total_chars:,} chars ({len(memory_files)} files)"
         if not memory["usage"]:
             total_chars = sum(_safe_int(item.get("characters")) for item in memory_files)
             memory["usage"] = f"{total_chars:,} chars" if memory_files else "—"
+        by_name = {item.get("name"): item for item in memory_files}
+        for task_out in tasks_out:
+            task_memory = _as_dict(task_out.get("memory"))
+            if _safe_int(task_memory.get("entries")):
+                continue
+            item = by_name.get(f"TASK_{task_out.get('key')}.md")
+            if item:
+                task_memory["entries"] = _safe_int(item.get("entries"))
+                task_memory["usage"] = f"{_safe_int(item.get('characters')):,} chars"
+                task_out["memory"] = task_memory
 
         return {
             "ok": True,

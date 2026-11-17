@@ -33,6 +33,7 @@ from rsi.data import Dataset, load_jsonl_dataset
 from rsi.drift import analyse
 from rsi.executor import ExperimentProposal, Executor
 from rsi.inference import apply_postprocess, predict_for_split, resolve_postprocess
+from rsi.memory.store import serialize_entries
 from rsi.memory import (MemoryReviewer, MemoryStore, Recall, SkillCurator,
                         SkillStore, StateDB)
 from rsi.metrics import from_predictions, primary
@@ -294,13 +295,33 @@ class Runner:
         return payload
 
     # -- records / state ---------------------------------------------------
+    def _memory_counts(self) -> tuple[int, str]:
+        """Return (entry count, usage string) across the global and per-task memory files."""
+        if not self.memory_enabled or self.memory is None:
+            return 0, "0% — 0/0 chars"
+        used = 0
+        limit = 0
+        count = 0
+        global_entries = self.memory.entries()
+        used += len(serialize_entries(global_entries)) if global_entries else 0
+        limit += self.memory.limit_for("memory")
+        count += len(global_entries)
+        for config in self.configs:
+            entries = self.memory.entries("task", config.key)
+            used += len(serialize_entries(entries)) if entries else 0
+            limit += self.memory.limit_for("task")
+            count += len(entries)
+        pct = int(round(100 * used / limit)) if limit else 0
+        return count, f"{pct}% — {used}/{limit} chars"
+
     def _write_state(self, status: str = "running") -> None:
         memory_state = {"enabled": self.memory_enabled,
                         "dir": str(self.memory_root) if self.memory_enabled else None,
                         "db": str(self.db_path) if self.db is not None else None}
         if self.memory_enabled and self.memory is not None:
-            memory_state["entries"] = len(self.memory.entries())
-            memory_state["usage"] = self.memory.usage()
+            count, usage = self._memory_counts()
+            memory_state["entries"] = count
+            memory_state["usage"] = usage
         state = {
             "schema_version": 3,
             "run": {
@@ -491,8 +512,10 @@ class Runner:
                 memory_snapshot = self.recall.memory_snapshot(key)
             except Exception as exc:
                 self.log("warn", key, f"memory snapshot failed: {exc}")
+        count, usage = self._memory_counts()
         state.memory_info = {"enabled": self.memory_enabled,
-                             "entries": len(self.memory.entries()) if self.memory else 0,
+                             "entries": count,
+                             "usage": usage,
                              "snapshot_chars": len(memory_snapshot)}
         goal_loop = GoalLoop(task_key=key, run_id=self.run_id,
                              db=self.db if self.memory_enabled else None,
@@ -590,9 +613,11 @@ class Runner:
                 curated = self.curator.curate()
             except Exception as exc:
                 curated = [{"error": f"{exc.__class__.__name__}: {exc}"}]
+        count, usage = self._memory_counts()
         state.memory_info.update({
             "review": review_info, "curated": curated,
-            "entries_after": len(self.memory.entries()) if self.memory else 0})
+            "entries": count, "usage": usage,
+            "entries_after": count})
 
         # reporter closes the task record (one extra call, useful for the report)
         context = coordinator.build_context(len(state.rounds), self.rounds, state.drift,
