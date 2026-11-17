@@ -104,6 +104,14 @@ def _answers(rows: Iterable[dict]) -> dict[str, str]:
     return out
 
 
+def _shuffle(rows: list[dict], seed: int) -> list[dict]:
+    """Deterministic shuffle that keeps every row (unlike a fraction split)."""
+
+    out = list(rows)
+    random.Random(seed).shuffle(out)
+    return out
+
+
 def _strat(rows: list[dict], fraction: float, seed: int) -> tuple[list[dict], list[dict]]:
     """Stratified (by answer when present) split; fraction goes to the first part."""
 
@@ -128,7 +136,20 @@ def _add_history(state: dict, rows: list[dict], dev_fraction: float, seed: int) 
 
     if not rows:
         return
-    dev_rows, train_rows = _strat(list(rows), max(0.0, min(0.5, dev_fraction)), seed)
+    # A "repeat" stream reveals the same batches again; rows must not enter the
+    # history twice (the official loader rejects duplicate sample ids).
+    seen = {str(row.get("id")) for row in state["train"]} | {
+        str(row.get("id")) for row in state["dev"]}
+    fresh = []
+    for row in rows:
+        sample_id = str(row.get("id"))
+        if sample_id in seen:
+            continue
+        seen.add(sample_id)
+        fresh.append(row)
+    if not fresh:
+        return
+    dev_rows, train_rows = _strat(list(fresh), max(0.0, min(0.5, dev_fraction)), seed)
     state["train"].extend(train_rows)
     state["dev"].extend(dev_rows)
 
@@ -290,16 +311,15 @@ def private_sim_batches(
             if not rows:
                 continue
             rows = _perturb(rows, perturb, seed + batch_no)
-            rows = _strat(rows, 1.0, seed)[0]  # shuffle deterministically
+            rows = _shuffle(rows, seed)  # keep every row
             revealed = (label_fraction > 0) and ((pos + 1) % max(1, int(label_every)) == 0)
             reveal_rows: list[dict] = []
             if revealed and label_fraction > 0:
-                keep = max(1, min(len(rows), int(round(len(rows) * float(label_fraction)))))
-                # keep a stratified subset for the history pool
-                selected = _strat(rows, float(label_fraction), seed + 100 + batch_no)[0]
-                if not selected:
-                    selected = rows[:keep]
-                reveal_rows = selected
+                if float(label_fraction) >= 1.0:
+                    reveal_rows = list(rows)
+                else:
+                    selected = _strat(rows, float(label_fraction), seed + 100 + batch_no)[0]
+                    reveal_rows = selected or rows[:1]
             batches.append(Batch(
                 index=index,
                 train=list(state["train"]),
@@ -340,9 +360,60 @@ def private_sim_batches(
     return batches
 
 
+def full_batches(
+    config: TaskConfig,
+    n_batches: int = 10,
+    dev_fraction: float = 0.25,
+    seed: int = 42,
+    hidden_tail: int = 2,
+    perturb: str = "none",
+    label_every: int = 1,
+    label_fraction: float = 1.0,
+    repeat: int = 1,
+    **_kwargs,
+) -> list[Batch]:
+    """Whole-dataset batch stream used by the full-scale rehearsal.
+
+    * A: every UCI gas batch 1..N (the official package only contains b1/b2).
+    * B/C: every official row, split by bearing / engine-unit groups.
+
+    The current batch labels are never placed into ``train``/``dev``; labels are
+    revealed only after the batch has been predicted (``reveal``) and hidden
+    batches are never revealed.
+    """
+
+    if config.key == "A":
+        n = max(2, int(n_batches))
+        return private_sim_batches(
+            config,
+            "",
+            arrival=(1, n),
+            hidden=(n + 1, n + 1),
+            dev_fraction=dev_fraction,
+            label_every=label_every,
+            label_fraction=label_fraction,
+            perturb=perturb,
+            repeat=repeat,
+            seed=seed,
+        )
+
+    batches = official_batches(
+        config, n_batches, dev_fraction=dev_fraction, seed=seed,
+        hidden_tail=hidden_tail,
+    )
+    if perturb not in (None, "", "none"):
+        for batch in batches:
+            batch.prediction = _perturb(batch.prediction, perturb, seed + 1000 * batch.index + 1)
+            batch.reveal = _perturb(batch.reveal, perturb, seed + 1000 * batch.index + 2)
+            batch.meta["perturb"] = perturb
+    return batches
+
+
 def make_source(kind: str, config: TaskConfig, n_batches: int, **kwargs) -> list[Batch]:
     """Build a batch list for one of the supported sources."""
 
+    if kind in ("full", "full-scale"):
+        return full_batches(config, n_batches, **kwargs)
     if kind == "official":
         return official_batches(config, n_batches, **kwargs)
     if kind == "private-sim":

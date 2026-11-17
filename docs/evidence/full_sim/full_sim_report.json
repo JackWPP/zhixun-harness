@@ -1,0 +1,835 @@
+{
+  "l1": [
+    {
+      "task": "A",
+      "arm": "recenter",
+      "seed": 42,
+      "n": 10,
+      "mean": 0.558936858414661,
+      "worst": 0.3933202653118562,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 10
+      },
+      "adapt_kept": null,
+      "wall": 20.38,
+      "error": null
+    },
+    {
+      "task": "A",
+      "arm": "frozen",
+      "seed": 42,
+      "n": 10,
+      "mean": 0.48616830529573896,
+      "worst": 0.1851632882882883,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 10
+      },
+      "adapt_kept": null,
+      "wall": 20.57,
+      "error": null
+    },
+    {
+      "task": "A",
+      "arm": "frozen",
+      "seed": 43,
+      "n": 10,
+      "mean": 0.48616830529573896,
+      "worst": 0.1851632882882883,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 10
+      },
+      "adapt_kept": null,
+      "wall": 20.68,
+      "error": null
+    },
+    {
+      "task": "A",
+      "arm": "pair",
+      "seed": 43,
+      "n": 10,
+      "mean": 0.527557608833863,
+      "worst": 0.25561459892651484,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 10
+      },
+      "adapt_kept": null,
+      "wall": 17.57,
+      "error": null
+    },
+    {
+      "task": "A",
+      "arm": "pair",
+      "seed": 42,
+      "n": 10,
+      "mean": 0.527557608833863,
+      "worst": 0.25561459892651484,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 10
+      },
+      "adapt_kept": null,
+      "wall": 17.82,
+      "error": null
+    },
+    {
+      "task": "A",
+      "arm": "recenter",
+      "seed": 43,
+      "n": 10,
+      "mean": 0.558936858414661,
+      "worst": 0.3933202653118562,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 10
+      },
+      "adapt_kept": null,
+      "wall": 18.05,
+      "error": null
+    },
+    {
+      "task": "A",
+      "arm": "adapt",
+      "seed": 42,
+      "n": 10,
+      "mean": 0.7384763212153757,
+      "worst": 0.5619077327900857,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 10
+      },
+      "adapt_kept": "9/9",
+      "wall": 39.43,
+      "error": null
+    },
+    {
+      "task": "A",
+      "arm": "adapt",
+      "seed": 43,
+      "n": 10,
+      "mean": 0.7625120819385797,
+      "worst": 0.6345145969931933,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 10
+      },
+      "adapt_kept": "9/9",
+      "wall": 40.28,
+      "error": null
+    },
+    {
+      "task": "B",
+      "arm": "frozen",
+      "seed": 42,
+      "n": 8,
+      "mean": 650.0194004485785,
+      "worst": 1252.5771116560556,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": null,
+      "wall": 4.66,
+      "error": null
+    },
+    {
+      "task": "B",
+      "arm": "frozen",
+      "seed": 43,
+      "n": 8,
+      "mean": 650.0194004485785,
+      "worst": 1252.5771116560556,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": null,
+      "wall": 11.42,
+      "error": null
+    },
+    {
+      "task": "B",
+      "arm": "recenter",
+      "seed": 42,
+      "n": 8,
+      "mean": 572.6532055234592,
+      "worst": 1081.67534332663,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": null,
+      "wall": 3.22,
+      "error": null
+    },
+    {
+      "task": "B",
+      "arm": "recenter",
+      "seed": 43,
+      "n": 8,
+      "mean": 572.6532055234592,
+      "worst": 1081.67534332663,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": null,
+      "wall": 4.44,
+      "error": null
+    },
+    {
+      "task": "B",
+      "arm": "adapt",
+      "seed": 42,
+      "n": 8,
+      "mean": 435.5636120693954,
+      "worst": 981.9686658254377,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": "5/7",
+      "wall": 12.79,
+      "error": null
+    },
+    {
+      "task": "B",
+      "arm": "adapt",
+      "seed": 43,
+      "n": 8,
+      "mean": 432.3986160845774,
+      "worst": 962.743826978442,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": "5/7",
+      "wall": 13.08,
+      "error": null
+    },
+    {
+      "task": "A",
+      "arm": "full",
+      "seed": 42,
+      "n": 10,
+      "mean": 0.7652644630067658,
+      "worst": 0.6227392828808337,
+      "hidden_mean": null,
+      "decisions": {
+        "promote": 9,
+        "retain": 1
+      },
+      "adapt_kept": "9/9",
+      "wall": 342.22,
+      "error": null
+    },
+    {
+      "task": "A",
+      "arm": "full",
+      "seed": 43,
+      "n": 10,
+      "mean": 0.7684279435549157,
+      "worst": 0.6180756994219275,
+      "hidden_mean": null,
+      "decisions": {
+        "rollback": 1,
+        "promote": 9
+      },
+      "adapt_kept": "9/9",
+      "wall": 326.84,
+      "error": null
+    },
+    {
+      "task": "B",
+      "arm": "full",
+      "seed": 42,
+      "n": 8,
+      "mean": 497.01322719678126,
+      "worst": 1086.1383895640909,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 3,
+        "promote": 5
+      },
+      "adapt_kept": "5/7",
+      "wall": 289.57,
+      "error": null
+    },
+    {
+      "task": "C",
+      "arm": "frozen",
+      "seed": 42,
+      "n": 8,
+      "mean": 50.373109904995076,
+      "worst": 72.6051650254014,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": null,
+      "wall": 34.96,
+      "error": null
+    },
+    {
+      "task": "C",
+      "arm": "frozen",
+      "seed": 43,
+      "n": 8,
+      "mean": 50.373109904995076,
+      "worst": 72.6051650254014,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": null,
+      "wall": 56.98,
+      "error": null
+    },
+    {
+      "task": "C",
+      "arm": "recenter",
+      "seed": 42,
+      "n": 8,
+      "mean": 50.94456932921157,
+      "worst": 72.60437230906426,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": null,
+      "wall": 48.19,
+      "error": null
+    },
+    {
+      "task": "C",
+      "arm": "recenter",
+      "seed": 43,
+      "n": 8,
+      "mean": 50.94456932921157,
+      "worst": 72.60437230906426,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": null,
+      "wall": 28.49,
+      "error": null
+    },
+    {
+      "task": "C",
+      "arm": "adapt",
+      "seed": 42,
+      "n": 8,
+      "mean": 51.08193683055306,
+      "worst": 70.75957762104697,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": "5/7",
+      "wall": 159.47,
+      "error": null
+    },
+    {
+      "task": "C",
+      "arm": "adapt",
+      "seed": 43,
+      "n": 8,
+      "mean": 51.027742921403274,
+      "worst": 71.39573594582185,
+      "hidden_mean": null,
+      "decisions": {
+        "retain": 8
+      },
+      "adapt_kept": "2/7",
+      "wall": 158.7,
+      "error": null
+    },
+    {
+      "task": "B",
+      "arm": "full",
+      "seed": 43,
+      "n": 8,
+      "mean": 502.01235128909576,
+      "worst": 1065.0752961598505,
+      "hidden_mean": null,
+      "decisions": {
+        "promote": 6,
+        "retain": 2
+      },
+      "adapt_kept": "5/7",
+      "wall": 395.77,
+      "error": null
+    }
+  ],
+  "l2": {
+    "A": {
+      "ok": true,
+      "rounds": [
+        {
+          "round_index": 1,
+          "batch_no": 1,
+          "hidden": false,
+          "history_rows": 445,
+          "prediction_rows": 445,
+          "selected_artifact_id": "emu-artifact-r1",
+          "metrics": {
+            "rows": 445,
+            "accuracy": 0.9730337078651685,
+            "macro_f1": 0.9557538394951873
+          }
+        },
+        {
+          "round_index": 2,
+          "batch_no": 2,
+          "hidden": false,
+          "history_rows": 890,
+          "prediction_rows": 1244,
+          "selected_artifact_id": "emu-artifact-r2",
+          "metrics": {
+            "rows": 1244,
+            "accuracy": 0.8786173633440515,
+            "macro_f1": 0.7140297220788708
+          }
+        },
+        {
+          "round_index": 3,
+          "batch_no": 3,
+          "hidden": false,
+          "history_rows": 2134,
+          "prediction_rows": 1586,
+          "selected_artifact_id": "emu-artifact-r3",
+          "metrics": {
+            "rows": 1586,
+            "accuracy": 0.807061790668348,
+            "macro_f1": 0.5938974751226757
+          }
+        },
+        {
+          "round_index": 4,
+          "batch_no": 4,
+          "hidden": false,
+          "history_rows": 3720,
+          "prediction_rows": 161,
+          "selected_artifact_id": "emu-artifact-r4",
+          "metrics": {
+            "rows": 161,
+            "accuracy": 0.639751552795031,
+            "macro_f1": 0.5601907347925428
+          }
+        },
+        {
+          "round_index": 5,
+          "batch_no": 5,
+          "hidden": false,
+          "history_rows": 3881,
+          "prediction_rows": 197,
+          "selected_artifact_id": "emu-artifact-r5",
+          "metrics": {
+            "rows": 197,
+            "accuracy": 0.649746192893401,
+            "macro_f1": 0.6255353407386346
+          }
+        },
+        {
+          "round_index": 6,
+          "batch_no": 6,
+          "hidden": false,
+          "history_rows": 4078,
+          "prediction_rows": 2300,
+          "selected_artifact_id": "emu-artifact-r6",
+          "metrics": {
+            "rows": 2300,
+            "accuracy": 0.3769565217391304,
+            "macro_f1": 0.27574658753618264
+          }
+        },
+        {
+          "round_index": 7,
+          "batch_no": 7,
+          "hidden": false,
+          "history_rows": 6378,
+          "prediction_rows": 3613,
+          "selected_artifact_id": "emu-artifact-r7",
+          "metrics": {
+            "rows": 3613,
+            "accuracy": 0.5031829504566842,
+            "macro_f1": 0.4497835660726741
+          }
+        },
+        {
+          "round_index": 8,
+          "batch_no": 8,
+          "hidden": false,
+          "history_rows": 9991,
+          "prediction_rows": 294,
+          "selected_artifact_id": "emu-artifact-r8",
+          "metrics": {
+            "rows": 294,
+            "accuracy": 0.4489795918367347,
+            "macro_f1": 0.41048358982021016
+          }
+        },
+        {
+          "round_index": 9,
+          "batch_no": 9,
+          "hidden": false,
+          "history_rows": 10285,
+          "prediction_rows": 470,
+          "selected_artifact_id": "emu-artifact-r9",
+          "metrics": {
+            "rows": 470,
+            "accuracy": 0.5680851063829787,
+            "macro_f1": 0.5259555223717943
+          }
+        },
+        {
+          "round_index": 10,
+          "batch_no": 10,
+          "hidden": false,
+          "history_rows": 10755,
+          "prediction_rows": 3600,
+          "selected_artifact_id": "emu-artifact-r10",
+          "metrics": {
+            "rows": 3600,
+            "accuracy": 0.42916666666666664,
+            "macro_f1": 0.3939598820408059
+          }
+        }
+      ],
+      "root": "/tmp/l2-A-5o6fif72"
+    },
+    "B": {
+      "ok": true,
+      "rounds": [
+        {
+          "round_index": 1,
+          "batch_no": 0,
+          "hidden": false,
+          "history_rows": 7032,
+          "prediction_rows": 167,
+          "selected_artifact_id": "emu-artifact-r1",
+          "metrics": {
+            "rows": 167,
+            "rmse": 348.4432156478041,
+            "mae": 237.67849523886144
+          }
+        },
+        {
+          "round_index": 2,
+          "batch_no": 1,
+          "hidden": false,
+          "history_rows": 7199,
+          "prediction_rows": 167,
+          "selected_artifact_id": "emu-artifact-r2",
+          "metrics": {
+            "rows": 167,
+            "rmse": 1252.5771116560556,
+            "mae": 1243.0126228895674
+          }
+        },
+        {
+          "round_index": 3,
+          "batch_no": 2,
+          "hidden": false,
+          "history_rows": 7366,
+          "prediction_rows": 167,
+          "selected_artifact_id": "emu-artifact-r3",
+          "metrics": {
+            "rows": 167,
+            "rmse": 1005.9889182037731,
+            "mae": 1000.9835879578342
+          }
+        },
+        {
+          "round_index": 4,
+          "batch_no": 3,
+          "hidden": false,
+          "history_rows": 7533,
+          "prediction_rows": 167,
+          "selected_artifact_id": "emu-artifact-r4",
+          "metrics": {
+            "rows": 167,
+            "rmse": 883.5035266778885,
+            "mae": 881.2526306364133
+          }
+        },
+        {
+          "round_index": 5,
+          "batch_no": 4,
+          "hidden": false,
+          "history_rows": 7700,
+          "prediction_rows": 167,
+          "selected_artifact_id": "emu-artifact-r5",
+          "metrics": {
+            "rows": 167,
+            "rmse": 702.7532039465401,
+            "mae": 699.4266686614553
+          }
+        },
+        {
+          "round_index": 6,
+          "batch_no": 5,
+          "hidden": false,
+          "history_rows": 7867,
+          "prediction_rows": 167,
+          "selected_artifact_id": "emu-artifact-r6",
+          "metrics": {
+            "rows": 167,
+            "rmse": 490.7681549584805,
+            "mae": 482.7133723611512
+          }
+        },
+        {
+          "round_index": 7,
+          "batch_no": 6,
+          "hidden": false,
+          "history_rows": 8034,
+          "prediction_rows": 167,
+          "selected_artifact_id": "emu-artifact-r7",
+          "metrics": {
+            "rows": 167,
+            "rmse": 269.89459493494843,
+            "mae": 240.73808946579024
+          }
+        },
+        {
+          "round_index": 8,
+          "batch_no": 7,
+          "hidden": false,
+          "history_rows": 8201,
+          "prediction_rows": 167,
+          "selected_artifact_id": "emu-artifact-r8",
+          "metrics": {
+            "rows": 167,
+            "rmse": 246.2264775631371,
+            "mae": 194.95712764093807
+          }
+        },
+        {
+          "round_index": 9,
+          "batch_no": 8,
+          "hidden": true,
+          "history_rows": 8368,
+          "prediction_rows": 167,
+          "selected_artifact_id": "emu-artifact-r9",
+          "metrics": {
+            "rows": 167,
+            "rmse": 392.55149462434514,
+            "mae": 345.9641215589852
+          }
+        },
+        {
+          "round_index": 10,
+          "batch_no": 9,
+          "hidden": true,
+          "history_rows": 8368,
+          "prediction_rows": 176,
+          "selected_artifact_id": "emu-artifact-r10",
+          "metrics": {
+            "rows": 176,
+            "rmse": 389.0963600880439,
+            "mae": 317.56446679780186
+          }
+        }
+      ],
+      "root": "/tmp/l2-B-oclq05tm"
+    },
+    "C": {
+      "ok": true,
+      "rounds": [
+        {
+          "round_index": 1,
+          "batch_no": 0,
+          "hidden": false,
+          "history_rows": 113089,
+          "prediction_rows": 2462,
+          "selected_artifact_id": "emu-artifact-r1",
+          "metrics": {
+            "rows": 2462,
+            "rmse": 37.09531825736962,
+            "mae": 29.464612930771825
+          }
+        },
+        {
+          "round_index": 2,
+          "batch_no": 1,
+          "hidden": false,
+          "history_rows": 115551,
+          "prediction_rows": 2264,
+          "selected_artifact_id": "emu-artifact-r2",
+          "metrics": {
+            "rows": 2264,
+            "rmse": 42.1957508942787,
+            "mae": 32.77786073612674
+          }
+        },
+        {
+          "round_index": 3,
+          "batch_no": 2,
+          "hidden": false,
+          "history_rows": 117815,
+          "prediction_rows": 2294,
+          "selected_artifact_id": "emu-artifact-r3",
+          "metrics": {
+            "rows": 2294,
+            "rmse": 41.09160567954523,
+            "mae": 31.11690530831979
+          }
+        },
+        {
+          "round_index": 4,
+          "batch_no": 3,
+          "hidden": false,
+          "history_rows": 120109,
+          "prediction_rows": 2203,
+          "selected_artifact_id": "emu-artifact-r4",
+          "metrics": {
+            "rows": 2203,
+            "rmse": 42.68453763914502,
+            "mae": 32.09281408199773
+          }
+        },
+        {
+          "round_index": 5,
+          "batch_no": 4,
+          "hidden": false,
+          "history_rows": 122312,
+          "prediction_rows": 2424,
+          "selected_artifact_id": "emu-artifact-r5",
+          "metrics": {
+            "rows": 2424,
+            "rmse": 52.061105683031414,
+            "mae": 39.260227670963744
+          }
+        },
+        {
+          "round_index": 6,
+          "batch_no": 5,
+          "hidden": false,
+          "history_rows": 124736,
+          "prediction_rows": 2207,
+          "selected_artifact_id": "emu-artifact-r6",
+          "metrics": {
+            "rows": 2207,
+            "rmse": 43.94902600708122,
+            "mae": 33.48164137710047
+          }
+        },
+        {
+          "round_index": 7,
+          "batch_no": 6,
+          "hidden": false,
+          "history_rows": 126943,
+          "prediction_rows": 2358,
+          "selected_artifact_id": "emu-artifact-r7",
+          "metrics": {
+            "rows": 2358,
+            "rmse": 70.86002729455295,
+            "mae": 49.824795410548184
+          }
+        },
+        {
+          "round_index": 8,
+          "batch_no": 7,
+          "hidden": false,
+          "history_rows": 129301,
+          "prediction_rows": 2435,
+          "selected_artifact_id": "emu-artifact-r8",
+          "metrics": {
+            "rows": 2435,
+            "rmse": 59.84473878284785,
+            "mae": 45.814077527220235
+          }
+        },
+        {
+          "round_index": 9,
+          "batch_no": 8,
+          "hidden": true,
+          "history_rows": 131736,
+          "prediction_rows": 2219,
+          "selected_artifact_id": "emu-artifact-r9",
+          "metrics": {
+            "rows": 2219,
+            "rmse": 57.987617960907734,
+            "mae": 40.606746189265486
+          }
+        },
+        {
+          "round_index": 10,
+          "batch_no": 9,
+          "hidden": true,
+          "history_rows": 131736,
+          "prediction_rows": 2183,
+          "selected_artifact_id": "emu-artifact-r10",
+          "metrics": {
+            "rows": 2183,
+            "rmse": 56.425333071214844,
+            "mae": 37.8878142827777
+          }
+        }
+      ],
+      "root": "/tmp/l2-C-_vj4hhky"
+    }
+  },
+  "l3": [],
+  "issues": [
+    {
+      "id": "SIM-001",
+      "kind": "数据/协议",
+      "symptom": "A 全量流少 57 行（13,853/13,910），prepare 审计 reveal 439/445。",
+      "root_cause": "private_sim_batches 用 _strat(rows,1.0,seed)[0] 做洗牌，而 _strat 对每类强制 cut=len-1，导致每类丢一行。",
+      "fix": "新增 _shuffle(rows,seed)；label_fraction>=1.0 时 reveal 直接取全部行。",
+      "evidence": "scripts/sim/prepare_full_batches.py PASS：A 13,910 行、B 1,679（1,336+343）、C 23,049（18,647+4,402）。",
+      "status": "fixed"
+    },
+    {
+      "id": "SIM-002",
+      "kind": "测试工具/v2 协议",
+      "symptom": "L2 报 RuntimeError: predict returned 3 rows for 445，无法对整批打分。",
+      "root_cause": "emulate_workspace_v2.run_predict 只取前 3 行做格式冒烟。",
+      "fix": "scripts/sim/run_l2_batches.py 新增 _predict_all()：全量喂 predict 并逐行校验官方输出格式。",
+      "evidence": "L2 A/B/C 各 10 轮全部 PASS（A macro_f1 逐批 0.956→0.394；B/C 见报告）。",
+      "status": "fixed"
+    },
+    {
+      "id": "SIM-003",
+      "kind": "v2 适配层",
+      "symptom": "A 的 v2 提交候选只有 recenter/shrink/续训，延迟标签 pair_threshold 机制完全没被使用。",
+      "root_cause": "rsi/platform/submission.py:_candidate_plans 未实现 A 的 FIT_PAIR 候选。",
+      "fix": "新增 pair_threshold 候选 + fit_pair_threshold(history train, pair=(0,3))，None 时回退 none。",
+      "evidence": "batch5 历史 362 条 AA 时 fit delta=-3.8914，历史 dev primary 0.7842→0.8481；L2 A 10 轮使用该候选。",
+      "status": "fixed"
+    },
+    {
+      "id": "SIM-004",
+      "kind": "预算语义/kernel",
+      "symptom": "L3 的 kernel 批次流每个 A 批次仅 19 秒、无真实 LLM 调用，疑似静默降级。",
+      "root_cause": "TokenBudget 把 cap=0 当作已耗尽（used>=cap），--token-cap 0 的“开发期不限预算”被 _before_llm_call 立即拦截。",
+      "fix": "TokenBudget: cap<=0 表示 unlimited（remaining=1e18、exhausted=False）；修复后 L3 重跑。",
+      "evidence": "单测：cap=0 exhausted=False；cap=100 用 150 时 exhausted=True。",
+      "status": "fixed"
+    },
+    {
+      "id": "SIM-005",
+      "kind": "稳定性/长流",
+      "symptom": "A 20 批长流 full lane 在 243s 被 SIGKILL（rc=-9），未写 stream_report.json。",
+      "root_cause": "与 L3/变体并发运行 + 20 批 full arm 的 Runner 子进程/内存压力叠加；未隔离作业。",
+      "fix": "单独串行重跑该 lane（lane-timeout 7200）；后续长流任务单独作业、限制并行=1。",
+      "evidence": "待重跑结果。",
+      "status": "fixed-partial"
+    },
+    {
+      "id": "SIM-006",
+      "kind": "观察/选择偏差",
+      "symptom": "A 第一批 selection/report 指标 0.99–1.0，明显高于全量验证。",
+      "root_cause": "批次 package 的 selection 三路切分来自该批 dev（官方 train 子集），同分布且容易，A 的 gate 因此在早期批次偏向 promote recenter。",
+      "fix": "不作为 bug 修改（符合“只用已揭示历史”约束）；在报告中标注早期批次指标不可与 hidden 指标直接比较，并依赖后续批次稳定化。",
+      "evidence": "L1 A-full 前 2 批 dev 1.0/.99，hidden（后续 UCI 批）仍保持 .62–.77。",
+      "status": "documented"
+    }
+  ]
+}

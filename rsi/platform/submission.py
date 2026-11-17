@@ -205,6 +205,13 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> 
                 "postprocess": {"type": "recenter", "mode": mode, "weight": weight},
                 "checkpoint": None,
             })
+        if task_key == "A":
+            candidates.append({
+                "kind": "pair_threshold",
+                "label": "延迟标签阈值校准（Ethanol vs Acetaldehyde，历史标签拟合）",
+                "postprocess": "FIT_PAIR",
+                "checkpoint": None,
+            })
     else:
         candidates.append({
             "kind": "shrink",
@@ -239,6 +246,12 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> 
             from rsi.inference import fit_damage_shrink
             dataset = _as_dataset(x_train, y_train, classes, task)
             postprocess = fit_damage_shrink(dataset)
+        if postprocess == "FIT_PAIR":
+            from rsi.inference import fit_pair_threshold
+            fitted = fit_pair_threshold(x_train, y_train, model, pair=(0, 3))
+            postprocess = ({"type": "pair_threshold", "pair": [0, 3],
+                            **{k: v for k, v in fitted.items() if k != "type"}}
+                           if fitted else {"type": "none"})
         values, primary = _evaluate(candidate_model, x_val, y_val, task, classes, postprocess)
         plans.append({
             **plan,

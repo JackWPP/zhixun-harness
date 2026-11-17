@@ -253,9 +253,16 @@ def code_sha256(root, exclude_dirs=SOURCE_EXCLUDED_DIRS):
             continue
         files.append(path)
     for path in sorted(files):
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError:
+            # The repository is a live workspace: docs/logs can be renamed
+            # while a long rehearsal is hashing the tree.  A vanishing file
+            # must not fail a training round; the digest just excludes it.
+            continue
         digest.update(str(path.relative_to(root)).encode())
         digest.update(b"\0")
-        digest.update(path.read_bytes())
+        digest.update(data)
         digest.update(b"\0")
     return "sha256:" + digest.hexdigest()
 

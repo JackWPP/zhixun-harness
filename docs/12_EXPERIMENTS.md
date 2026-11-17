@@ -543,3 +543,25 @@ C 40.523699，与 v0.5.1/v0.6 逐位一致（wall 2104.3s、CPU 1165.5s、56 实
 
 **边界**：private-sim/external 仅开发期测试床，不进入提交训练谱系；不改变官方 checkpoint 交付约定；
 正式评分仍只用官方 train（`RSI_ALLOW_EXTENDED_DATA=0`）。
+
+## 12.25 全量批次注入模拟（Full-Scale Batch-Stream Rehearsal）
+
+本轮用与比赛同构的诚实批次协议，把全部可用数据按批送入 harness（只允许使用已揭示历史），
+覆盖 L1 协议级 + L2 workspace-v2 真实入口 + L3 kernel-LLM 三层。详细协议、数据、逐 lane
+结果与问题清单见 [docs/27_FULL_SIMULATION.md](27_FULL_SIMULATION.md) 与
+[docs/evidence/full_sim/full_sim_report.md](evidence/full_sim/full_sim_report.md)。
+
+主要结果（arrival 批均值；A 越高越好，B/C RMSE 越低越好）：
+
+| 任务 | frozen | recenter | pair | adapt | full |
+|---|---|---|---|---|---|
+| A | 0.4862 | 0.5589 | 0.5276 | 0.7385 / 0.7625 | 0.7653 / 0.7684 |
+| B | 650.02 | 572.65 | – | 435.56 / 432.40 | 497.01 / 502.01 |
+| C | 50.37 | 50.94 | – | 51.08 / 51.03 | 未跑（成本高） |
+
+- A 变体：标签减半（label_every=2 + label_fraction=0.5）adapt 0.7199/full 0.7068；4 大批判 0.7309/0.7330；20 批长流 adapt 0.8221。
+- L2 v2 路径 A/B/C 各 10 轮全部 PASS；A 的 pair 阈值在历史 AA 积累后生效（dev 0.7842→0.8481）。
+- 共发现并修复 8 个问题（SIM-001…SIM-008，见 `.scratch/sim/issues.jsonl`），其中 4 个属产品级
+  bug（行数丢失、v2 适配层缺 pair 候选、token cap=0 语义、repeat 重复 id），另含代码哈希竞态与
+  批次拼接/预测截断问题，均已回归测试覆盖。
+- 约束：未上传/未提交/未 trial；strict 提交路径与数字（A .734555/B .409737/C 40.5237）保持不变。

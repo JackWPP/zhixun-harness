@@ -58,6 +58,10 @@ AUTO_ARMS = {
     "private-sim": {"A": "full", "B": "adapt", "C": "frozen"},
 }
 AUTO_ARMS["external-a"] = AUTO_ARMS["private-sim"]
+# "full" = whole-dataset rehearsal: the same arms that won on each task's
+# private-sim / official stream.
+AUTO_ARMS["full"] = {"A": "full", "B": "adapt", "C": "frozen"}
+AUTO_ARMS["full-scale"] = AUTO_ARMS["full"]
 
 
 def resolve_arm(arm: str, task_key: str, source: str) -> str:
@@ -175,6 +179,7 @@ def run_task_stream(payload: dict) -> dict:
 
     batch_source = make_source(
         source_kind, config, n_batches,
+        hidden_tail=int(payload.get("hidden_tail", 2)),
         external_root=payload.get("external_root"),
         external_start=payload.get("external_start", 3),
         external_end=payload.get("external_end", 10),

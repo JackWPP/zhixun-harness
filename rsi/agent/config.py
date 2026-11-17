@@ -97,10 +97,14 @@ class TokenBudget:
         return self.used_input + self.used_output
 
     def remaining(self) -> int:
+        # cap <= 0 means "unlimited" (development / rehearsal mode); the
+        # competition default keeps the platform 8M budget.
+        if self.cap <= 0:
+            return 10 ** 18
         return max(0, self.cap - self.used)
 
     def exhausted(self) -> bool:
-        return self.used >= self.cap
+        return self.cap > 0 and self.used >= self.cap
 
     def to_dict(self) -> dict:
         return {"tokens_used": self.used, "tokens_in": self.used_input,

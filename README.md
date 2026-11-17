@@ -242,3 +242,15 @@ Agent/RSI：6 个硬编码配方、lr 恒为父模型 0.3×、卡住直接 `brea
 - XJTU-SY、NASA C-MAPSS：公开学术数据集，按各自许可引用；
 - 第三方库：NumPy（BSD）、pi-agent-core-lc（MIT）、langchain-openai（MIT）、
   SwanLab（Apache-2.0），完整清单见 `docker/requirements.txt`。
+
+## 全量批次注入模拟（v0.10 开发证据）
+
+`scripts/sim/` 提供与比赛同构的诚实批次协议模拟（只使用已揭示历史、当前批无标签、hidden 永不 reveal）：
+
+- L1 协议级：A=UCI b1–b10 全量 13,910 行、B/C=官方 validation 全量按轴承/发动机分批；10 批 × arms × seeds。
+- L2 平台入口：真实 `/app/harness.py train|predict` + workspace-v2 fake host，A/B/C 各 10 轮全部 PASS。
+- L3 kernel-LLM：预算放开（`--token-cap 0`）的 Agent 批次流。
+
+关键结果（arrival 批均值）：A full/adapt **0.765/0.739**（frozen 0.486）；B adapt **433**（frozen 650）；C frozen **50.4**（adapt 51.1）。
+报告见 [docs/27_FULL_SIMULATION.md](docs/27_FULL_SIMULATION.md) 与 [docs/evidence/full_sim/full_sim_report.md](docs/evidence/full_sim/full_sim_report.md)。
+

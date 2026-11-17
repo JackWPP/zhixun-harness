@@ -116,6 +116,7 @@ def cmd_stream(args) -> int:
         external_start=args.external_start,
         external_end=args.external_end,
         holdout=args.holdout,
+        hidden_tail=args.hidden_tail,
     )
     summary = {
         "protocol": report["protocol"],
@@ -281,7 +282,8 @@ def build_parser() -> argparse.ArgumentParser:
     stream.add_argument("--task-spec", action="append", metavar="PATH",
                         help="portable task.json (file or directory); repeatable")
     stream.add_argument("--tasks", default="A")
-    stream.add_argument("--source", choices=("official", "external-a", "private-sim"), default="official")
+    stream.add_argument("--source", choices=("official", "external-a", "private-sim", "full"),
+                        default="official", help="batch source; 'full' = whole dataset rehearsal")
     stream.add_argument("--batches", type=int, default=6)
     stream.add_argument("--state-dir", default=os.environ.get("RSI_STREAM_DIR", ".scratch/rsi-stream"))
     stream.add_argument("--llm", choices=("auto", "on", "off"), default="off")
@@ -292,6 +294,8 @@ def build_parser() -> argparse.ArgumentParser:
     stream.add_argument("--parallel-tasks", type=int, default=1,
                         help="run independent task streams in parallel threads")
     stream.add_argument("--experiments-cap", type=int, default=int(os.environ.get("RSI_EXPERIMENTS_CAP", 40)))
+    stream.add_argument("--hidden-tail", type=int, default=2,
+                        help="last N batches are hidden (predicted but never revealed)")
     stream.add_argument("--batch-wall", type=float, default=float(os.environ.get("RSI_BATCH_WALL", 1800)))
     stream.add_argument("--retention-every", type=int, default=2,
                         help="re-evaluate deployed model on all earlier batches every N batches (0=off)")
