@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智训引擎 · 外部数据 RSI 证据（可视化简报）</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#5b667a; --line:#e3e8f2; --bg:#f5f7fb; --card:#ffffff;
+    --indigo:#4f46e5; --blue:#0ea5e9; --cyan:#06b6d4; --green:#10b981;
+    --amber:#f59e0b; --red:#ef4444; --slate:#94a3b8;
+    --radius:18px; --shadow:0 10px 30px rgba(15,23,42,.08);
+    --shadow-sm:0 4px 14px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; color:var(--ink); background:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+    line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--indigo); text-decoration:none}
+  .wrap{max-width:1120px; margin:0 auto; padding:0 28px}
+
+  /* ---------- 顶部进度条 ---------- */
+  #progress{position:fixed; top:0; left:0; height:3px; width:0; z-index:120;
+    background:linear-gradient(90deg,var(--indigo),var(--cyan),var(--green)); transition:width .1s linear}
+
+  /* ---------- Hero ---------- */
+  .hero{position:relative; overflow:hidden; color:#fff;
+    background:radial-gradient(1100px 520px at 8% -10%, #312e81 0%, transparent 55%),
+               radial-gradient(900px 480px at 95% 10%, #075985 0%, transparent 50%),
+               linear-gradient(160deg,#0b1220 0%, #111a33 55%, #0b1220 100%);
+    padding:74px 0 64px;
+  }
+  .hero::after{content:""; position:absolute; inset:auto -10% -55% -10%; height:70%;
+    background:radial-gradient(closest-side, rgba(14,165,233,.18), transparent 70%); pointer-events:none}
+  .hero .wrap{position:relative; z-index:2}
+  .kicker{display:inline-flex; align-items:center; gap:10px; font-size:13px; letter-spacing:.14em;
+    text-transform:uppercase; color:#a5b4fc; border:1px solid rgba(165,180,252,.35);
+    padding:7px 14px; border-radius:999px; background:rgba(99,102,241,.12)}
+  .kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(16,185,129,.2)}
+  h1{font-size:clamp(30px,4.6vw,52px); line-height:1.18; margin:22px 0 16px; font-weight:800; letter-spacing:-.01em}
+  h1 .hl{background:linear-gradient(90deg,#67e8f9,#34d399); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .hero p.lead{max-width:820px; margin:0; color:#c7d2e8; font-size:17px}
+  .hero-actions{display:flex; flex-wrap:wrap; gap:12px; margin-top:28px}
+  .btn{display:inline-flex; align-items:center; gap:8px; border-radius:12px; padding:11px 18px;
+    font-size:14.5px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:.2s}
+  .btn-primary{background:linear-gradient(90deg,var(--indigo),var(--blue)); color:#fff; box-shadow:0 8px 24px rgba(79,70,229,.35)}
+  .btn-primary:hover{transform:translateY(-1px)}
+  .btn-ghost{background:rgba(255,255,255,.06); color:#e2e8f0; border-color:rgba(255,255,255,.22)}
+  .btn-ghost:hover{background:rgba(255,255,255,.12)}
+
+  .hero-metric{display:grid; grid-template-columns:1fr auto 1fr; gap:26px; align-items:center;
+    margin-top:42px; padding:26px 30px; border-radius:22px;
+    background:rgba(255,255,255,.05); border:1px solid rgba(148,163,184,.22); backdrop-filter:blur(6px); max-width:860px}
+  .hm-block .hm-label{font-size:13px; color:#94a3b8; letter-spacing:.04em}
+  .hm-block .hm-value{font-size:clamp(38px,5.4vw,60px); font-weight:800; line-height:1.05; margin-top:2px; font-variant-numeric:tabular-nums}
+  .hm-block.bad .hm-value{color:#fda4af}
+  .hm-block.good .hm-value{background:linear-gradient(90deg,#67e8f9,#34d399); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .hm-arrow{display:flex; flex-direction:column; align-items:center; gap:4px; color:#94a3b8; font-size:12.5px}
+  .hm-arrow .arr{font-size:26px; color:#a5b4fc; line-height:1}
+  .hm-arrow .delta{font-weight:700; color:#34d399; font-size:15px}
+  .chips{display:flex; flex-wrap:wrap; gap:10px; margin-top:26px}
+  .chip{font-size:13px; color:#dbe4f5; border:1px solid rgba(148,163,184,.28); background:rgba(255,255,255,.045);
+    padding:8px 13px; border-radius:10px}
+  .chip b{color:#fff}
+
+  /* ---------- 导航 ---------- */
+  .nav{position:sticky; top:0; z-index:100; background:rgba(255,255,255,.86); backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--line)}
+  .nav .wrap{display:flex; align-items:center; gap:8px; overflow-x:auto; padding-top:10px; padding-bottom:10px}
+  .nav .brand{font-weight:800; font-size:14px; margin-right:14px; white-space:nowrap; color:var(--ink)}
+  .nav a{white-space:nowrap; font-size:13.5px; color:var(--muted); padding:7px 11px; border-radius:9px}
+  .nav a:hover{background:#eef1f8; color:var(--ink)}
+
+  /* ---------- 通用 Section ---------- */
+  section{padding:72px 0; scroll-margin-top:64px}
+  section.alt{background:#fff; border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+  .kicker2{display:flex; align-items:center; gap:10px; font-size:12.5px; font-weight:700;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--indigo)}
+  .kicker2::before{content:""; width:26px; height:2px; background:linear-gradient(90deg,var(--indigo),var(--cyan)); border-radius:2px}
+  h2{font-size:clamp(25px,3.1vw,34px); line-height:1.25; margin:12px 0 12px; font-weight:800; letter-spacing:-.01em}
+  .section-sub{color:var(--muted); max-width:860px; margin:0 0 34px; font-size:15.5px}
+
+  .grid{display:grid; gap:20px}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  @media (max-width:920px){ .g2,.g3,.g4{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media (max-width:620px){ .g2,.g3,.g4{grid-template-columns:1fr} .hero-metric{grid-template-columns:1fr; text-align:left} .hm-arrow{flex-direction:row} }
+
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:24px 24px 22px; box-shadow:var(--shadow-sm); transition:transform .2s, box-shadow .2s}
+  .card:hover{transform:translateY(-2px); box-shadow:var(--shadow)}
+  .card h3{font-size:17px; margin:0 0 8px; font-weight:750}
+  .card p{margin:0; color:var(--muted); font-size:14.5px}
+  .card .ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:20px;margin-bottom:14px}
+  .ico.indigo{background:#eef2ff; color:var(--indigo)}
+  .ico.amber{background:#fff7e6; color:#d97706}
+  .ico.green{background:#e8faf3; color:#059669}
+  .ico.red{background:#feecec; color:var(--red)}
+
+  .num{font-variant-numeric:tabular-nums; font-weight:800; letter-spacing:-.02em}
+  .pill{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700;
+    padding:4px 10px; border-radius:999px}
+  .pill.good{background:#e8faf3; color:#047857}
+  .pill.bad{background:#feecec; color:#b91c1c}
+  .pill.mid{background:#fff7e6; color:#b45309}
+  .pill.info{background:#eef2ff; color:#4338ca}
+  .muted{color:var(--muted)}
+
+  /* ---------- 对比：传统 vs RSI ---------- */
+  .compare{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+  @media (max-width:720px){ .compare{grid-template-columns:1fr} }
+  .compare .col{border-radius:var(--radius); padding:26px; border:1px solid var(--line); background:#fff}
+  .compare .old{background:linear-gradient(180deg,#fff,#fbfcff)}
+  .compare .new{background:linear-gradient(180deg,#f5f3ff,#effcff); border-color:#c7d2fe}
+  .compare h3{display:flex; align-items:center; gap:10px; font-size:17px; margin:0 0 14px}
+  .compare ul{margin:0; padding-left:0; list-style:none}
+  .compare li{display:flex; gap:10px; padding:9px 0; border-bottom:1px dashed var(--line); font-size:14.5px; color:#334155}
+  .compare li:last-child{border-bottom:0}
+  .compare li .b{flex:0 0 auto; font-weight:800; color:var(--indigo)}
+
+  /* ---------- 架构分层 ---------- */
+  .layers{display:grid; gap:12px}
+  .layer{display:grid; grid-template-columns:56px 220px 1fr; gap:18px; align-items:center;
+    background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 20px; box-shadow:var(--shadow-sm)}
+  .layer .ln{width:40px;height:40px;border-radius:11px; display:grid; place-items:center; font-weight:800;
+    color:#fff; background:linear-gradient(135deg,var(--indigo),var(--blue)); font-size:15px}
+  .layer:nth-child(2) .ln{background:linear-gradient(135deg,#0f766e,#10b981)}
+  .layer:nth-child(3) .ln{background:linear-gradient(135deg,#7c3aed,#a855f7)}
+  .layer:nth-child(4) .ln{background:linear-gradient(135deg,#b45309,#f59e0b)}
+  .layer:nth-child(5) .ln{background:linear-gradient(135deg,#0369a1,#0ea5e9)}
+  .layer:nth-child(6) .ln{background:linear-gradient(135deg,#334155,#64748b)}
+  .layer b{font-size:15.5px}
+  .layer .desc{color:var(--muted); font-size:14px}
+  .layer .tag{font-size:11.5px; font-weight:700; color:#4338ca; background:#eef2ff; padding:2px 8px; border-radius:6px; margin-left:8px; vertical-align:2px}
+  @media (max-width:760px){ .layer{grid-template-columns:46px 1fr; } .layer .desc{grid-column:2} }
+
+  .arch-note{margin-top:18px; display:flex; flex-wrap:wrap; gap:10px 22px; color:var(--muted); font-size:13.5px}
+  .arch-note code{background:#0f172a; color:#e2e8f0; padding:3px 8px; border-radius:6px; font-size:12.5px}
+
+  /* ---------- 批次协议 ---------- */
+  .flow{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; align-items:stretch}
+  @media (max-width:980px){ .flow{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:560px){ .flow{grid-template-columns:1fr} }
+  .step{position:relative; background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px 18px; box-shadow:var(--shadow-sm)}
+  .step .idx{font-size:12px; font-weight:800; color:var(--indigo); letter-spacing:.08em}
+  .step h4{margin:8px 0 6px; font-size:15px}
+  .step p{margin:0; font-size:13.5px; color:var(--muted)}
+  .step::after{content:"→"; position:absolute; right:-14px; top:50%; transform:translateY(-50%);
+    color:#c3ccdd; font-weight:800; font-size:16px}
+  .step:last-child::after{content:""}
+  @media (max-width:980px){ .step::after{content:""} }
+  .step.hidden{border-color:#fecaca; background:linear-gradient(180deg,#fff,#fff6f6)}
+  .step.hidden .idx{color:#b91c1c}
+  .invariant{margin-top:22px; display:flex; gap:14px; align-items:flex-start;
+    background:#0f172a; color:#dbeafe; border-radius:14px; padding:18px 20px}
+  .invariant .seal{font-size:22px; line-height:1}
+  .invariant b{color:#fff}
+  .invariant code{color:#93c5fd}
+
+  /* ---------- 图表 ---------- */
+  .chart-card{background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:26px 24px 18px; box-shadow:var(--shadow-sm)}
+  .chart-head{display:flex; align-items:flex-start; justify-content:space-between; gap:18px; flex-wrap:wrap; margin-bottom:6px}
+  .chart-head h3{margin:0; font-size:17px}
+  .chart-head .note{font-size:13px; color:var(--muted)}
+  .chart-wrap{width:100%; overflow-x:auto}
+  svg.chart{width:100%; height:auto; min-width:640px; display:block}
+  .legend{display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:8px; color:var(--muted); font-size:12.5px}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px}
+
+  .takeaways{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px}
+  @media (max-width:760px){ .takeaways{grid-template-columns:1fr} }
+  .tk{background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:var(--shadow-sm)}
+  .tk .big{font-size:26px; font-weight:800; line-height:1.1}
+  .tk .lbl{font-size:13px; color:var(--muted); margin-top:4px}
+
+  /* ---------- L1 卡片 ---------- */
+  .l1 .card{padding:22px}
+  .l1 .top{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+  .l1 .task{font-size:13px; font-weight:800; color:#fff; background:#0f172a; border-radius:8px; padding:4px 10px}
+  .l1 .from{font-size:20px; font-weight:800; color:#94a3b8}
+  .l1 .to{font-size:34px; font-weight:800; letter-spacing:-.02em}
+  .l1 .to.good{color:#047857}
+  .l1 .to.amber{color:#b45309}
+  .l1 .bars{margin:16px 0 8px; display:grid; gap:8px}
+  .l1 .bar{height:12px; border-radius:99px; background:#eef1f8; overflow:hidden}
+  .l1 .bar > i{display:block; height:100%; border-radius:99px}
+  .l1 .bar.frozen > i{background:#cbd5e1}
+  .l1 .bar.evolved > i{background:linear-gradient(90deg,var(--indigo),var(--cyan))}
+  .l1 .bar.green > i{background:linear-gradient(90deg,#10b981,#34d399)}
+  .l1 .cap{font-size:13px; color:var(--muted); margin-top:10px}
+
+  /* ---------- strict 表 ---------- */
+  .strict-tbl{width:100%; border-collapse:collapse; background:#fff; border-radius:var(--radius); overflow:hidden;
+    box-shadow:var(--shadow-sm); font-size:15px}
+  .strict-tbl th, .strict-tbl td{padding:16px 18px; text-align:left; border-bottom:1px solid var(--line)}
+  .strict-tbl thead th{background:#0f172a; color:#e2e8f0; font-size:13px; letter-spacing:.04em; font-weight:700}
+  .strict-tbl tbody tr:last-child td{border-bottom:0}
+  .strict-tbl td.num{font-variant-numeric:tabular-nums}
+  .strict-tbl .ours{font-weight:800}
+  .footnote{font-size:13px; color:var(--muted); margin-top:12px}
+
+  /* ---------- 规模 ---------- */
+  .stats{display:grid; grid-template-columns:repeat(5,1fr); gap:16px}
+  @media (max-width:980px){ .stats{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:520px){ .stats{grid-template-columns:1fr} }
+  .stat{background:#fff; border:1px solid var(--line); border-radius:16px; padding:22px 18px; box-shadow:var(--shadow-sm); text-align:left}
+  .stat .v{font-size:38px; font-weight:800; line-height:1.05; letter-spacing:-.02em; background:linear-gradient(90deg,var(--indigo),var(--blue)); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .stat .v .suf{font-size:19px; color:var(--muted); -webkit-text-fill-color:var(--muted)}
+  .stat .k{font-size:13.5px; color:var(--muted); margin-top:6px}
+
+  /* ---------- 问题闭环 ---------- */
+  .issue{background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px; box-shadow:var(--shadow-sm)}
+  .issue .head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px}
+  .issue .id{font-size:12px; font-weight:800; color:#b91c1c; background:#feecec; padding:3px 9px; border-radius:7px}
+  .issue h4{margin:0; font-size:15px}
+  .issue .flow-mini{display:grid; gap:7px; margin-top:12px}
+  .issue .row{display:grid; grid-template-columns:64px 1fr; gap:10px; font-size:13.5px; color:#334155}
+  .issue .row span{color:var(--muted); font-size:12.5px; font-weight:700; letter-spacing:.02em}
+
+  /* ---------- 引用 ---------- */
+  .quotes{display:grid; gap:18px}
+  .quote{position:relative; background:#fff; border:1px solid var(--line); border-left:4px solid var(--indigo);
+    border-radius:14px; padding:24px 26px; box-shadow:var(--shadow-sm)}
+  .quote .q{font-size:19px; line-height:1.6; font-weight:650; color:#1e293b; margin:0}
+  .quote .why{margin:10px 0 0; font-size:13.5px; color:var(--muted)}
+  .quote .mark{position:absolute; top:8px; right:18px; font-size:64px; line-height:1; color:#eef2ff; font-family:Georgia,serif}
+
+  .ppt-list{display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-top:22px}
+  @media (max-width:700px){ .ppt-list{grid-template-columns:1fr} }
+  .ppt-item{display:flex; gap:12px; align-items:flex-start; background:#fff; border:1px dashed #c7d2fe;
+    border-radius:12px; padding:14px 16px; font-size:14px}
+  .ppt-item .n{flex:0 0 auto; width:26px; height:26px; border-radius:8px; background:#eef2ff; color:var(--indigo);
+    display:grid; place-items:center; font-weight:800; font-size:13px}
+
+  /* ---------- 局限 ---------- */
+  .limits{background:#fffbeb; border:1px solid #fde68a; border-radius:16px; padding:24px 26px}
+  .limits h3{margin:0 0 12px; font-size:17px; color:#92400e; display:flex; gap:8px; align-items:center}
+  .limits ul{margin:0; padding-left:0; list-style:none; display:grid; gap:9px}
+  .limits li{display:flex; gap:10px; font-size:14.5px; color:#78350f}
+  .limits li::before{content:"•"; color:#d97706; font-weight:800}
+
+  footer{background:#0b1220; color:#94a3b8; padding:40px 0 46px; font-size:13.5px}
+  footer .wrap{display:flex; flex-wrap:wrap; gap:14px 30px; justify-content:space-between; align-items:flex-start}
+  footer b{color:#e2e8f0}
+  footer a{color:#67e8f9}
+  .src-chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px}
+  .src-chips span{background:rgba(255,255,255,.06); border:1px solid rgba(148,163,184,.22);
+    border-radius:7px; padding:4px 9px; font-size:12px; color:#cbd5e1}
+
+  /* ---------- 动效 ---------- */
+  .reveal{opacity:0; transform:translateY(16px); transition:opacity .6s ease, transform .6s ease}
+  .reveal.in{opacity:1; transform:none}
+  @media (prefers-reduced-motion:reduce){ .reveal{opacity:1; transform:none; transition:none} }
+
+  @page{size:A4 landscape; margin:12mm}
+  @media print{
+    body{background:#fff}
+    #progress,.nav,.hero-actions{display:none !important}
+    .reveal{opacity:1 !important; transform:none !important}
+    .hero{padding:28px 0; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+    section{padding:26px 0; page-break-inside:avoid}
+    .card,.chart-card,.issue,.quote,.stat{box-shadow:none; page-break-inside:avoid}
+    footer{background:#fff; color:#475569}
+    footer b{color:#0f172a}
+    a{color:#0f172a}
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<!-- ================= HERO ================= -->
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker"><span class="dot"></span> 智训引擎 · 外部数据 RSI 证据 · 可视化简报</div>
+    <h1>同一模型，未来漂移批 F1<br><span class="hl">从 0.277 提到 0.787</span></h1>
+    <p class="lead">不是把模型做大，而是让 harness 学会：<b>检测漂移 → 诊断归因 → 选择策略 → 门控上线 → 写入记忆</b>。
+      本页是 docs/30 的可视化版，给做 PPT 的同学直接取素材。</p>
+
+    <div class="hero-metric">
+      <div class="hm-block bad">
+        <div class="hm-label">冻结起点（不进化）</div>
+        <div class="hm-value">0.277</div>
+      </div>
+      <div class="hm-arrow">
+        <div class="arr">→</div>
+        <div class="delta">+0.51</div>
+        <div>受控 RSI 闭环</div>
+      </div>
+      <div class="hm-block good">
+        <div class="hm-label">未来隐藏批（从未见过）</div>
+        <div class="hm-value">0.787</div>
+      </div>
+    </div>
+
+    <div class="chips">
+      <span class="chip"><b>300+</b> 受控实验单元</span>
+      <span class="chip"><b>9</b> 个问题真实闭环</span>
+      <span class="chip"><b>138</b> 个自动化测试</span>
+      <span class="chip"><b>378 MB</b> 离线镜像（＜2 GB）</span>
+      <span class="chip">口径：UCI Gas Drift b8–b10，A 任务 macro-F1</span>
+    </div>
+
+    <div class="hero-actions">
+      <button class="btn btn-primary" id="printBtn">🖨 打印 / 导出 PDF</button>
+      <button class="btn btn-ghost" id="copyBtn">📋 复制三句可直接讲的话</button>
+    </div>
+  </div>
+</header>
+
+<!-- ================= NAV ================= -->
+<nav class="nav">
+  <div class="wrap">
+    <span class="brand">RSI 证据简报</span>
+    <a href="#why">为什么</a>
+    <a href="#arch">架构</a>
+    <a href="#protocol">批次协议</a>
+    <a href="#evidence">核心证据</a>
+    <a href="#strict">提交口径</a>
+    <a href="#scale">规模</a>
+    <a href="#issues">问题闭环</a>
+    <a href="#talk">可直接讲</a>
+    <a href="#limits">局限</a>
+  </div>
+</nav>
+
+<main>
+<!-- ================= 1. 为什么 ================= -->
+<section id="why">
+  <div class="wrap">
+    <div class="kicker2">Why RSI</div>
+    <h2>一次性训练，在漂移的工业数据上注定“慢慢失准”</h2>
+    <p class="section-sub">赛题要的不是“再训一个更准的模型”，而是一个能在批次数据流里<b>自主维持并提升</b>工业模型的 harness。
+      起点只决定下限，能力体现在批次流开始之后。</p>
+
+    <div class="compare reveal">
+      <div class="col old">
+        <h3>🧊 传统做法：一次训练，长期使用</h3>
+        <ul>
+          <li><span class="b">01</span> 用固定训练集训一个 checkpoint</li>
+          <li><span class="b">02</span> 上线后不再变化（或人工定期重训）</li>
+          <li><span class="b">03</span> 分布漂移 → 误报/漏报悄悄升高</li>
+          <li><span class="b">04</span> 发现问题时往往已经失准很久</li>
+        </ul>
+      </div>
+      <div class="col new">
+        <h3>🤖 我们的做法：受控 RSI 闭环</h3>
+        <ul>
+          <li><span class="b">01</span> 每批新数据到达，先交付当前预测</li>
+          <li><span class="b">02</span> 检测漂移、诊断归因、生成候选策略</li>
+          <li><span class="b">03</span> 小规模实验 + 公开验证门控</li>
+          <li><span class="b">04</span> 通过才上线，失败可回滚；经验写进记忆</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 2. 架构 ================= -->
+<section id="arch" class="alt">
+  <div class="wrap">
+    <div class="kicker2">Architecture</div>
+    <h2>六层结构：大模型负责“想”，护栏负责“不许乱来”</h2>
+    <p class="section-sub">驱动模型用赛事指定的 Qwen3.8-27B；真正的训练/评估/上线由确定性组件执行。LLM 只能提候选，不能绕过门控。</p>
+
+    <div class="layers reveal">
+      <div class="layer">
+        <div class="ln">01</div>
+        <b>平台入口 v2 <span class="tag">/app/harness.py</span></b>
+        <div class="desc">describe / train / predict 三命令，适配 contest.harness.workspace.v2；每轮读 /data、/previous、/state。</div>
+      </div>
+      <div class="layer">
+        <div class="ln">02</div>
+        <b>Supervisor 调度</b>
+        <div class="desc">预算、墙钟、数据切分、记录与报告；保证整轮 train 可中断、可追溯。</div>
+      </div>
+      <div class="layer">
+        <div class="ln">03</div>
+        <b>Agent Kernel 决策</b>
+        <div class="desc">观察 → 诊断 → 提案 → 跑实验 → 比较 → 决策；具备记忆与知识库检索，跨轮复用经验。</div>
+      </div>
+      <div class="layer">
+        <div class="ln">04</div>
+        <b>Guard 安全边界</b>
+        <div class="desc">白名单、预算上限、只允许官方训练数据、路径/注入扫描；决策只能用 selection+margin 复算，LLM 只能更保守。</div>
+      </div>
+      <div class="layer">
+        <div class="ln">05</div>
+        <b>Experiment + Memory</b>
+        <div class="desc">worker 子进程训练，checkpoint 谱系与 sha 可追溯；SQLite+FTS5 存 lessons / strategy_stats / skill_usage。</div>
+      </div>
+      <div class="layer">
+        <div class="ln">06</div>
+        <b>Records + Dashboard</b>
+        <div class="desc">JSONL 审计真源、state v3、实时看板；workspace_report 满足平台字段约定。</div>
+      </div>
+    </div>
+    <div class="arch-note">
+      <span>入口：<code>python3 /app/harness.py describe|train|predict</code></span>
+      <span>镜像：378 MB，离线，无外网依赖</span>
+      <span>每轮至少一次真实模型调用，且必须留下 call id</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 3. 批次协议 ================= -->
+<section id="protocol">
+  <div class="wrap">
+    <div class="kicker2">Batch Protocol</div>
+    <h2>一批一批地来：先交预测，再揭标签，hidden 永不解禁</h2>
+    <p class="section-sub">这是整份证据的关键。早期版本曾把“当前批验证标签”混进训练包，数字会虚高；现在重写为诚实协议。</p>
+
+    <div class="flow reveal">
+      <div class="step">
+        <div class="idx">STEP 1</div>
+        <h4>数据到达</h4>
+        <p>当前批只有输入、没有标签；历史批已揭示的部分进入训练集。</p>
+      </div>
+      <div class="step">
+        <div class="idx">STEP 2</div>
+        <h4>先交付预测</h4>
+        <p>对当前批输出预测；这是“上线前的判断”，不能等答案。</p>
+      </div>
+      <div class="step">
+        <div class="idx">STEP 3</div>
+        <h4>标签揭示</h4>
+        <p>预测交付后，当前批标签才可用于事后评分与下一轮决策。</p>
+      </div>
+      <div class="step">
+        <div class="idx">STEP 4</div>
+        <h4>写入历史</h4>
+        <p>已揭示的行进入下一批可用历史；hidden 批只预测、永不解禁。</p>
+      </div>
+      <div class="step hidden">
+        <div class="idx">STEP 5</div>
+        <h4>下一批 → 回到 1</h4>
+        <p>每次都会重给之前全部历史数据；循环直到轮次用尽。</p>
+      </div>
+    </div>
+
+    <div class="invariant reveal">
+      <div class="seal">🔒</div>
+      <div>
+        <b>不变性验证 E0：</b>把当前批 answers 打乱后，<code>decision.json</code> 与
+        <code>predictions.jsonl</code> 必须逐字节不变 —— <b>已通过</b>。
+        这证明 RSI 的决策没有偷看当前批答案。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4. 核心证据 ================= -->
+<section id="evidence" class="alt">
+  <div class="wrap">
+    <div class="kicker2">Core Evidence</div>
+    <h2>A 任务：同一模型，在从未见过的未来漂移批上 +0.51</h2>
+    <p class="section-sub">private-sim：UCI batch3–b7 逐批到达并解禁，batch8–b10 作为 hidden 只预测、永不进入训练。</p>
+
+    <div class="chart-card reveal">
+      <div class="chart-head">
+        <h3>未来隐藏批 macro-F1（b8–b10 均值，越高越好）</h3>
+        <div class="note">起点：官方 baseline + 官方数据静态训练</div>
+      </div>
+      <div class="chart-wrap">
+        <svg class="chart" viewBox="0 0 960 420" role="img" aria-label="A 任务隐藏批 macro-F1 柱状图">
+          <defs>
+            <linearGradient id="gFull" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#22d3ee"/>
+              <stop offset="100%" stop-color="#10b981"/>
+            </linearGradient>
+            <linearGradient id="gAdapt" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#818cf8"/>
+              <stop offset="100%" stop-color="#4f46e5"/>
+            </linearGradient>
+          </defs>
+
+          <!-- gridlines -->
+          <g stroke="#e8edf6" stroke-width="1">
+            <line x1="70" y1="340" x2="930" y2="340"/>
+            <line x1="70" y1="275.6" x2="930" y2="275.6"/>
+            <line x1="70" y1="211.1" x2="930" y2="211.1"/>
+            <line x1="70" y1="146.7" x2="930" y2="146.7"/>
+            <line x1="70" y1="82.2" x2="930" y2="82.2"/>
+          </g>
+          <g fill="#94a3b8" font-size="12" text-anchor="end">
+            <text x="56" y="344">0</text>
+            <text x="56" y="279.6">.2</text>
+            <text x="56" y="215.1">.4</text>
+            <text x="56" y="150.7">.6</text>
+            <text x="56" y="86.2">.8</text>
+          </g>
+
+          <!-- bars -->
+          <g>
+            <!-- frozen -->
+            <rect x="108" y="250.6" width="96" height="89.4" rx="7" fill="#94a3b8"/>
+            <text x="156" y="240" text-anchor="middle" font-size="17" font-weight="800" fill="#475569">0.277</text>
+            <text x="156" y="368" text-anchor="middle" font-size="13" fill="#64748b">冻结起点</text>
+            <!-- recenter -->
+            <rect x="280" y="196.5" width="96" height="143.5" rx="7" fill="#64748b"/>
+            <text x="328" y="186" text-anchor="middle" font-size="17" font-weight="800" fill="#475569">0.445</text>
+            <text x="328" y="368" text-anchor="middle" font-size="13" fill="#64748b">仅推理期校准</text>
+            <!-- pair -->
+            <rect x="452" y="226.0" width="96" height="114.0" rx="7" fill="#f59e0b"/>
+            <text x="500" y="215" text-anchor="middle" font-size="17" font-weight="800" fill="#b45309">0.354</text>
+            <text x="500" y="368" text-anchor="middle" font-size="13" fill="#64748b">阈值校准</text>
+            <!-- adapt -->
+            <rect x="624" y="95.9" width="96" height="244.1" rx="7" fill="url(#gAdapt)"/>
+            <text x="672" y="85" text-anchor="middle" font-size="17" font-weight="800" fill="#4338ca">0.758</text>
+            <text x="672" y="368" text-anchor="middle" font-size="13" fill="#64748b">历史续训（adapt）</text>
+            <!-- full -->
+            <rect x="796" y="86.6" width="96" height="253.4" rx="7" fill="url(#gFull)"/>
+            <text x="844" y="76" text-anchor="middle" font-size="17" font-weight="800" fill="#047857">0.787</text>
+            <text x="844" y="368" text-anchor="middle" font-size="13" fill="#047857" font-weight="700">全闭环 + 门控</text>
+          </g>
+
+          <!-- annotation -->
+          <g>
+            <rect x="756" y="24" width="164" height="30" rx="15" fill="#ecfdf5" stroke="#a7f3d0"/>
+            <text x="838" y="44" text-anchor="middle" font-size="13" font-weight="800" fill="#047857">RSI 闭环 ▲ +0.51</text>
+          </g>
+          <text x="70" y="400" font-size="12" fill="#94a3b8">口径：同一 baseline 起点、同一评测数据；hidden 段从不参与训练。</text>
+        </svg>
+      </div>
+      <div class="legend">
+        <span><i style="background:#94a3b8"></i>不进化</span>
+        <span><i style="background:#64748b"></i>弱 TTA（recenter）</span>
+        <span><i style="background:#f59e0b"></i>延迟标签阈值（pair）</span>
+        <span><i style="background:#4f46e5"></i>历史数据续训（adapt）</span>
+        <span><i style="background:#10b981"></i>完整闭环（full，含门控）</span>
+      </div>
+    </div>
+
+    <div class="takeaways reveal">
+      <div class="tk">
+        <div class="big">0.277 → 0.445</div>
+        <div class="lbl">只做推理期校准：能救一点，但不够</div>
+      </div>
+      <div class="tk">
+        <div class="big">0.758 / 0.765</div>
+        <div class="lbl">用已揭示历史标签续训：两个 seed 都稳</div>
+      </div>
+      <div class="tk">
+        <div class="big">0.787</div>
+        <div class="lbl">模型层 + 策略层闭环，门控后上线</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 5. L1 全量 ================= -->
+<section id="l1">
+  <div class="wrap">
+    <div class="kicker2">Full-scale Stream</div>
+    <h2>全量三任务：A/B 大幅受益，C 学会“不进化”</h2>
+    <p class="section-sub">L1 把官方全量数据按真实顺序切成 8–10 批，覆盖 A/B/C 三个任务。</p>
+
+    <div class="grid g3 l1 reveal">
+      <div class="card">
+        <div class="top"><span class="task">A · 分类</span><span class="pill good">+58%</span></div>
+        <div style="margin-top:14px"><span class="from">0.486</span> <span class="muted">→</span> <span class="to good">0.768</span></div>
+        <div class="bars">
+          <div class="bar frozen"><i style="width:63.2%"></i></div>
+          <div class="bar evolved"><i style="width:100%"></i></div>
+        </div>
+        <div class="cap">macro-F1 10 批均值；漂移强，越适应越好 → 路由 full/adapt。</div>
+      </div>
+      <div class="card">
+        <div class="top"><span class="task">B · 回归</span><span class="pill good">−33%</span></div>
+        <div style="margin-top:14px"><span class="from">650.02</span> <span class="muted">→</span> <span class="to good">435.56</span></div>
+        <div class="bars">
+          <div class="bar frozen"><i style="width:92.9%"></i></div>
+          <div class="bar evolved"><i style="width:62.2%"></i></div>
+        </div>
+        <div class="cap">RMSE 8 批均值（越低越好）；arrival 段 adapt 明显更优。</div>
+      </div>
+      <div class="card">
+        <div class="top"><span class="task">C · 回归</span><span class="pill mid">frozen 最优</span></div>
+        <div style="margin-top:14px"><span class="from">50.37</span> <span class="muted">→</span> <span class="to amber">不进化</span></div>
+        <div class="bars">
+          <div class="bar green"><i style="width:72%"></i></div>
+          <div class="bar frozen"><i style="width:73%"></i></div>
+        </div>
+        <div class="cap">C 无漂移；自适应反而变差 → 路由到 frozen，这是策略层学到的。</div>
+      </div>
+    </div>
+    <p class="footnote">结论：RSI 不是“永远重训”，而是学会<b>何时该进化、何时该保持</b>（auto 路由从实验统计得出，不是人工指定）。</p>
+  </div>
+</section>
+
+<!-- ================= 6. strict 提交口径 ================= -->
+<section id="strict" class="alt">
+  <div class="wrap">
+    <div class="kicker2">Official Submission</div>
+    <h2>严格官方数据口径：三个任务都不低于起点</h2>
+    <p class="section-sub">正式提交路径不使用任何外部数据；外部数据只作为测试床（镜像默认 <code>RSI_ALLOW_EXTENDED_DATA=0</code>）。</p>
+
+    <table class="strict-tbl reveal">
+      <thead>
+        <tr><th>任务 / 指标</th><th>起点（官方 baseline）</th><th>我们（submission bundle 全量 validation）</th><th>变化</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>A</b> · macro-F1 <span class="muted">（越高越好）</span></td>
+          <td class="num">0.714030</td>
+          <td class="num ours">0.719870</td>
+          <td><span class="pill good">+0.0058（+0.82%）</span></td>
+        </tr>
+        <tr>
+          <td><b>B</b> · RMSE <span class="muted">（越低越好）</span></td>
+          <td class="num">681.1598</td>
+          <td class="num ours">422.2417</td>
+          <td><span class="pill good">−258.918（−38.0%）</span></td>
+        </tr>
+        <tr>
+          <td><b>C</b> · RMSE <span class="muted">（越低越好）</span></td>
+          <td class="num">52.8686</td>
+          <td class="num ours">50.4686</td>
+          <td><span class="pill good">−2.400（−4.5%）</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="footnote">selection 子集口径：A 0.7032 → 0.7346；B 678.02 → 409.74；C 44.75 → 40.52。
+      A 的提升主要受“变量判定方向反转”限制，静态可合规上限约 0.73，更大提升要靠批次流里的新数据。</p>
+  </div>
+</section>
+
+<!-- ================= 7. 规模 ================= -->
+<section id="scale">
+  <div class="wrap">
+    <div class="kicker2">Scale</div>
+    <h2>这不是 PPT 故事，是 300+ 个真实验单元跑出来的</h2>
+    <p class="section-sub">A 机理研究、private-sim 对照、敏感性实验、全量批次流、平台 v2 路径、kernel-LLM 批次流、strict 回归，全部有记录文件。</p>
+
+    <div class="stats reveal">
+      <div class="stat"><div class="v"><span class="cnt" data-target="300">0</span><span class="suf">+</span></div><div class="k">受控实验单元<br>（lane / batch / round / arm）</div></div>
+      <div class="stat"><div class="v"><span class="cnt" data-target="30">0</span></div><div class="k">平台 v2 路径轮次<br>A/B/C 各 10 轮全 PASS</div></div>
+      <div class="stat"><div class="v"><span class="cnt" data-target="138">0</span></div><div class="k">自动化测试<br>（3 项跳过集成测试）</div></div>
+      <div class="stat"><div class="v"><span class="cnt" data-target="9">0</span></div><div class="k">真实暴露并修复的问题<br>（SIM-001 ~ SIM-009）</div></div>
+      <div class="stat"><div class="v"><span class="cnt" data-target="378">0</span><span class="suf">MB</span></div><div class="k">离线镜像<br>＜ 2 GB 限制</div></div>
+    </div>
+
+    <div class="grid g3" style="margin-top:26px">
+      <div class="card reveal">
+        <div class="ico indigo">🔁</div>
+        <h3>两层自进化</h3>
+        <p>模型层：历史标签续训 + 校准；策略层：记录“什么漂移 → 什么策略有效”，沉淀成 auto 路由与经验库。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico green">🧪</div>
+        <h3>先实验，再上线</h3>
+        <p>每轮最多 3 个候选、受预算限制；只有公开验证 selection + margin 通过才 promote，否则回滚。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico amber">🧾</div>
+        <h3>每步可审计</h3>
+        <p>JSONL 审计真源、checkpoint 谱系 sha、workspace_report 字段、看板；结论都能从仓库复现。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 8. 问题闭环 ================= -->
+<section id="issues" class="alt">
+  <div class="wrap">
+    <div class="kicker2">Issue Loop</div>
+    <h2>跑起来才暴露的问题，才是“自主闭环”的证据</h2>
+    <p class="section-sub">下面四条都是从真实实验里冒出来的，不是事后编的故事；每条都有复现命令和回归测试。</p>
+
+    <div class="grid g2 reveal" style="margin-top:8px">
+      <div class="issue">
+        <div class="head"><h4>早期数字“太好看”：标签偷看</h4><span class="id">L-01</span></div>
+        <div class="flow-mini">
+          <div class="row"><span>暴露</span>人工复核发现 decision 与当前批 answers 相关</div>
+          <div class="row"><span>根因</span>当前批 validation 标签被写进 selection 包</div>
+          <div class="row"><span>修复</span>诚实协议 v2：train/dev/prediction/answers 分离</div>
+          <div class="row"><span>验证</span>打乱 answers 后 decision / predictions 逐字节不变</div>
+        </div>
+      </div>
+      <div class="issue">
+        <div class="head"><h4>“静默降级”：以为在跑，其实没调模型</h4><span class="id">SIM-004</span></div>
+        <div class="flow-mini">
+          <div class="row"><span>暴露</span>L3 没有真实 LLM 调用记录</div>
+          <div class="row"><span>根因</span>token cap=0 被当成“预算耗尽”直接降级</div>
+          <div class="row"><span>修复</span>cap≤0 视为 unlimited</div>
+          <div class="row"><span>验证</span>单批 18 次工具调用、166,936 tokens 的真实轨迹</div>
+        </div>
+      </div>
+      <div class="issue">
+        <div class="head"><h4>真模型第一跑就崩：数组比较歧义</h4><span class="id">SIM-009</span></div>
+        <div class="flow-mini">
+          <div class="row"><span>暴露</span>PyTRiO 第 1 次运行 2 个候选崩溃 → rollback</div>
+          <div class="row"><span>根因</span><code>max(标量, array)</code> 语义错误；只扩 x 没扩 y</div>
+          <div class="row"><span>修复</span>改 <code>np.maximum</code> 并同步对齐标签</div>
+          <div class="row"><span>验证</span>第 2 次 run promote：0.7032 → 0.7234</div>
+        </div>
+      </div>
+      <div class="issue">
+        <div class="head"><h4>长流跑到一半：样本 id 重复</h4><span class="id">SIM-008</span></div>
+        <div class="flow-mini">
+          <div class="row"><span>暴露</span>重复 2 轮的长流在第 11 批报错</div>
+          <div class="row"><span>根因</span>历史累积时未按 id 去重</div>
+          <div class="row"><span>修复</span>先按 id 去重，再分流 train/dev</div>
+          <div class="row"><span>验证</span>20 批长流 PASS，full 均值 0.8791</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 9. 可直接讲 ================= -->
+<section id="talk">
+  <div class="wrap">
+    <div class="kicker2">Say It Out Loud</div>
+    <h2>三句话，直接放进 PPT 备注或讲稿</h2>
+    <p class="section-sub">已经写好、可直接念。下面按钮会一次复制这三句。</p>
+
+    <div class="quotes reveal" id="quoteBox">
+      <div class="quote">
+        <div class="mark">”</div>
+        <p class="q">起点只决定下限；RSI 的能力体现在批次流开始之后——同一模型，在从未见过的未来漂移批上 F1 从 0.277 提升到 0.787。</p>
+        <p class="why">配 A 隐藏批柱状图讲；强调“从未见过”“同一模型”。</p>
+      </div>
+      <div class="quote">
+        <div class="mark">”</div>
+        <p class="q">进步不是模型变大了，而是 harness 学会了：检测漂移、选择合适策略（A→full/adapt，B→adapt，C→frozen）、在门控下受控上线、把经验写进记忆给下一轮用。</p>
+        <p class="why">配架构图讲；强调“策略层也进化了”。</p>
+      </div>
+      <div class="quote">
+        <div class="mark">”</div>
+        <p class="q">我们交付的是可复现、可审计、可回滚的闭环，而不是一个更大的 checkpoint。</p>
+        <p class="why">收尾句；适合放在“交付物”页。</p>
+      </div>
+    </div>
+
+    <h3 style="margin:34px 0 6px; font-size:18px">给 PPT 的五张图（按讲稿顺序）</h3>
+    <div class="ppt-list reveal">
+      <div class="ppt-item"><span class="n">1</span><div><b>六层架构图</b>：平台入口 / Supervisor / Kernel / Guard / Experiment+Memory / Records（可用本页架构层的配色）。</div></div>
+      <div class="ppt-item"><span class="n">2</span><div><b>批次协议时序</b>：到达 → 先交付 → 揭标签 → 写历史 → 下一批；hidden 永不解禁（红框）。</div></div>
+      <div class="ppt-item"><span class="n">3</span><div><b>A 隐藏批曲线/柱状</b>：0.277 / 0.445 / 0.354 / 0.758 / 0.787，标出 +0.51。</div></div>
+      <div class="ppt-item"><span class="n">4</span><div><b>L1 三任务对比</b>：A 0.486→0.768、B 650→435、C 50.37 frozen 最优。</div></div>
+      <div class="ppt-item"><span class="n">5</span><div><b>问题闭环表</b>：选 2–3 条（L-01 标签偷看、SIM-009 真模型崩溃修复）展示“真跑出来的”。</div></div>
+      <div class="ppt-item"><span class="n">★</span><div><b>诚实声明页</b>：外部数据 ≠ 平台隐藏流；B/C 结果混合；trial 以平台报告为准（第 10 节）。</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 10. 局限 ================= -->
+<section id="limits" class="alt">
+  <div class="wrap">
+    <div class="kicker2">Honesty</div>
+    <h2>主动讲清楚的边界</h2>
+    <p class="section-sub">这些不是扣分项，而是评委最容易追问的点；先讲反而加分。</p>
+
+    <div class="limits reveal">
+      <h3>⚠️ 答辩/PPT 里要主动声明的六件事</h3>
+      <ul>
+        <li><b>外部数据 ≠ 平台隐藏测试流。</b>UCI Gas Drift 是我们能找到的最接近 A 漂移的公开数据，用来搭批次流测试床；平台私有包未知，不宣称同分。</li>
+        <li><b>B/C 是混合结果。</b>B 在 arrival 段 adapt 显著更好，但 hidden 尾部 frozen 更好，我们标注“混合/待更多批验证”；C 无漂移时 adapt 有害，因此路由 frozen。</li>
+        <li><b>selection 子集有噪声。</b>A 的 selection 只有 435 行，早期批指标波动大；用 margin 门控 + 后续批复核，但没有隐藏标签，无法完全消除。</li>
+        <li><b>外部数据默认关闭。</b>镜像 <code>RSI_ALLOW_EXTENDED_DATA=0</code>，外部数据只做测试床，不进正式提交训练谱系；所有数字都标了口径。</li>
+        <li><b>trial 以平台报告为准。</b>本地提交路径数字来自独立 predict；平台 trial 当时仍在 running，最终分数看平台。</li>
+        <li><b>“递归”是受控、有界的。</b>不宣称无限自我进化；证据是“给定漂移数据流，在有限轮次内持续检测—适应—验证—上线”，以及跨 run 的记忆/策略积累。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <div><b>智训引擎 · 外部数据 RSI 证据（可视化简报）</b></div>
+      <div style="margin-top:6px">依据 <a href="./30_EXTERNAL_RSI_EVIDENCE.md">docs/30_EXTERNAL_RSI_EVIDENCE.md</a> · 工程 v0.10.2 · 2026-11-17</div>
+      <div class="src-chips">
+        <span>docs/27 全量模拟</span>
+        <span>docs/25 private-sim</span>
+        <span>docs/21 批次协议</span>
+        <span>docs/26 v2 契约</span>
+        <span>rsi/stream/</span>
+        <span>docs/evidence/full_sim/</span>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div>打印建议：Ctrl/Cmd + P，选择“背景图形”</div>
+      <div style="margin-top:6px">建议 16:9 横向；每节可单独截图为一张 PPT</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  // 滚动进度
+  var bar=document.getElementById('progress');
+  function onScroll(){
+    var h=document.documentElement;
+    var max=h.scrollHeight-h.clientHeight;
+    var p=max>0?(h.scrollTop||document.body.scrollTop)/max*100:0;
+    bar.style.width=p.toFixed(1)+'%';
+  }
+  window.addEventListener('scroll',onScroll,{passive:true});
+  onScroll();
+
+  // 滚动进入动画
+  var items=document.querySelectorAll('.reveal');
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+    },{threshold:.12});
+    items.forEach(function(el){io.observe(el)});
+  }else{
+    items.forEach(function(el){el.classList.add('in')});
+  }
+
+  // 数字滚动
+  function animate(el){
+    var target=parseInt(el.getAttribute('data-target'),10)||0;
+    var start=null, dur=1200;
+    function step(t){
+      if(!start) start=t;
+      var k=Math.min(1,(t-start)/dur);
+      var eased=1-Math.pow(1-k,3);
+      el.textContent=Math.round(target*eased).toLocaleString('en-US');
+      if(k<1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  var counters=document.querySelectorAll('.cnt');
+  if('IntersectionObserver' in window){
+    var io2=new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ animate(e.target); io2.unobserve(e.target); } });
+    },{threshold:.5});
+    counters.forEach(function(el){io2.observe(el)});
+  }else{
+    counters.forEach(function(el){el.textContent=el.getAttribute('data-target')});
+  }
+
+  // 打印
+  document.getElementById('printBtn').addEventListener('click',function(){window.print()});
+
+  // 复制三句话
+  var quotes=[
+    '起点只决定下限；RSI 的能力体现在批次流开始之后——同一模型，在从未见过的未来漂移批上 F1 从 0.277 提升到 0.787。',
+    '进步不是模型变大了，而是 harness 学会了：检测漂移、选择合适策略（A→full/adapt，B→adapt，C→frozen）、在门控下受控上线、把经验写进记忆给下一轮用。',
+    '我们交付的是可复现、可审计、可回滚的闭环，而不是一个更大的 checkpoint。'
+  ];
+  var copyBtn=document.getElementById('copyBtn');
+  copyBtn.addEventListener('click',function(){
+    var text=quotes.join('\n\n');
+    function done(ok){
+      var old=copyBtn.textContent;
+      copyBtn.textContent=ok?'✅ 已复制，可粘贴到 PPT 备注':'⚠️ 复制失败，请手动选择';
+      setTimeout(function(){copyBtn.textContent=old},2200);
+    }
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){done(true)},function(){done(false)});
+    }else{
+      var ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta);
+      ta.select(); var ok=false; try{ok=document.execCommand('copy')}catch(e){}
+      document.body.removeChild(ta); done(ok);
+    }
+  });
+})();
+</script>
+</body>
+</html>

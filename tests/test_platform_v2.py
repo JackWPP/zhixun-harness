@@ -169,3 +169,133 @@ def test_gateway_call_retries_transient_errors():
     receipt = _gateway_model(rnd, [{"role": "user", "content": "x"}], max_tokens=16)
     assert receipt.call_id == "call-3"
     assert rnd.calls == 3
+
+
+def _load_jsonl(path, limit):
+    rows = []
+    with Path(path).open(encoding="utf-8") as handle:
+        for line in handle:
+            rows.append(json.loads(line))
+            if len(rows) >= limit:
+                break
+    return rows
+
+
+def _fake_round(task_contract):
+    base = REPO / "datasets" / "cpu-b-rul-20261110-v1"
+    train = _load_jsonl(base / "public" / "train.jsonl", 120)
+    validation = _load_jsonl(base / "public" / "validation.jsonl", 60)
+    checkpoint = base / "checkpoint.npz"
+
+    class FakeParent:
+        checkpoint_sha256 = "fake-parent-sha"
+
+        def path(self, relative):
+            assert relative == "checkpoint.npz"
+            return checkpoint
+
+    class FakeData:
+        def training_rows(self):
+            return iter(train)
+
+        def validation_rows(self):
+            return iter(validation)
+
+    class FakeRound:
+        dataset_key = "B"
+        round_index = 1
+        max_output_tokens = 256
+
+        def __init__(self):
+            self.task = task_contract
+            self.parent = FakeParent()
+            self.data = FakeData()
+            self.calls = []
+            self.submitted = None
+            self.finished = None
+            self.saved_state = None
+
+        def model(self, messages, max_tokens=256, temperature=0.0):
+            self.calls.append(messages)
+            return SimpleNamespace(
+                text='{"choice": 0, "hypothesis": "keep parent", "reason": "test"}',
+                call_id="call-test-1",
+            )
+
+        def history(self):
+            return []
+
+        def state_workspace(self, destination):
+            Path(destination).mkdir(parents=True, exist_ok=True)
+            return Path(destination)
+
+        def submit_candidate(self, directory, **kwargs):
+            self.submitted = {"directory": Path(directory), **kwargs}
+            return {"artifact_id": "artifact-test-1"}
+
+        def save_state(self, directory):
+            self.saved_state = Path(directory)
+
+        def finish(self, **kwargs):
+            self.finished = kwargs
+
+    return FakeRound()
+
+
+def test_train_follows_checkpoint_task_when_host_contract_disagrees(tmp_path, monkeypatch, capsys):
+    """Dataset B regression checkpoint must not hard-fail when the host
+    contract wrongly declares classification (platform review 2026-11-18)."""
+    from rsi.platform.submission import train
+
+    monkeypatch.setenv("CONTEST_WORK", str(tmp_path / "work"))
+    rnd = _fake_round({"task": "classification", "metric": "macro_f1", "direction": "higher"})
+    train(rnd)
+
+    assert len(rnd.calls) == 1, "round must still make the required gateway call"
+    assert rnd.submitted is not None
+    assert rnd.finished is not None
+    assert rnd.finished["model_call_ids"] == ["call-test-1"]
+    meta_path = rnd.submitted["directory"] / "submission_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert meta["task"] == "regression"
+    assert meta["metric"] == "rmse"
+    assert "checkpoint task" in capsys.readouterr().err
+
+
+def test_predict_coerces_task_mismatch_shapes():
+    from rsi.platform.submission import _coerce_task_output
+
+    regression_artifact = {"task": "regression", "classes": []}
+    classification_out = _coerce_task_output(
+        "classification", regression_artifact, {"value": 30.0})
+    assert isinstance(classification_out, list) and len(classification_out) == 2
+    assert len({item["label"] for item in classification_out}) == 2
+    scores = [item["score"] for item in classification_out]
+    assert scores.count(max(scores)) == 1
+    assert max(scores) == pytest.approx(0.9)
+    assert all(0.0 <= score <= 1.0 for score in scores)
+
+    classification_artifact = {"task": "classification", "classes": ["a", "b", "c"]}
+    regression_out = _coerce_task_output(
+        "regression", classification_artifact,
+        [{"label": "a", "score": 0.1}, {"label": "b", "score": 0.8}, {"label": "c", "score": 0.1}])
+    assert regression_out == {"value": 1.0}
+
+    same_artifact = {"task": "regression", "classes": []}
+    same_output = {"value": 7.0}
+    assert _coerce_task_output("regression", same_artifact, same_output) is same_output
+
+
+def test_predict_on_regression_artifact_with_classification_request(monkeypatch):
+    from rsi.platform.submission import predict
+
+    base = REPO / "datasets" / "cpu-b-rul-20261110-v1"
+    row = _load_jsonl(base / "public" / "validation.jsonl", 1)[0]
+    monkeypatch.setenv("CONTEST_ARTIFACT_PATH", str(base / "checkpoint.npz"))
+    output = predict(SimpleNamespace(task="classification", inputs=row["inputs"]), base)
+
+    assert isinstance(output, list) and len(output) == 2
+    assert len({item["label"] for item in output}) == len(output)
+    scores = [item["score"] for item in output]
+    assert scores.count(max(scores)) == 1
+    assert all(0.0 <= score <= 1.0 for score in scores)

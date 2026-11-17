@@ -173,3 +173,26 @@ cd vendor/contest_harness-1.0.2 && ../../.venv/bin/python -m unittest \
 - 测试：新增 `test_predict_fallback_keeps_stream_valid`、`test_gateway_call_retries_transient_errors`；
   `tests/test_platform_v2.py` **11 passed**；全量 `pytest -m "not integration"` 140 passed / 3 deselected。
 - 版本 0.10.3；镜像重建与 verify 结果见 §7.5（本轮上传/重跑 trial 仍需用户确认）。
+
+### 7.5 0.10.4：平台完整 review 揭示的 B 任务契约冲突（2026-11-18）
+
+平台把 trial#1 的完整失败详情放在 `/runs?include_resolved=true` 的复审记录里（run `9b7e19ef202d36fecf8fcde7e7a1efb1`，`failure_kind=contestant`，857 字）：A/C 通过、
+提交入口原生、每轮模型调用真实；**唯独 B 数据集“坏了”**——冻结契约声明
+`task=classification / macro_f1`，而 B 的官方包实际是回归（RUL 分钟、RMSE）。
+我们此前严格跟随 `rnd.task`，于是 B 第一轮在 `checkpoint task mismatch: regression != classification`
+处直接抛错、**未发生任何模型调用**，违反“每轮至少一次真实调用”的硬契约，导致整套配置无法通过。
+
+修复（0.10.4）：
+- `train()`：若宿主契约与 checkpoint task 冲突，**跟随 checkpoint task**（B→regression），
+  同步 `metric/direction` 为默认值并在 stderr 打印警告；仅当 checkpoint task 自身非法才抛错。
+  这样 B 每轮仍会发出真实 gateway 调用、产出候选、状态与 finish，协议完整。
+- `predict()`：`_load_artifact` 纳入 try；失败→`_degenerate_prediction()`；
+  行级异常→`_fallback_prediction()`；再经 `_coerce_task_output()` 兜住宿主请求 task 与产物 task
+  不一致的形状（分类请求+回归产物 → normal/fault 两标签、0.9/0.1 唯一最高分；回归请求+分类产物 →
+  最高分类别索引），保证隐藏流逐行都有合法输出。
+- 回归测试：`test_train_follows_checkpoint_task_when_host_contract_disagrees`（fake rnd + 真实 B
+  regression checkpoint：完成训练、1 次真实调用、finish call_id、meta task=regression）、
+  `test_predict_coerces_task_mismatch_shapes`、`test_predict_on_regression_artifact_with_classification_request`。
+- 验证：`tests/test_platform_v2.py` 13 passed；全量 **143 passed / 3 deselected**；
+  `scripts/emulate_workspace_v2.py --task A/B/C --rounds 10` 全部 PASS。
+- 版本 0.10.4；镜像重建与 verify 结果见 docs/13、docs/27。

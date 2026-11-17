@@ -316,7 +316,7 @@ v2 路径可跑通、可记录、可预测）。
 |---|---|
 | 诚实协议与批次流实现 | `rsi/stream/`、docs/21_STREAM_PROTOCOL.md |
 | 全量模拟报告 | `docs/evidence/full_sim/full_sim_report.md` |
-| 全量模拟说明 + 9 个问题 | `docs/27_FULL_SIMULATION.md` |
+| 全量模拟说明 + 11 个问题 | `docs/27_FULL_SIMULATION.md` |
 | private-sim 对照与门控 | `docs/25_PRIVATE_SIM.md`、docs/evidence/private_sim.md |
 | A 机理研究 | `docs/23_A_IMPROVEMENT_RESEARCH.md`、`docs/24_A_AA_INVERSION.md` |
 | PyTRiO 接入 | `config/pytrio.env.example`、docs/13_RUNBOOK.md §13.14 |

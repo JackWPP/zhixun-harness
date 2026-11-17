@@ -128,6 +128,7 @@ dev 选型在回归任务上仍有冒烟风险，与 L1 的结论一致）。
 | SIM-008 | repeat=2 长流在 batch11 报重复 sample id（官方 loader 拒绝） | `_add_history` 按 id 去重；新增回归测试；重跑长流 |
 | SIM-009 | PyTRiO 真实模型触发的 augment+weight 组合崩溃（`max(标量, 数组)` ambiguous，且扩增后 x/y 不对齐） | `_augment_features` 改 `np.maximum` 并同步扩增标签；新增回归测试 |
 | SIM-010 | 本地 v2 emulator 未把上一轮候选挂载为下一轮 `/previous`：A/B（retain，checkpoint 字节不变）通过，C（continue_train，重新训练出不同 checkpoint）第二轮报 `PARENT_DIGEST_MISMATCH` | emulator 增加 `install_previous()`，每轮把选中产物复制为下一轮父挂载；C 10 轮 PASS（0.10.2 代码） |
+| SIM-011 | 平台冻结契约把 B 数据集标成 classification/macro_f1，而 B 官方包是 regression/RUL+RMSE；0.10.1 严格跟随 `rnd.task` 导致 B 第一轮在模型调用前抛 `checkpoint task mismatch`，整 run 被判 contestant 失败 | 0.10.4 起训练跟随 checkpoint task（stderr 警告）、predict 增加 task 形状兜底；平台复审的 857 字完整失败详情已归档；待重跑 trial 验证 |
 
 ## 7. 复现
 

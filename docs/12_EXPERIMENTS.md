@@ -561,7 +561,7 @@ C 40.523699，与 v0.5.1/v0.6 逐位一致（wall 2104.3s、CPU 1165.5s、56 实
 
 - A 变体：标签减半（label_every=2 + label_fraction=0.5）adapt 0.7199/full 0.7068；4 大批判 0.7309/0.7330；20 批长流 adapt 0.8221。
 - L2 v2 路径 A/B/C 各 10 轮全部 PASS；A 的 pair 阈值在历史 AA 积累后生效（dev 0.7842→0.8481）。
-- 共发现并修复 9 个问题（SIM-001…SIM-009，见 `.scratch/sim/issues.jsonl`），其中 4 个属产品级
+- 共发现并修复 11 个问题（SIM-001…SIM-011，见 `.scratch/sim/issues.jsonl`），其中 4 个属产品级
   bug（行数丢失、v2 适配层缺 pair 候选、token cap=0 语义、repeat 重复 id），另含代码哈希竞态与
   批次拼接/预测截断问题，均已回归测试覆盖。
 - 约束：未上传/未提交/未 trial；strict 提交路径与数字（A .734555/B .409737/C 40.5237）保持不变。
