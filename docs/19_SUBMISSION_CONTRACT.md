@@ -383,3 +383,27 @@ curl -s -H "Authorization: Bearer $TOKEN" https://rsi-index.115.zone/api/v1/rule
 ```
 
 `/rules` 的 `execution_protocol` 是 2026-11-15 新出现的字段，说明平台执行协议版本化；**正式开放后第一件事是重跑 `contract_check.py --online` 并比对 `.scratch/contract/api/changes_*.json`**。
+
+---
+
+## 19.8 v2 增补（2026-11-17）：contest.harness.workspace.v2
+
+平台 `execution_protocol` 已升级为 `contest.harness.workspace.v2`；旧的 `contest_sdk` HTTP 适配
+（`/runtime/v1/runs/...`）不再是主路径。镜像必须实现固定入口
+`python3 /app/harness.py describe|train|predict`，选手模块为 `/app/contest_submission.py`。
+
+- 规范来源：平台前端内嵌《选手 Harness SDK 使用说明》；SDK `1.0.2`（sha256
+  `c676c8beeef69cece9cbec5a633d05dbb9832eb22b6f761913f2315bd1f85133`），已 vendored 到
+  `vendor/contest_harness-1.0.2/`。
+- 我们已实现并通过本地 fake-host 验证：`/app/harness.py` + `/app/contest_submission.py` +
+  `rsi/platform/submission.py`；详见 **docs/26_WORKSPACE_V2.md**。
+- 平台诊断将调用 `harness.py describe`，期望输出
+  `{"protocol":"contest.harness.workspace.v2", ...}`；镜像 `ENTRYPOINT` 已把
+  `describe|train|predict` 直接分发给该入口。
+- 本地复现：
+  ```bash
+  ./.venv/bin/python scripts/emulate_workspace_v2.py --task A --rounds 2
+  bash scripts/verify_image.sh .scratch/image/harness.tar
+  ```
+- 仍未变化：不上传/不提交/不 trial，直到用户明确授权且正式评测开放；镜像内不写 `/app`、不联网、
+  训练只用 `public/train.jsonl`，验证只用于评估与门控。

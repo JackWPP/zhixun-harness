@@ -118,3 +118,11 @@ Guard 双重强制）。报告与 `workspace_report.json` 会标注外部数据�
   测试 `tests/test_goal_nonblocking.py`）。
 * SwanLab：镜像默认 offline 记录每轮训练/决策/指标；操作者可用 `swanlab sync` 公开上传
   （token 只在环境变量，绝不落仓库/镜像），见 `docs/22_SWANLAB.md`。
+
+### 11.12 评测入口协议（v2）
+
+平台 `execution_protocol=contest.harness.workspace.v2`：镜像必须实现
+`/app/harness.py describe|train|predict`（SDK `contest_harness 1.0.2`）。我们已实现并本地验证：
+`rsi/platform/submission.py` 负责每轮 RSI（父 checkpoint→公开投影→候选→验证集门控→一次模型网关调用→
+`submit_candidate`/`save_state`/`finish`）与逐行预测；`docs/26_WORKSPACE_V2.md` 记录规范、实现、
+fake-host 复现与镜像内验证。自研 `run/stream/predict` CLI 仍保留用于本地运维与 Track X 测试床，不进入平台评测路径。

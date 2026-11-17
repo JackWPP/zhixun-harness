@@ -29,6 +29,15 @@ if [ -n "${RSI_LLM_ENV:-}" ] && [ -f "${RSI_LLM_ENV}" ]; then
     set +a
 fi
 
+# Workspace v2 mode: the platform appends describe|train|predict to the image
+# entrypoint. Delegate to the frozen participant entry point, which speaks the
+# contest.harness.workspace.v2 JSONL protocol on stdio.
+case "${1:-}" in
+    describe|train|predict)
+        exec python3 /app/harness.py "$@"
+        ;;
+esac
+
 mkdir -p "$STATE_DIR"
 
 COMMAND=${1:-run}

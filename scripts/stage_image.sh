@@ -45,12 +45,26 @@ else
     echo "[stage] WARNING: $GAS_SRC missing; extended validation data not bundled" >&2
 fi
 
-# 3. entrypoints
+# 3. workspace v2 participant runtime (vendored platform SDK + /app entrypoint)
+VENDOR_SDK=${VENDOR_SDK:-vendor/contest_harness-1.0.2/contest_harness}
+if [ -d "$VENDOR_SDK" ]; then
+    mkdir -p "$APP/contest_harness"
+    rsync -a --exclude '__pycache__' --exclude '*.pyc' "$VENDOR_SDK/" "$APP/contest_harness/"
+    [ -f vendor/contest_harness-1.0.2/HARNESS_SDK.md ] && cp vendor/contest_harness-1.0.2/HARNESS_SDK.md "$APP/contest_harness/HARNESS_SDK.md"
+else
+    echo "[stage] ERROR: vendored contest_harness SDK missing at $VENDOR_SDK" >&2
+    exit 1
+fi
+mkdir -p "$OVERLAY/app"
+cp docker/app/harness.py docker/app/contest_submission.py "$OVERLAY/app/"
+chmod 0644 "$OVERLAY/app/harness.py" "$OVERLAY/app/contest_submission.py"
+
+# 4. entrypoints
 cp docker/entrypoint.sh "$BIN/entrypoint.sh"
 cp docker/predict.sh "$BIN/rsi-predict"
 chmod +x "$BIN/entrypoint.sh" "$BIN/rsi-predict"
 
-# 4. python dependencies (wheels for the same 3.12 ABI as the base image)
+# 5. python dependencies (wheels for the same 3.12 ABI as the base image)
 UV=${UV_BIN:-.scratch/uv/bin/uv}
 if [ -x "$UV" ]; then
     export UV_CACHE_DIR=${UV_CACHE_DIR:-$PWD/.scratch/uv/cache}

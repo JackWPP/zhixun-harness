@@ -48,6 +48,18 @@ run() {
 echo "[verify] selftest A"
 run /opt/zhixun/bin/entrypoint.sh selftest A | tail -n 6
 
+echo "[verify] workspace v2 describe (entrypoint dispatch)"
+DESCRIBE=$(run /opt/zhixun/bin/entrypoint.sh describe)
+echo "$DESCRIBE" | head -n 2
+echo "$DESCRIBE" | grep -q '"protocol":"contest.harness.workspace.v2"' || { echo "[verify] describe protocol mismatch"; exit 1; }
+echo "$DESCRIBE" | grep -q '"tasks":\["classification","regression"\]' || { echo "[verify] describe tasks mismatch"; exit 1; }
+test -f "$ROOTFS/app/harness.py" || { echo "[verify] missing /app/harness.py"; exit 1; }
+test -f "$ROOTFS/app/contest_submission.py" || { echo "[verify] missing /app/contest_submission.py"; exit 1; }
+test -d "$ROOTFS/opt/zhixun/app/contest_harness" || { echo "[verify] missing vendored contest_harness"; exit 1; }
+
+echo "[verify] workspace v2 fake-host round (A, train+predict)"
+run python3 /opt/zhixun/app/scripts/emulate_workspace_v2.py --task A --rounds 1 2>&1 | tail -n 6
+
 echo "[verify] offline run A (2 rounds)"
 run /opt/zhixun/bin/entrypoint.sh run --tasks A --rounds 2 --llm off | tail -n 8
 
