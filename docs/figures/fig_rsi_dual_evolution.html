@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>RSI 双层自进化证据图</title>
+<style>
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:#e9edf5; display:flex; align-items:center; justify-content:center; min-height:100vh}
+  .canvas{
+    width:1600px; height:900px; background:#f6f8fc; color:#0f172a; overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+    padding:24px 38px 14px; display:flex; flex-direction:column; gap:12px; position:relative;
+  }
+  .canvas::before{content:""; position:absolute; inset:0;
+    background:radial-gradient(800px 300px at 12% -5%, rgba(79,70,229,.10), transparent 60%),
+               radial-gradient(700px 260px at 92% 0%, rgba(6,182,212,.10), transparent 55%); pointer-events:none}
+  .z{position:relative; z-index:2}
+
+  /* ---------- header ---------- */
+  header{display:flex; align-items:flex-end; justify-content:space-between; gap:20px}
+  .tag{display:inline-flex; align-items:center; gap:8px; font-size:11.5px; font-weight:800; letter-spacing:.12em;
+    color:#4338ca; background:#eef2ff; border:1px solid #c7d2fe; border-radius:999px; padding:5px 12px}
+  .tag i{width:6px;height:6px;border-radius:50%;background:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.18)}
+  h1{font-size:29px; line-height:1.2; margin-top:8px; font-weight:850; letter-spacing:-.01em}
+  h1 em{font-style:normal; background:linear-gradient(90deg,#4f46e5,#0891b2); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .sub{margin-top:6px; color:#5b667a; font-size:12.5px; max-width:1120px}
+  .head-right{display:flex; flex-direction:column; gap:7px; align-items:flex-end; min-width:300px}
+  .hpill{font-size:11.5px; color:#334155; background:#fff; border:1px solid #e3e8f2; border-radius:9px; padding:6px 11px; box-shadow:0 2px 8px rgba(15,23,42,.05)}
+  .hpill b{color:#0f172a}
+
+  /* ---------- main grid ---------- */
+  .main{display:grid; grid-template-columns:424px 1fr 470px; gap:20px; flex:1; min-height:0}
+  .panel{background:#fff; border:1px solid #e3e8f2; border-radius:14px; box-shadow:0 6px 18px rgba(15,23,42,.06);
+    padding:12px 14px; display:flex; flex-direction:column; min-height:0}
+  .ptitle{display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:850; letter-spacing:.02em; color:#0f172a}
+  .ptitle::before{content:""; width:4px; height:14px; border-radius:2px; background:linear-gradient(180deg,#4f46e5,#06b6d4)}
+  .ptitle .hint{margin-left:auto; font-size:10.5px; font-weight:600; color:#94a3b8}
+  .panel-model .ptitle::before{background:linear-gradient(180deg,#10b981,#0891b2)}
+  .panel-strat .ptitle::before{background:linear-gradient(180deg,#f59e0b,#ef4444)}
+
+  /* ---------- loop ---------- */
+  .loop{display:flex; flex-direction:column; gap:7px; margin-top:10px; flex:1; justify-content:space-between}
+  .step{display:grid; grid-template-columns:30px 1fr; gap:10px; align-items:flex-start; position:relative}
+  .step .no{width:28px;height:28px;border-radius:9px; color:#fff; font-weight:850; font-size:12.5px;
+    display:grid; place-items:center; background:linear-gradient(135deg,#4f46e5,#0ea5e9)}
+  .step:nth-child(2) .no{background:linear-gradient(135deg,#7c3aed,#a855f7)}
+  .step:nth-child(3) .no{background:linear-gradient(135deg,#0891b2,#06b6d4)}
+  .step:nth-child(4) .no{background:linear-gradient(135deg,#059669,#34d399)}
+  .step:nth-child(5) .no{background:linear-gradient(135deg,#b45309,#f59e0b)}
+  .step .body{padding-bottom:4px; border-bottom:1px dashed #e6ebf4}
+  .step:last-child .body{border-bottom:0}
+  .step h4{font-size:12.5px; font-weight:800; line-height:1.3}
+  .step h4 span{font-weight:600; color:#94a3b8; font-size:10.5px; margin-left:6px}
+  .step p{font-size:10.4px; color:#5b667a; line-height:1.45; margin-top:2px}
+  .step p b{color:#334155}
+  .loop-back{margin-top:8px; display:flex; align-items:center; gap:8px; font-size:10.5px; color:#b45309;
+    background:#fffbeb; border:1px dashed #fcd34d; border-radius:9px; padding:7px 10px}
+  .loop-back b{color:#92400e}
+
+  .outchips{display:flex; flex-wrap:wrap; gap:5px; margin-top:9px}
+  .outchips span{font-size:9.2px; font-weight:650; color:#475569; background:#f1f5f9;
+    border:1px solid #e2e8f0; border-radius:6px; padding:3px 7px}
+
+  /* ---------- model chart ---------- */
+  .chart{margin-top:14px; display:flex; flex-direction:column; gap:10px}
+  .crow{display:grid; grid-template-columns:104px 1fr 52px; gap:10px; align-items:center}
+  .cname{font-size:11.5px; color:#334155; font-weight:650; text-align:right; line-height:1.2}
+  .cname small{display:block; font-size:9.5px; color:#94a3b8; font-weight:600}
+  .ctrack{height:28px; border-radius:6px; background:#f1f5fb; overflow:hidden}
+  .cfill{height:100%; border-radius:6px; display:flex; align-items:center; justify-content:flex-end; padding-right:7px;
+    font-size:10px; font-weight:800; color:#fff; font-variant-numeric:tabular-nums}
+  .cfrozen{background:linear-gradient(90deg,#cbd5e1,#94a3b8)}
+  .crec{background:linear-gradient(90deg,#cbd5e1,#64748b)}
+  .cpair{background:linear-gradient(90deg,#fcd34d,#f59e0b)}
+  .cadapt{background:linear-gradient(90deg,#a5b4fc,#4f46e5)}
+  .cfull{background:linear-gradient(90deg,#22d3ee,#10b981)}
+  .cval{font-size:13px; font-weight:850; font-variant-numeric:tabular-nums; color:#0f172a; text-align:right}
+  .gain{position:relative; margin-top:14px; display:flex; align-items:center; gap:10px;
+    background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:8px 12px}
+  .gain .big{font-size:20px; font-weight:850; color:#047857; letter-spacing:-.02em}
+  .gain .txt{font-size:10.8px; color:#065f46; line-height:1.35}
+
+  .mini{margin-top:12px; display:grid; gap:7px}
+  .mrow{display:grid; grid-template-columns:22px 1fr auto; gap:8px; align-items:center;
+    background:#f8fafc; border:1px solid #eef2f8; border-radius:8px; padding:6px 9px}
+  .mrow .t{font-size:10.5px; font-weight:800; color:#fff; background:#0f172a; border-radius:5px; text-align:center; padding:2px 0}
+  .mrow .d{font-size:10.8px; color:#475569; line-height:1.35}
+  .mrow .d b{color:#0f172a}
+  .mrow .v{font-size:11px; font-weight:800; color:#047857; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .mrow .v.amber{color:#b45309}
+
+  .strict{border-top:1px dashed #e6ebf4; padding-top:8px; margin-top:9px}
+  .boundary{margin-top:auto; font-size:9.8px; color:#64748b; background:#fffbeb; border:1px dashed #fcd34d;
+    border-radius:8px; padding:6px 9px; line-height:1.45}
+  .boundary b{color:#92400e}
+  .st-lab{font-size:10.2px; font-weight:800; color:#334155}
+  .st-lab span{font-weight:600; color:#94a3b8}
+  .st-row{display:flex; gap:6px; margin-top:6px}
+  .st{flex:1; background:#f8fafc; border:1px solid #eef2f8; border-radius:7px; padding:5px 7px;
+    font-size:9.6px; color:#64748b; display:flex; align-items:center; gap:4px}
+  .st b{color:#0f172a; font-size:10px}
+  .st .up{color:#047857; font-weight:850; margin-left:auto; font-size:10px}
+
+  /* ---------- strategy ---------- */
+  table.route{width:100%; border-collapse:collapse; margin-top:11px; font-size:11px}
+  table.route th{font-size:10px; text-align:center; color:#64748b; font-weight:750; padding:5px 4px; border-bottom:1px solid #e6ebf4}
+  table.route th:first-child{text-align:left}
+  table.route td{padding:5px 4px; text-align:center; border-bottom:1px solid #f1f5fb}
+  table.route td:first-child{text-align:left; font-weight:750; color:#334155; font-size:10.5px}
+  .chip{display:inline-block; font-size:9.8px; font-weight:800; border-radius:5px; padding:2px 7px; letter-spacing:.02em}
+  .chip.pair{background:#fff7e6; color:#b45309}
+  .chip.adapt{background:#eef2ff; color:#4338ca}
+  .chip.frozen{background:#f1f5f9; color:#475569}
+  .chip.full{background:#e8faf3; color:#047857}
+  .note{font-size:10px; color:#94a3b8; line-height:1.45; margin-top:7px}
+
+  .mem{margin-top:9px; border-top:1px dashed #e6ebf4; padding-top:8px}
+  .mem .mt{font-size:11.5px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:7px}
+  .mem .mt i{width:6px;height:6px;border-radius:50%;background:#f59e0b}
+  .mline{display:grid; grid-template-columns:26px 1fr; gap:8px; margin-top:7px; position:relative}
+  .mline .b{width:24px;height:24px;border-radius:7px;background:#f1f5f9;color:#475569;font-size:10px;font-weight:800;display:grid;place-items:center}
+  .mline.run2 .b{background:#e8faf3;color:#047857}
+  .mline .c{font-size:10.5px; color:#475569; line-height:1.45}
+  .mline .c b{color:#0f172a}
+  .mline .c .hl{color:#047857; font-weight:800}
+  .mem-arrow{display:flex; align-items:center; gap:6px; font-size:10px; color:#047857; margin:6px 0 0 34px; font-weight:700}
+
+  .stratflow{margin-top:12px; border-top:1px dashed #e6ebf4; padding-top:9px}
+  .sf-t{font-size:10.2px; font-weight:800; color:#334155}
+  .sf-row{display:flex; align-items:center; gap:5px; margin-top:6px}
+  .sf{flex:1; background:#f8fafc; border:1px solid #eef2f8; border-radius:7px; padding:5px 6px; font-size:9.6px; font-weight:750; color:#334155}
+  .sf small{display:block; font-weight:600; color:#94a3b8; font-size:8.4px; margin-top:1px; line-height:1.25}
+  .sf-arr{color:#c3ccdd; font-weight:800; font-size:11px}
+  .checks{margin-top:10px; border-top:1px dashed #e6ebf4; padding-top:8px}
+  .ck-t{font-size:10.2px; font-weight:800; color:#334155}
+  .ck{display:flex; gap:6px; margin-top:6px; font-size:9.9px; color:#475569; line-height:1.42}
+  .ck i{flex:0 0 14px}
+  .ck i{width:14px;height:14px;border-radius:4px;background:#eef2ff;color:#4338ca;font-size:8.6px;font-weight:800;
+    display:grid;place-items:center;font-style:normal;margin-top:1px}
+  .ck b{color:#0f172a}
+  .limits{margin-top:10px; background:#fffbeb; border:1px solid #fde68a; border-radius:9px; padding:7px 10px}
+  .lm-t{font-size:10px; font-weight:850; color:#92400e}
+  .lm{font-size:9.6px; color:#78350f; line-height:1.45; margin-top:3px}
+  .lm b{color:#92400e}
+  .pytrio{margin-top:auto; background:#f8fafc; border:1px solid #eef2f8; border-radius:9px; padding:8px 10px}
+  .py-t{font-size:10px; font-weight:800; color:#334155}
+  .py-c{font-size:9.6px; color:#64748b; line-height:1.4; margin-top:3px}
+
+  /* ---------- bottom ---------- */
+  .bottom{display:grid; grid-template-columns:1fr 452px; gap:16px; height:150px}
+  .proof{background:#0f172a; color:#dbe4f5; border-radius:14px; padding:11px 14px; display:flex; flex-direction:column}
+  .proof .pt{font-size:11.5px; font-weight:850; color:#fff; letter-spacing:.02em}
+  .proof .pt span{color:#67e8f9}
+  .pgrid{display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; margin-top:7px}
+  .pitem{display:grid; grid-template-columns:16px 1fr; gap:7px; font-size:9.8px; color:#b9c6dd; line-height:1.42}
+  .pitem .n{width:15px;height:15px;border-radius:5px;background:rgba(103,232,249,.15);color:#67e8f9;
+    font-size:9px;font-weight:800;display:grid;place-items:center;margin-top:1px}
+  .pitem b{color:#fff}
+  .pfoot{margin-top:auto; font-size:8.8px; color:#7f8ea8; border-top:1px solid rgba(148,163,184,.16); padding-top:5px}
+  .pfoot b{color:#a5b4d4}
+  .proof .pt .src{margin-left:auto; font-size:8.6px; color:#7f8ea8; font-weight:600; font-style:normal}
+  .concl{background:linear-gradient(160deg,#eef2ff,#ecfeff); border:1px solid #c7d2fe; border-radius:14px;
+    padding:14px 17px; display:flex; flex-direction:column; justify-content:center}
+  .concl .lab{font-size:11px; font-weight:850; color:#4338ca; letter-spacing:.06em}
+  .concl .big{font-size:16.5px; font-weight:850; line-height:1.45; margin-top:6px; color:#1e1b4b}
+  .concl .big em{font-style:normal; color:#047857}
+  .concl .small{font-size:10px; color:#64748b; margin-top:7px; line-height:1.45}
+
+  footer{display:flex; align-items:center; justify-content:space-between; font-size:9.8px; color:#94a3b8}
+  footer b{color:#64748b}
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- ================= HEADER ================= -->
+  <header class="z">
+    <div>
+      <span class="tag"><i></i> RSI EVIDENCE · 双层递归自进化</span>
+      <h1>漂移驱动的<em>双层递归自进化</em>：怎么做到、怎么证明</h1>
+      <div class="sub">关键不在“让大模型基于官方数据跑一遍”，而在<b>漂移处理机制</b>与<b>经验沉淀</b>——模型层在漂移中变强，策略层在轮次间变聪明；两条证据链都来自受控批次流实验。</div>
+    </div>
+    <div class="head-right">
+      <div class="hpill">同一 baseline 模型 · 同一评测 · 只改变策略</div>
+      <div class="hpill">A 隐藏批 macro-F1：<b>0.277 → 0.787（+0.51）</b></div>
+      <div class="hpill">模型：<b>Qwen3.8-27B</b> 驱动决策 · 镜像 <b>378 MB</b> 离线自跑</div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN 3 COLUMNS ================= -->
+  <div class="main z">
+
+    <!-- ① 机制闭环 -->
+    <div class="panel">
+      <div class="ptitle">机制：每一轮都走完的闭环 <span class="hint">受控 RSI</span></div>
+      <div class="loop">
+        <div class="step">
+          <div class="no">1</div>
+          <div class="body">
+            <h4>漂移到达 / 检测 <span>无标签先交付</span></h4>
+            <p>新批次先预测再揭标签；监控 KS、逐类 F1 与<b>判定方向反转</b>——A 任务 Acetaldehyde vs Ethanol 的 AA 判定 AUC 从 <b>1.0 掉到 0.14</b>。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="no">2</div>
+          <div class="body">
+            <h4>诊断归因 <span>定位“哪里坏了”</span></h4>
+            <p>特征层 shift 归因：41/57/49 号特征 std 比达 <b>707× / 138× / 70×</b>；标签侧 corr(Δ)=<b>−0.886</b>，确认“方向反转”而非“单纯变难”。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="no">3</div>
+          <div class="body">
+            <h4>策略实验 <span>白名单 + 预算</span></h4>
+            <p>候选臂：frozen / recenter / pair / <b>adapt（历史续训）</b> / full；每轮 ≤3 个候选，公开验证集 selection+margin 判定。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="no">4</div>
+          <div class="body">
+            <h4>门控上线 / 回滚 <span>LLM 只能更保守</span></h4>
+            <p>通过才 promote，失败回滚并留痕；A→full、B→adapt、C→<b>frozen</b>，C 的“不进化”也是实验结论。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="no">5</div>
+          <div class="body">
+            <h4>经验沉淀 <span>给下一轮用</span></h4>
+            <p>JSONL 审计 + SQLite（lessons / strategy_stats / skill_usage）；漂移→策略→结果写入记忆，跨轮、跨 run 累积成路由与先验。</p>
+          </div>
+        </div>
+      </div>
+      <div class="loop-back"><b>↺ 递归</b>：下一批回到 ①；每轮重复，经验不归零</div>
+      <div class="outchips">
+        <span>0 人工干预</span><span>候选产物 + sha 谱系</span><span>workspace_report</span><span>审计 JSONL</span>
+      </div>
+    </div>
+
+    <!-- ② 模型层证据 -->
+    <div class="panel panel-model">
+      <div class="ptitle">证据 A · 模型层：未来隐藏批上真的变强 <span class="hint">private-sim · b8–b10</span></div>
+      <div class="chart">
+        <div class="crow">
+          <div class="cname">冻结起点<small>不进化</small></div>
+          <div class="ctrack"><div class="cfill cfrozen" style="width:27.7%"></div></div>
+          <div class="cval">0.277</div>
+        </div>
+        <div class="crow">
+          <div class="cname">仅推理期校准<small>recenter</small></div>
+          <div class="ctrack"><div class="cfill crec" style="width:44.5%"></div></div>
+          <div class="cval">0.445</div>
+        </div>
+        <div class="crow">
+          <div class="cname">延迟标签阈值<small>pair</small></div>
+          <div class="ctrack"><div class="cfill cpair" style="width:35.4%"></div></div>
+          <div class="cval">0.354</div>
+        </div>
+        <div class="crow">
+          <div class="cname">历史续训<small>adapt · 2 seeds</small></div>
+          <div class="ctrack"><div class="cfill cadapt" style="width:75.8%"></div></div>
+          <div class="cval">0.758</div>
+        </div>
+        <div class="crow">
+          <div class="cname">全闭环 + 门控<small>full</small></div>
+          <div class="ctrack"><div class="cfill cfull" style="width:78.7%"></div></div>
+          <div class="cval">0.787</div>
+        </div>
+      </div>
+
+      <div class="gain">
+        <div class="big">+0.51</div>
+        <div class="txt">同一起点、同一评测；b8–b10 <b>全程只预测、从未解禁</b>，不是“把未来批混进训练”。</div>
+      </div>
+
+      <div class="mini">
+        <div class="mrow"><div class="t">A</div><div class="d">L1 全量 10 批均值：<b>0.486 → 0.768</b>（+58%）</div><div class="v">漂移强</div></div>
+        <div class="mrow"><div class="t">B</div><div class="d">arrival 8 批 RMSE：<b>650 → 436</b>（−33%，越低越好）</div><div class="v">大幅下降</div></div>
+        <div class="mrow"><div class="t">C</div><div class="d">无漂移：frozen <b>50.37</b> 最优，自适应反而变差</div><div class="v amber">学会不进化</div></div>
+        <div class="mrow"><div class="t" style="background:#4338ca">L2</div><div class="d">平台 v2 路径：A/B/C 各 <b>10 轮</b>全 PASS（真实 /app/harness.py 入口）</div><div class="v">可上线</div></div>
+        <div class="mrow"><div class="t" style="background:#0d9488">20</div><div class="d">20 批长流复跑：A full <b>0.8791</b>，第二轮未见遗忘（SIM-008 修复后）</div><div class="v">长流稳定</div></div>
+      </div>
+      <div class="strict">
+        <div class="st-lab">官方 strict 提交路径 <span>（全量 validation，与起点对比）</span></div>
+        <div class="st-row">
+          <div class="st"><b>A</b> macro-F1 <span class="up">+0.82%</span></div>
+          <div class="st"><b>B</b> RMSE <span class="up">−38.0%</span></div>
+          <div class="st"><b>C</b> RMSE <span class="up">−4.5%</span></div>
+        </div>
+      </div>
+      <div class="boundary">
+        <b>合规边界</b>：外部数据只做测试床，镜像默认关闭（RSI_ALLOW_EXTENDED_DATA=0）；正式提交只用官方数据。
+      </div>
+    </div>
+
+    <!-- ③ 策略层证据 -->
+    <div class="panel panel-strat">
+      <div class="ptitle">证据 B · 策略层：路由不是人拍的，是统计出来的 <span class="hint">跨 run 记忆</span></div>
+
+      <table class="route">
+        <tr><th>数据源 \ 任务</th><th>A（强漂移）</th><th>B（漂移）</th><th>C（无漂移）</th></tr>
+        <tr><td>official</td><td><span class="chip pair">pair</span></td><td><span class="chip adapt">adapt</span></td><td><span class="chip frozen">frozen</span></td></tr>
+        <tr><td>private-sim</td><td><span class="chip full">full</span></td><td><span class="chip adapt">adapt</span></td><td><span class="chip frozen">frozen</span></td></tr>
+      </table>
+      <div class="note">由跨 run 汇总的 <b>strategy_stats</b> 固化而来（A→full/adapt，B→adapt，C→frozen）；C 的“不进化”是策略层学到的保守边界，不是人工写死。</div>
+
+      <div class="mem">
+        <div class="mt"><i></i>经验被下一轮真实调用（kernel 第二次运行）</div>
+        <div class="mline">
+          <div class="b">1</div>
+          <div class="c">第一次：自主提 3 候选 → 暴露 <b>augment bug</b> → <span style="color:#b91c1c;font-weight:800">rollback</span>（没有硬推上线）</div>
+        </div>
+        <div class="mline run2">
+          <div class="b">2</div>
+          <div class="c">第二次：首轮直接召回记忆 <b>exp-0003 / sha f59e5037</b>；工具调用 <b>18 → 13</b>；首轮即 <span class="hl">promote</span></div>
+        </div>
+        <div class="mem-arrow">↳ 同一策略在下一轮被复用，决策更快、更稳 —— 这就是“策略层自改进”</div>
+      </div>
+
+      <div class="stratflow">
+        <div class="sf-t">策略层怎么“变聪明”</div>
+        <div class="sf-row">
+          <div class="sf">记录 <small>drift → arm → 结果</small></div>
+          <div class="sf-arr">→</div>
+          <div class="sf">统计 <small>strategy_stats</small></div>
+          <div class="sf-arr">→</div>
+          <div class="sf">更新 <small>AUTO_ARMS / 记忆</small></div>
+        </div>
+      </div>
+      <div class="checks">
+        <div class="ck-t">实验设计（可被质疑的三点，都有对照）</div>
+        <div class="ck"><i>1</i><b>同一 baseline 与评测</b>：只换策略，不换数据切分、不换指标。</div>
+        <div class="ck"><i>2</i><b>arms × seeds 消融</b>：frozen/recenter/pair/adapt/full，每臂 2 seeds，取均值。</div>
+        <div class="ck"><i>3</i><b>hidden 不参与选择</b>：b8–b10 只做最终预测，路由由公开验证集决定。</div>
+      </div>
+
+      <div class="limits">
+        <div class="lm-t">诚实边界</div>
+        <div class="lm">外部数据只做测试床、镜像默认关闭；B 隐藏尾部 frozen 优于 adapt（混合策略已如实标注）；C 无漂移时 frozen 最优——<b>“学会不进化”也是结论</b>。</div>
+      </div>
+
+      <div class="pytrio">
+        <div class="py-t">真实模型驱动（PyTRiO · Qwen3.8-27B）</div>
+        <div class="py-c">A 任务一轮：自主诊断 → 3 候选 → 比较 → <b style="color:#047857">promote</b>，selection <b>0.7032 → 0.7234</b>；门控不放宽。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= BOTTOM ================= -->
+  <div class="bottom z">
+    <div class="proof">
+      <div class="pt">实验设计：<span>怎么证明不是自说自话</span><i class="src">来源 docs/25 · 27 · 30</i></div>
+      <div class="pgrid">
+        <div class="pitem"><div class="n">1</div><div><b>E0 不变性</b>：打乱当前批 answers，decision / predictions <b>逐字节不变</b>（已通过）——证明没偷看答案。</div></div>
+        <div class="pitem"><div class="n">2</div><div><b>消融对照</b>：5 arms × 2 seeds，固定起点与评测，只变策略；B/C 的“变差”也如实报告。</div></div>
+        <div class="pitem"><div class="n">3</div><div><b>隐藏留出</b>：b8–b10 只预测、永不解禁；策略选择不用 hidden 标签。</div></div>
+        <div class="pitem"><div class="n">4</div><div><b>真实链路</b>：PyTRiO 真跑（rollback→修复→promote）；平台 v2 A/B/C 各 10 轮全 PASS。</div></div>
+      </div>
+      <div class="pfoot">可复现：<b>scripts/sim/*</b> · <b>Makefile lane-*</b>；完整报告 docs/25 / 27 / 30；本图由 docs/figures/fig_rsi_dual_evolution.html 渲染。</div>
+    </div>
+
+    <div class="concl">
+      <div class="lab">结论 · 一句话放进 PPT</div>
+      <div class="big">模型在漂移中变强，策略在轮次间变聪明——<em>两层都有受控实验证据</em>。</div>
+      <div class="small">官方 strict 提交路径：A +0.82% / B −38.0% / C −4.5%；300+ 实验单元、9 个问题真实闭环、138 个测试。</div>
+    </div>
+  </div>
+
+
+</div>
+</body>
+</html>

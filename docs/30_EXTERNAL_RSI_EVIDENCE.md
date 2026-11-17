@@ -323,3 +323,28 @@ v2 路径可跑通、可记录、可预测）。
 | 平台 v2 契约与实现 | `docs/26_WORKSPACE_V2.md`、`rsi/platform/submission.py` |
 | 实验总记录 | `docs/12_EXPERIMENTS.md` |
 | 证据脚本 | `scripts/sim/*`、`scripts/research/*` |
+---
+
+## 10. 一页证据图（答辩 / PPT 直接用）
+
+> 目标：**一张图**同时回答"怎么做到、怎么设计实验、怎么证明"，而不是把文字报告塞进 PPT。
+> 文件：`docs/figures/fig_rsi_dual_evolution.png`（3200×1800，16:9，可直接铺满一页）；源文件 `.html` 同目录，可改字后重新渲染。
+
+![双层递归自进化证据图](figures/fig_rsi_dual_evolution.png)
+
+**怎么读这张图（讲稿顺序）**
+
+1. **左栏 · 机制（怎么做到）**：每一轮都走完 5 步闭环——漂移到达/检测（A 的 AA 判定方向反转，AUC 1.0→0.14）→ 诊断归因（41/57/49 号特征 std 比 707×/138×/70×，corr(Δ)=−0.886）→ 策略实验（frozen/recenter/pair/adapt/full，每轮 ≤3 候选）→ 门控上线/回滚（A→full、B→adapt、C→frozen）→ 经验沉淀（JSONL+SQLite，跨轮/跨 run 累积）。底部"↺ 递归"强调下一批回到第 ① 步，经验不归零。
+2. **中栏 · 模型层证据（真的变强）**：private-sim 的 b8–b10 隐藏批全程只预测、从未解禁——同一 baseline、同一评测，macro-F1 从 frozen 0.277 → recenter 0.445 → pair 0.354 → adapt 0.758 → full **0.787（+0.51）**；下面三行是 L1（A 0.486→0.768、B 650→436、C frozen 50.37 最优）与 L2（平台 v2 A/B/C 各 10 轮 PASS）；底部 strict 全量口径 A +0.82% / B −38.0% / C −4.5%。
+3. **右栏 · 策略层证据（会变聪明）**：路由表来自跨 run 的 `strategy_stats`（official：A pair / B adapt / C frozen；private-sim：A full / B adapt / C frozen），不是人工写死；kernel 第二次运行首轮召回 exp-0003、工具调用 18→13、首轮 promote；"实验设计"三条可被质疑点（同一 baseline、arms×seeds、hidden 不参与选择）与"诚实边界"（外部数据测试床默认关、B 隐藏尾部 frozen 更优、C 学会不进化）。
+4. **底部 · 实验设计（不是自说自话）**：E0 打乱答案逐字节不变（防偷看）；5 arms × 2 seeds 消融；b8–b10 隐藏留出永不解禁；PyTRiO 真实链路（rollback→修复→promote）+ 平台 v2 30 轮 PASS。
+
+**复现**
+
+```bash
+# 编辑 docs/figures/fig_rsi_dual_evolution.html 后重新渲染（Chrome 无头，2x 输出 3200×1800）
+google-chrome --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
+  --force-device-scale-factor=2 --window-size=1600,987 --virtual-time-budget=4000 \
+  --screenshot=/tmp/fig.png file://$PWD/docs/figures/fig_rsi_dual_evolution.html
+# 注意：窗口高 987 时 innerHeight=900；截图 3200×1974，裁剪顶部 3200×1800 即得 16:9
+```
