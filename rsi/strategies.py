@@ -72,11 +72,11 @@ def _training_matrix(context: ExperimentContext, data: str, class_balance: bool,
         rng.shuffle(index)
         x, y = x[index], y[index]
     if augment:
-        x = _augment_features(context, x)
+        x, y = _augment_features(context, x, y)
     return x, y
 
 
-def _augment_features(context: ExperimentContext, x):
+def _augment_features(context: ExperimentContext, x, y):
     """Mild domain augmentation for sensor batches (covariate-shift robustness).
 
     Shifts/scales the whole synthetic batch with random factors sampled once per
@@ -84,19 +84,23 @@ def _augment_features(context: ExperimentContext, x):
     per-batch augmentation is the honest model of the failure mode.
     """
     rng = np.random.default_rng(context.seed + 29)
-    target = context.selection if context.selection is not None else context.calibration
     if context.drift is not None and getattr(context.drift, "evidence", {}).get("mean_shift_sd"):
         magnitude = float(abs(context.drift.evidence["mean_shift_sd"]))
     else:
         magnitude = float(np.mean(np.std(context.train.x, axis=0)))
     rows = x.shape[0]
-    copies = []
+    std = np.std(context.train.x, axis=0)
+    scale = 0.25 * np.maximum(1e-6, magnitude / np.maximum(1e-6, std))
+    xs, ys = [x], [y]
     for _ in range(2):
         gain = 1.0 + 0.12 * rng.standard_normal(x.shape[1])
-        offset = rng.standard_normal(x.shape[1]) * 0.25 * np.maximum(1e-6, magnitude / max(1e-6, np.std(context.train.x, axis=0)))
-        copies.append(x * gain + offset)
+        offset = rng.standard_normal(x.shape[1]) * scale
+        xs.append(x * gain + offset)
+        ys.append(y)
     index = rng.permutation(rows)
-    return np.vstack([x] + copies + [x[index]])
+    xs.append(x[index])
+    ys.append(y[index])
+    return np.vstack(xs), np.concatenate(ys)
 
 
 def _class_weight_vector(y, n_classes, beta):

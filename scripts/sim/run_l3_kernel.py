@@ -45,6 +45,7 @@ def main() -> int:
             "--batch-wall", "1800",
             "--lane-timeout", "10800",
             "--retention-every", "0",
+            "--hidden-tail", "0",
         ])
         if code != 0:
             return code

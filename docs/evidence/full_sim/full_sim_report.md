@@ -76,6 +76,14 @@
 | 9 | 8 | 1 | 131736 | 2219 | rmse=57.9876 |
 | 10 | 9 | 1 | 131736 | 2183 | rmse=56.4253 |
 
+## L3 — kernel-LLM batch stream
+
+| task | arm | seed | batches | mean | worst | hidden mean | wall(s) |
+|---|---|---|---|---|---|---|---|
+| A | full | 42 | 2 | 0.8371 | 0.7185 | - | 2102.2 |
+| B | full | 42 | 0 | - | - | - | 339.0 |
+| C | full | 42 | 0 | - | - | - | 532.4 |
+
 ## Issues found and fixed
 
 - **SIM-001** [数据/协议] A 全量流少 57 行（13,853/13,910），prepare 审计 reveal 439/445。  
@@ -102,3 +110,15 @@
   fix: 不作为 bug 修改（符合“只用已揭示历史”约束）；在报告中标注早期批次指标不可与 hidden 指标直接比较，并依赖后续批次稳定化。  
   evidence: L1 A-full 前 2 批 dev 1.0/.99，hidden（后续 UCI 批）仍保持 .62–.77。  
   status: documented
+- **SIM-007** [可复现性/健壮性] 20 批长流 A-full 在 batch 10 报 FileNotFoundError: docs/27_PPT_REPORT.md，整条 lane 判失败（此前 10 批已跑完）。  
+  fix: code_sha256 对 FileNotFoundError 跳过该文件；新增 tests/test_sim_protocol.py::test_code_sha256_tolerates_vanishing_files。  
+  evidence: 单测 4 passed；code_sha256 仍对稳定树返回 sha256。  
+  status: fixed
+- **SIM-008** [数据/协议] 20 批长流 full（repeat=2）在 batch 11 报 ValueError: line 3593: sample IDs must be nonempty and unique。  
+  fix: _add_history 按 id 去重后再分流到 train/dev；新增 tests/test_sim_protocol.py::test_full_batches_repeat_keeps_ids_unique。  
+  evidence: 单测 5 passed；重跑长流 lane 验证。  
+  status: fixed
+- **SIM-009** [策略库/健壮性] PyTRiO 真实模型驱动 kernel 时提出 continue_train(augment=true,class_balance=true,class_weight_beta=1.0)，worker 报 ValueError: The truth value of an array with more than one element is ambiguous。  
+  fix: 改用 np.maximum；_augment_features 返回 (x_aug,y_aug) 并同步复制/打乱标签；新增 tests/test_a_improvements.py::test_continue_train_augment_and_weights_align_targets。  
+  evidence: 本地 run_strategy 复现→修复后通过；PyTRiO kernel 1 轮（A，Qwen/Qwen3.8-27B）成功执行 3 个候选并 rollback（暴露 bug 的原始证据在 .scratch/rsi-pytrio）。  
+  status: fixed

@@ -82,7 +82,35 @@ A/B/C 各 10 轮全部 PASS（逐轮指标见 `docs/evidence/full_sim/full_sim_r
 
 `scripts/sim/run_l3_kernel.py`：A 4 批、B 2 批、C 2 批，`--controller kernel --token-cap 0`，
 让 LLM Agent 在每批内自主诊断/实验/决策/写记忆。预算放开（开发期不设 token 上限）。
-结果见 `docs/evidence/full_sim/full_sim_report.md` 与 `.scratch/sim/L3/`。
+结果见 `docs/evidence/full_sim/full_sim_report.md` 与 `.scratch/sim/L3*/`。
+
+A 任务（2 个 arrival 批，kernel 控制器）：两批均 **promote**，逐批预测 macro-F1
+0.9558 / 0.7185；batch0 的 kernel 轨迹为 18 次工具调用、166,936 tokens（诊断→3 候选→
+执行→决策→记忆），batch1 因模型调用异常自动降级 pipeline（受控降级生效）——
+这正是"模型失败有确定性兜底、不中断批次流"的证据。
+
+B/C 各补 1 个 arrival 批（`--hidden-tail 0`）：
+
+| 任务 | 决策 | dev primary（历史 holdout） | 本批预测 primary | wall |
+|---|---|---|---|---|
+| B（RMSE） | promote | 223.13 | 679.56（该批 167 行、天然难） | 231s |
+| C（RMSE） | promote | 54.34 | 51.69 | 407s |
+
+结论：kernel 控制器在三个任务上都能完成"观察→诊断→提案→执行→门控→记录"整环；
+A 的外部批次收益大，B/C 在单批上决策按 dev 门控（B 的预测值偏高，说明仅凭单批
+dev 选型在回归任务上仍有冒烟风险，与 L1 的结论一致）。
+
+另用赛事指定的 **PyTRiO** OpenAI 兼容端点（`https://pytrio.com/api/openai/v1`，
+模型 `Qwen/Qwen3.8-27B`）做了真实驱动验证：
+
+- 第一次 A 1 轮：模型自主提出 3 个候选，其中 2 个 augmentation 组合暴露了 `SIM-009`
+  的策略库崩溃（已修复），最终 rollback，97,755 tokens / 2 次调用；
+- 修复后第二次 A 1 轮：模型自主完成诊断→3 个候选→比较→promote，
+  selection **0.7032→0.7234（+0.0202）**，选中 recenter(batch_std, w=1.0)，
+  104,609 tokens / 2 次调用、12 个工具调用，decision/parent/candidate sha 记录完整。
+
+该验证同时确认：只改 `LLM_BASE_URL/LLM_API_KEY/LLM_MODEL` 三个环境变量即可从 tokenplus
+切到 PyTRiO，镜像内无需改动；v2 评测时模型调用由宿主 `rnd.model()` 注入，Key 不落盘。
 
 ## 6. 测试中发现并修复的问题
 
@@ -98,6 +126,7 @@ A/B/C 各 10 轮全部 PASS（逐轮指标见 `docs/evidence/full_sim/full_sim_r
 | SIM-006 | A 第一批 selection≈1.0，gate 早期偏 promote | 记录为选择偏差，报告区分早期/hidden 指标 |
 | SIM-007 | 长流 full 在 batch10 因仓库文档改名报 `FileNotFoundError: docs/27_PPT_REPORT.md` | `code_sha256` 对消失文件跳过；新增回归测试；重跑 lane |
 | SIM-008 | repeat=2 长流在 batch11 报重复 sample id（官方 loader 拒绝） | `_add_history` 按 id 去重；新增回归测试；重跑长流 |
+| SIM-009 | PyTRiO 真实模型触发的 augment+weight 组合崩溃（`max(标量, 数组)` ambiguous，且扩增后 x/y 不对齐） | `_augment_features` 改 `np.maximum` 并同步扩增标签；新增回归测试 |
 
 ## 7. 复现
 

@@ -561,7 +561,23 @@ C 40.523699，与 v0.5.1/v0.6 逐位一致（wall 2104.3s、CPU 1165.5s、56 实
 
 - A 变体：标签减半（label_every=2 + label_fraction=0.5）adapt 0.7199/full 0.7068；4 大批判 0.7309/0.7330；20 批长流 adapt 0.8221。
 - L2 v2 路径 A/B/C 各 10 轮全部 PASS；A 的 pair 阈值在历史 AA 积累后生效（dev 0.7842→0.8481）。
-- 共发现并修复 8 个问题（SIM-001…SIM-008，见 `.scratch/sim/issues.jsonl`），其中 4 个属产品级
+- 共发现并修复 9 个问题（SIM-001…SIM-009，见 `.scratch/sim/issues.jsonl`），其中 4 个属产品级
   bug（行数丢失、v2 适配层缺 pair 候选、token cap=0 语义、repeat 重复 id），另含代码哈希竞态与
   批次拼接/预测截断问题，均已回归测试覆盖。
 - 约束：未上传/未提交/未 trial；strict 提交路径与数字（A .734555/B .409737/C 40.5237）保持不变。
+
+### 12.25.1 PyTRiO 真实模型驱动（赛事指定端点）
+
+按赛题指定的 PyTRiO OpenAI 兼容端点（`https://pytrio.com/api/openai/v1`，模型
+`Qwen/Qwen3.8-27B`）对 harness 做了真实驱动验证（本地开发期，不占平台额度）：
+
+- 第一轮：模型自主提出 3 个候选，其中 2 个 augmentation 组合触发 `SIM-009`（已修复），
+  最终 rollback；
+- 修复后第二轮：模型自主诊断→3 个候选→比较→**promote**，
+  A selection **0.7032→0.7234（+0.0202）**，选中 `recenter(batch_std, w=1.0)`；
+  104,609 tokens、2 次模型调用、12 个工具调用，parent/candidate sha 完整。
+
+结论：① harness 的 LLM 接入只依赖三个 env（`LLM_BASE_URL/LLM_API_KEY/LLM_MODEL`），
+从 tokenplus 切到 PyTRiO 零代码改动；② 真实赛事模型能独立完成一轮有效 RSI（提出→执行→
+比较→受控上线），不是脚本模板；③ 引擎的受控门控没有因为模型是真实模型而放宽，
+rollback/promote 均按 selection+margin 计算。

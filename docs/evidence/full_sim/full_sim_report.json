@@ -775,7 +775,50 @@
       "root": "/tmp/l2-C-_vj4hhky"
     }
   },
-  "l3": [],
+  "l3": [
+    {
+      "task": "A",
+      "arm": "full",
+      "seed": 42,
+      "n": 2,
+      "mean": 0.8371472042112522,
+      "worst": 0.7185405689273169,
+      "hidden_mean": null,
+      "decisions": {
+        "promote": 2
+      },
+      "adapt_kept": "1/1",
+      "wall": 2102.15,
+      "error": null,
+      "kernel": true
+    },
+    {
+      "task": "B",
+      "arm": "full",
+      "seed": 42,
+      "n": 0,
+      "mean": null,
+      "worst": null,
+      "hidden_mean": null,
+      "decisions": {},
+      "adapt_kept": null,
+      "wall": 338.99,
+      "kernel": true
+    },
+    {
+      "task": "C",
+      "arm": "full",
+      "seed": 42,
+      "n": 0,
+      "mean": null,
+      "worst": null,
+      "hidden_mean": null,
+      "decisions": {},
+      "adapt_kept": null,
+      "wall": 532.4,
+      "kernel": true
+    }
+  ],
   "issues": [
     {
       "id": "SIM-001",
@@ -830,6 +873,33 @@
       "fix": "不作为 bug 修改（符合“只用已揭示历史”约束）；在报告中标注早期批次指标不可与 hidden 指标直接比较，并依赖后续批次稳定化。",
       "evidence": "L1 A-full 前 2 批 dev 1.0/.99，hidden（后续 UCI 批）仍保持 .62–.77。",
       "status": "documented"
+    },
+    {
+      "id": "SIM-007",
+      "kind": "可复现性/健壮性",
+      "symptom": "20 批长流 A-full 在 batch 10 报 FileNotFoundError: docs/27_PPT_REPORT.md，整条 lane 判失败（此前 10 批已跑完）。",
+      "root_cause": "rsi.model.code_sha256 先 rglob 收集文件再逐个 read_bytes；长跑期间仓库内的文档被改名（27→28），收集到的路径在读取时已不存在，异常向上冒泡中断了 worker/批次。",
+      "fix": "code_sha256 对 FileNotFoundError 跳过该文件；新增 tests/test_sim_protocol.py::test_code_sha256_tolerates_vanishing_files。",
+      "evidence": "单测 4 passed；code_sha256 仍对稳定树返回 sha256。",
+      "status": "fixed"
+    },
+    {
+      "id": "SIM-008",
+      "kind": "数据/协议",
+      "symptom": "20 批长流 full（repeat=2）在 batch 11 报 ValueError: line 3593: sample IDs must be nonempty and unique。",
+      "root_cause": "full_batches(repeat=2) 第二轮会再次 reveal 同一批样本；_add_history 直接 extend，history train.jsonl 出现重复 id，官方 read_dataset 校验拒绝。",
+      "fix": "_add_history 按 id 去重后再分流到 train/dev；新增 tests/test_sim_protocol.py::test_full_batches_repeat_keeps_ids_unique。",
+      "evidence": "单测 5 passed；重跑长流 lane 验证。",
+      "status": "fixed"
+    },
+    {
+      "id": "SIM-009",
+      "kind": "策略库/健壮性",
+      "symptom": "PyTRiO 真实模型驱动 kernel 时提出 continue_train(augment=true,class_balance=true,class_weight_beta=1.0)，worker 报 ValueError: The truth value of an array with more than one element is ambiguous。",
+      "root_cause": "_augment_features 用 Python max() 比较标量与 numpy 数组（ambiguous）；且只扩增 x 未同步扩增 y，扩增后仍会 shape mismatch。",
+      "fix": "改用 np.maximum；_augment_features 返回 (x_aug,y_aug) 并同步复制/打乱标签；新增 tests/test_a_improvements.py::test_continue_train_augment_and_weights_align_targets。",
+      "evidence": "本地 run_strategy 复现→修复后通过；PyTRiO kernel 1 轮（A，Qwen/Qwen3.8-27B）成功执行 3 个候选并 rollback（暴露 bug 的原始证据在 .scratch/rsi-pytrio）。",
+      "status": "fixed"
     }
   ]
 }

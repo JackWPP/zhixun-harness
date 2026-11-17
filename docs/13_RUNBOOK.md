@@ -7,9 +7,9 @@
 
 ```bash
 docker load -i harness.tar
-# 期望：Loaded image: zhixun-rsi-harness:0.10.0
+# 期望：Loaded image: zhixun-rsi-harness:0.10.1
 docker images | grep zhixun-rsi-harness
-docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixun-rsi-harness:0.10.0
+docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixun-rsi-harness:0.10.1
 # 期望：amd64 linux [/opt/zhixun/bin/entrypoint.sh]
 ```
 
@@ -20,7 +20,7 @@ docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixu
 
 ```bash
 mkdir -p /host/work
-docker run --rm -v /host/work:/work zhixun-rsi-harness:0.10.0
+docker run --rm -v /host/work:/work zhixun-rsi-harness:0.10.1
 ```
 
 等价于：
@@ -28,7 +28,7 @@ docker run --rm -v /host/work:/work zhixun-rsi-harness:0.10.0
 ```bash
 docker run --rm -v /host/work:/work \
   -e RSI_TASKS=A,B,C -e RSI_ROUNDS=10 -e RSI_LLM=auto \
-  zhixun-rsi-harness:0.10.0 run
+  zhixun-rsi-harness:0.10.1 run
 ```
 
 完成后在宿主机可见：
@@ -77,10 +77,10 @@ docker run --rm -v /host/work:/work \
 ```bash
 # 单任务，2 轮，离线
 docker run --rm -v /host/work:/work -e RSI_TASKS=A -e RSI_ROUNDS=2 -e RSI_LLM=off \
-  zhixun-rsi-harness:0.10.0 run
+  zhixun-rsi-harness:0.10.1 run
 
 # 自检：加载 checkpoint，复算三层切分与探针的主指标
-docker run --rm zhixun-rsi-harness:0.10.0 selftest A
+docker run --rm zhixun-rsi-harness:0.10.1 selftest A
 ```
 
 ## 13.4b v0.4 新增命令
@@ -89,7 +89,7 @@ docker run --rm zhixun-rsi-harness:0.10.0 selftest A
 # Agent 自主内核（需要可用 OpenAI 兼容端点；单轮 2-4 分钟）
 docker run --rm -v /host/work:/work -e RSI_LLM=on -e RSI_LLM_ENV=/work/llm.env \
   -e RSI_CONTROLLER=kernel -e RSI_TASKS=A -e RSI_ROUNDS=3 \
-  zhixun-rsi-harness:0.10.0 run
+  zhixun-rsi-harness:0.10.1 run
 
 # 私有/隐藏风格 JSONL 探针（只推理，不训练）
 python -m rsi.cli probe --task A --path private.jsonl --checkpoint <ckpt> --output probe.json
@@ -112,7 +112,7 @@ bash scripts/rehearse.sh --skip-build
 ## 13.5 预测入口（平台 quote 用）
 
 ```bash
-docker run --rm -i -v /host/work:/work zhixun-rsi-harness:0.10.0 \
+docker run --rm -i -v /host/work:/work zhixun-rsi-harness:0.10.1 \
   predict --checkpoint /work/A/checkpoint.npz \
           --postprocess /work/A/postprocess.json --mode batch < /host/inputs.jsonl
 ```
@@ -127,7 +127,7 @@ docker run --rm -i -v /host/work:/work zhixun-rsi-harness:0.10.0 \
 
 ```bash
 docker run --rm -p 7861:7861 -v /host/work:/work \
-  zhixun-rsi-harness:0.10.0 serve /work/rsi-runs/latest/state.json 7861
+  zhixun-rsi-harness:0.10.1 serve /work/rsi-runs/latest/state.json 7861
 ```
 
 浏览器打开 `http://<host>:7861`。看板纯静态 + 标准库，无外网依赖；只读
@@ -189,7 +189,7 @@ python -m rsi.cli synth --task A --batches 3 --drift 2.5 --noise 0.25 \
 
 ```bash
 docker run --rm -v /host/work:/work -e RSI_STREAM_SOURCE=official \
-  -e RSI_STREAM_BATCHES=10 zhixun-rsi-harness:0.10.0 stream
+  -e RSI_STREAM_BATCHES=10 zhixun-rsi-harness:0.10.1 stream
 ```
 
 * 每批产物：`$RSI_STREAM_DIR/tasks/<key>/batch_XXXX/{decision.json,predictions.jsonl,run/}`；
@@ -226,6 +226,29 @@ docker run --rm -v /host/work:/work -e RSI_STREAM_SOURCE=official \
 
 ```bash
 # 诊断入口（与平台试运行诊断同一调用）
-docker run --rm zhixun-rsi-harness:0.10.0 describe
-docker run --rm -v /host/work:/work zhixun-rsi-harness:0.10.0 run   # 旧版本地 RSI 运维路径
+docker run --rm zhixun-rsi-harness:0.10.1 describe
+docker run --rm -v /host/work:/work zhixun-rsi-harness:0.10.1 run   # 旧版本地 RSI 运维路径
 ```
+
+## 13.14 PyTRiO 端点（赛事驱动模型）
+
+平台试运行/正式评测时，驱动 Harness 的大模型由平台通过 PyTRiO 提供（OpenAI 兼容）。
+本地开发也可以直接接同一个端点，验证 prompt 兼容性与时延：
+
+```bash
+# .scratch/pytrio.env（不要提交密钥；模板见 config/pytrio.env.example）
+# LLM_BASE_URL=https://pytrio.com/api/openai/v1
+# LLM_API_KEY=trio_xxx
+# LLM_MODEL=Qwen/Qwen3.8-27B
+# LLM_CONTEXT_WINDOW=64000
+
+RSI_TOKEN_CAP=0 ./.venv/bin/python -m rsi.cli run \
+  --tasks A --rounds 1 --llm on --llm-env .scratch/pytrio.env \
+  --controller kernel --round-turns 6 --experiments-cap 3 \
+  --state-dir .scratch/rsi-pytrio
+```
+
+- `/api/openai/v1/models` 实测返回 `Qwen/Qwen3.8-27B`、`Qwen/Qwen3.5-4B`；
+- `Qwen/Qwen3.5-4B` 在小 `max_tokens` 下会全部消耗在 reasoning、content 为空，建议
+  驱动 Harness 使用 `Qwen/Qwen3.8-27B`（平台允许列表内）；
+- 评测镜像内不保存 Key：v2 协议由宿主 `rnd.model()` 注入模型调用，Key 仅由平台/本地 env 使用。

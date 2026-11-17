@@ -104,3 +104,26 @@ def test_cli_stream_accepts_adapt_history_flag():
     args = build_parser().parse_args(["stream", "--adapt-history", "--adapt-epochs", "5"])
     assert args.adapt_history is True
     assert args.adapt_epochs == 5
+
+
+def test_continue_train_augment_and_weights_align_targets():
+    """PyTRiO-driven run exposed ValueError in augment path (SIM-009)."""
+    from pathlib import Path
+
+    from rsi.data import load_jsonl_dataset
+    from rsi.model import ExtendedModel
+    from rsi.strategies import ExperimentContext, run_strategy
+    from rsi.tasks import resolve_tasks
+
+    config = resolve_tasks(["A"])[0]
+    base = ExtendedModel.from_checkpoint(config.checkpoint_path)
+    train = load_jsonl_dataset(config.train_path, "classification", config.classes,
+                               expected_paths=base.meta["paths"])
+    ctx = ExperimentContext(task_key="A", task=config.task, parent=base.clone(),
+                            train=train, calibration=train, selection=train,
+                            report=train, seed=42, classes=tuple(config.classes))
+    candidate = run_strategy(ctx, "continue_train", {
+        "learning_rate": 5e-4, "epochs": 2, "data": "train",
+        "class_balance": True, "class_weight_beta": 1.0, "augment": True,
+    })
+    assert candidate.model.params["w1"].shape == base.params["w1"].shape
