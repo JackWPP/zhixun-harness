@@ -217,3 +217,14 @@ cd vendor/contest_harness-1.0.2 && ../../.venv/bin/python -m unittest \
   （config `887d4de605e0e92357e2d8cc33328615ecb3a40a983b7116887e6ff5a5edcfbe.json`，
   tags `0.11.0/latest`）。**尚未上传平台。**
 - 全量测试：**150 passed, 3 deselected**。
+
+### 7.5 漂移策略与实验开关（0.11.1）
+
+- `RSI_V2_DRIFT_POLICY=1|0`：默认 1；高漂移 + 分类任务时，若历史校准
+  `pair_history` 臂在公开验证上不劣于父模型（`+2·margin`），覆盖 pipeline/kernel 的
+  当前选择；关闭时 `_apply_drift_policy` 直接返回原选择（用于消融）。
+- `RSI_V2_PAIR_DELTA`：覆盖历史 pair 臂的阈值（默认 -4.0），用于 delta 敏感性实验。
+- `RSI_V2_CONTROLLER=kernel|pipeline`：默认取镜像 ENV（0.11.0+ 为 kernel）；
+  pipeline 每轮 1 次真实网关调用，kernel 每轮 6+ 次；两条路径都经过漂移策略。
+- 实验证据与假设检验见 `docs/34_EXPERIMENT_REPORT.md`；全真模拟基线见
+  `docs/32_FULL_SIMULATION.md`。

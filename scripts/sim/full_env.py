@@ -30,6 +30,7 @@ import base64
 import hashlib
 import importlib.util
 import json
+import re
 import numpy as np
 import os
 import subprocess
@@ -480,12 +481,12 @@ def external_spec(rounds: int = 5) -> dict:
     }
 
 
-def schema_spec() -> dict:
+def schema_spec(rounds: int = 2) -> dict:
     built = _datasets.ensure_packages()["schema"]
     root = Path(built["root"])
     return {
         "run_id": "sim-SCHEMA", "key": "A", "package": root, "task": "classification", "metric": "macro_f1",
-        "direction": "higher", "classes": list(built["classes"]), "rounds": 2,
+        "direction": "higher", "classes": list(built["classes"]), "rounds": max(1, int(rounds)),
         "train_rows": read_jsonl(root / "public" / "train.jsonl"),
         "validation_rows": read_jsonl(root / "public" / "validation.jsonl"),
         "hidden_rows": read_jsonl(root / "hidden" / "private_schema.jsonl"),
@@ -549,11 +550,23 @@ def main(argv=None) -> int:
     parser.add_argument("--out", default=str(REPO / ".scratch" / "sim" / "runs"))
     parser.add_argument("--swanlab", choices=["auto", "offline", "off"], default="auto")
     parser.add_argument("--timeout", type=float, default=900.0)
+    parser.add_argument("--policy", choices=["on", "off"], default="on",
+                        help="gen2 drift policy switch passed to the participant")
+    parser.add_argument("--pair-delta", type=float, default=None,
+                        help="override RSI_V2_PAIR_DELTA for the historical pair arm")
+    parser.add_argument("--hidden-every-round", action="store_true",
+                        help="score the hidden proxy on every round (learning curve)")
+    parser.add_argument("--tag", default="", help="experiment arm tag used in run dir/SwanLab name")
     args = parser.parse_args(argv)
 
     provider = resolve_provider(args)
+    os.environ["RSI_V2_DRIFT_POLICY"] = "1" if args.policy == "on" else "0"
+    if args.pair_delta is not None:
+        os.environ["RSI_V2_PAIR_DELTA"] = str(float(args.pair_delta))
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    run_root = Path(args.out) / f"rsi-sim-{args.scenario}-{stamp}"
+    tag = re.sub(r"[^0-9A-Za-z_.-]+", "-", args.tag).strip("-")
+    run_name = f"rsi-sim-{args.scenario}-{tag + '-' if tag else ''}{stamp}"
+    run_root = Path(args.out) / run_name
     run_root.mkdir(parents=True, exist_ok=True)
     site_root = materialise_sitecustomize(run_root / "site")
     print(f"[sim] run_root={run_root} provider={type(provider).__name__} controller={args.controller}")
@@ -563,7 +576,7 @@ def main(argv=None) -> int:
     elif args.scenario == "external":
         specs = [external_spec(args.rounds)]
     else:
-        specs = [schema_spec()]
+        specs = [schema_spec(args.rounds)]
 
     swan_run = None
     if args.swanlab != "off":
@@ -573,15 +586,19 @@ def main(argv=None) -> int:
             mode = "online" if os.environ.get("SWANLAB_API_KEY") else "offline"
             if args.swanlab == "offline":
                 mode = "offline"
+            swan_name = f"{args.scenario}-{tag}-{stamp}" if tag else f"{args.scenario}-{stamp}"
             swan_run = swanlab.init(project=os.environ.get("SWANLAB_PROJECT", "zhixun-rsi"),
-                                    mode=mode, log_dir=str(run_root / "swanlab"))
+                                    mode=mode, name=swan_name,
+                                    log_dir=str(run_root / "swanlab"))
             print(f"[sim] swanlab mode={mode} log_dir={run_root / 'swanlab'}")
         except Exception as exc:  # noqa: BLE001 - optional dependency
             print(f"[sim] swanlab disabled: {exc}", file=sys.stderr)
             swan_run = None
 
     summary = {"run_root": str(run_root), "scenario": args.scenario, "controller": args.controller,
-               "provider": type(provider).__name__, "rounds": args.rounds, "tasks": {}}
+               "provider": type(provider).__name__, "rounds": args.rounds,
+               "policy": args.policy, "pair_delta": args.pair_delta, "tag": tag,
+               "hidden_every_round": bool(args.hidden_every_round), "tasks": {}}
     for spec in specs:
         task_root = run_root / "tasks" / spec["key"]
         task_root.mkdir(parents=True, exist_ok=True)
@@ -620,11 +637,12 @@ def main(argv=None) -> int:
                                      spec["classes"], spec["key"], args.timeout, site_root)
             val_metric = score(spec, spec["validation_rows"], predicted)
             hidden_metric = None
-            if round_index == rounds and spec["hidden_rows"]:
+            if spec["hidden_rows"] and (args.hidden_every_round or round_index == rounds):
                 hidden_pred = predict_rows(artifact_dir, spec["hidden_rows"], spec["task"],
                                            spec["classes"], spec["key"], args.timeout, site_root)
                 hidden_metric = score(spec, spec["hidden_rows"], hidden_pred)
-                task_summary["hidden_proxy"] = hidden_metric
+                if round_index == rounds:
+                    task_summary["hidden_proxy"] = hidden_metric
             entry = {"round": round_index, "wall_s": round(wall, 1), "calls": len(served["call_ids"]),
                      "decision": record.get("hypothesis", "")[:200], "chosen": chosen,
                      "validation": val_metric, "hidden_proxy": hidden_metric,

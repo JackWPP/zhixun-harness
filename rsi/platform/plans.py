@@ -193,7 +193,7 @@ def retain_plan(ctx: PlanContext) -> dict:
 # ---------------------------------------------------------------------------
 #: Prior delta for the Acetaldehyde/Ethanol pair flip, fitted in earlier
 #: campaigns from *past* labels (never the current public validation labels).
-PAIR_HISTORY_DELTA = -4.0
+PAIR_HISTORY_DELTA = float(os.environ.get("RSI_V2_PAIR_DELTA", "-4.0"))
 
 
 def drift_profile(ctx: PlanContext) -> dict:

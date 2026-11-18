@@ -221,3 +221,33 @@ def test_apply_drift_policy_prefers_history_arm_on_high_drift():
     chosen2, note2 = submission._apply_drift_policy(ctx, recenter)
     assert chosen2["kind"] == "pair_history"
     assert note2.startswith("drift_policy:")
+
+
+def test_drift_policy_env_switch_disables_override(monkeypatch):
+    from rsi.platform import submission
+    from rsi.platform.plans import retain_plan
+
+    ctx = plan_context_full()
+    parent = retain_plan(ctx)
+    monkeypatch.setenv("RSI_V2_DRIFT_POLICY", "0")
+    chosen, note = submission._apply_drift_policy(ctx, parent)
+    assert chosen["kind"] == "retain"
+    assert note == ""
+    monkeypatch.setenv("RSI_V2_DRIFT_POLICY", "1")
+    chosen2, note2 = submission._apply_drift_policy(ctx, parent)
+    assert chosen2["kind"] == "pair_history"
+    assert note2.startswith("drift_policy:")
+
+
+def test_drift_policy_env_switch_reads_pair_delta(monkeypatch):
+    import importlib
+
+    from rsi.platform import plans
+
+    monkeypatch.setenv("RSI_V2_PAIR_DELTA", "-2.5")
+    reloaded = importlib.reload(plans)
+    try:
+        assert reloaded.PAIR_HISTORY_DELTA == pytest.approx(-2.5)
+    finally:
+        monkeypatch.delenv("RSI_V2_PAIR_DELTA", raising=False)
+        importlib.reload(plans)

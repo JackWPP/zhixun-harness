@@ -35,6 +35,7 @@ from rsi.executor import ExperimentProposal  # noqa: E402
 from rsi.inference import apply_postprocess  # noqa: E402
 from rsi.metrics import from_predictions, primary as primary_metric  # noqa: E402
 from rsi.model import ExtendedModel  # noqa: E402
+from rsi.platform import plans as plan_lib  # noqa: E402
 from rsi.platform.plans import PlanContext, plan_for_proposal, retain_plan  # noqa: E402
 from rsi.platform.submission import _drift_brief  # noqa: E402
 
@@ -136,7 +137,8 @@ def _gen2_arms(task_key: str, task: str) -> list[dict]:
                      "postprocess": {"type": "recenter", "mode": "batch_std", "weight": 0.2},
                      "hypothesis": "coverage calibration with covariance weighting"})
         arms.append({"label": "pair-delta-history", "strategy": "retain", "params": {},
-                     "postprocess": {"type": "pair_threshold", "pair": [0, 3], "delta": -4.0},
+                     "postprocess": {"type": "pair_threshold", "pair": [0, 3],
+                                                "delta": plan_lib.PAIR_HISTORY_DELTA},
                      "hypothesis": "delayed-label delta from previous campaigns"})
     elif task_key == "C":
         arms.append({"label": "continue-20", "strategy": "continue_train",
@@ -151,8 +153,12 @@ def _improved(task: str, candidate: float, parent: float, margin: float) -> bool
     return candidate <= parent - margin
 
 
+_MARGIN_FACTOR = 1.0
+
+
 def _pick(plans: list[dict], task: str, parent_primary: float, margin: float,
           drift: dict, generation: str) -> dict:
+    margin = margin * _MARGIN_FACTOR
     retain = next(item for item in plans if item["ok"] and item["kind"] == "retain")
     candidates = [item for item in plans if item["ok"] and item["kind"] != "retain"]
     severity = drift.get("severity", "unknown")
@@ -167,7 +173,7 @@ def _pick(plans: list[dict], task: str, parent_primary: float, margin: float,
             history_pair = [item for item in candidates
                             if item["label"] == "pair-delta-history"]
             if (history_pair and history_pair[0]["ok"]
-                    and history_pair[0]["primary"] >= parent_primary - margin):
+                    and history_pair[0]["primary"] + 2.0 * margin >= parent_primary):
                 chosen = dict(history_pair[0])
                 chosen["selection_reason"] = (
                     "history-calibrated delayed-label rule survives high drift "
@@ -284,6 +290,81 @@ def run(scenario: str, rounds: int, tasks: list[str], generation: str) -> dict:
     return out
 
 
+def run_arm_report(scenario: str, tasks: list[str]) -> dict:
+    """Evaluate every catalog arm once on validation and hidden proxy."""
+    table = _specs()[scenario]
+    out = {}
+    for task_key in (tasks or sorted(table)):
+        spec = table.get(task_key)
+        if spec is None or (spec["task"] == "regression" and scenario == "external"):
+            continue
+        train_rows, val_rows, hidden_rows = _task_rows(spec)
+        checkpoint = spec["package"] / "checkpoint.npz"
+        model = ExtendedModel.from_checkpoint(checkpoint)
+        model.meta["_source_path"] = str(checkpoint)
+        classes = spec["classes"] or list(model.meta.get("classes") or [])
+        ctx = PlanContext.from_rows(task_key, model, train_rows, val_rows,
+                                    metric=spec["metric"], direction=spec["direction"],
+                                    margin=spec["margin"], classes=classes)
+        arms = _gen2_arms(task_key, spec["task"])
+        rows = []
+        for arm in arms:
+            proposal = ExperimentProposal(strategy=arm["strategy"], params=arm["params"],
+                                          postprocess=arm["postprocess"],
+                                          hypothesis=arm["hypothesis"])
+            plan = plan_for_proposal(ctx, proposal)
+            if not plan.get("ok"):
+                rows.append({"label": arm["label"], "ok": False,
+                             "error": plan.get("error", ""), "validation": None,
+                             "hidden": None})
+                continue
+            hidden = _score_hidden(spec, plan["model"], plan["postprocess"],
+                                   hidden_rows, classes)
+            rows.append({"label": arm["label"], "ok": True, "kind": plan["kind"],
+                         "validation": plan["primary"], "hidden": hidden,
+                         "postprocess": plan["postprocess"]})
+        parent_hidden = _score_hidden(spec, model, {"type": "none"}, hidden_rows, classes)
+        rows.sort(key=lambda row: (row["hidden"] if row["hidden"] is not None else 1e9),
+                  reverse=(spec["direction"] == "higher"))
+        out[task_key] = {"parent": {"validation": ctx.parent_primary,
+                                    "hidden": parent_hidden}, "arms": rows}
+        print("[arms] %s parent val=%.4f hidden=%.4f" % (
+            task_key, ctx.parent_primary, parent_hidden))
+        for row in rows:
+            print("  %-22s ok=%s val=%s hidden=%s" % (
+                row["label"], row["ok"],
+                ("%.4f" % row["validation"]) if row["validation"] is not None else "n/a",
+                ("%.4f" % row["hidden"]) if row["hidden"] is not None else "n/a"))
+    return out
+
+
+def run_sweep(scenario: str, rounds: int, deltas: list[float],
+              factors: list[float]) -> dict:
+    """Grid-sweep the historical pair delta and the margin multiplier on A."""
+    global _MARGIN_FACTOR
+    baseline_delta = plan_lib.PAIR_HISTORY_DELTA
+    rows = []
+    for delta in deltas:
+        for factor in factors:
+            plan_lib.PAIR_HISTORY_DELTA = float(delta)
+            _MARGIN_FACTOR = float(factor)
+            report = run(scenario, rounds, ["A"], "gen2")
+            entry = report["task_table"].get("A", {})
+            rows.append({"delta": delta, "margin_factor": factor,
+                         "hidden": entry.get("hidden_last"),
+                         "validation": entry.get("val_last"),
+                         "chosen": entry.get("chosen_last")})
+            print("[sweep] delta=%+.1f margin=%.1fx val=%.4f hidden=%.4f chosen=%s" % (
+                delta, factor, entry.get("val_last") or 0.0,
+                entry.get("hidden_last") or 0.0, entry.get("chosen_last")))
+    plan_lib.PAIR_HISTORY_DELTA = baseline_delta
+    _MARGIN_FACTOR = 1.0
+    valid = [row for row in rows if row["hidden"] is not None]
+    valid.sort(key=lambda row: row["hidden"], reverse=True)
+    return {"scenario": scenario, "rounds": rounds, "rows": rows,
+            "top": valid[:3]}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="RSI strategy lab (gen1 vs gen2)")
     parser.add_argument("--scenario", choices=["official", "external"], default="official")
@@ -292,10 +373,32 @@ def main(argv=None) -> int:
     parser.add_argument("--generation", choices=["gen1", "gen2"], default="gen1")
     parser.add_argument("--compare", action="store_true",
                         help="run both generations and write a comparison report")
+    parser.add_argument("--sweep", action="store_true",
+                        help="sweep pair-delta and margin factor on task A")
+    parser.add_argument("--arms-report", action="store_true",
+                        help="evaluate every catalog arm on validation + hidden proxy")
+    parser.add_argument("--deltas", default="-2,-3,-3.5,-4,-4.5")
+    parser.add_argument("--factors", default="1,2,3")
     parser.add_argument("--output", default="")
     args = parser.parse_args(argv)
     tasks = [item.strip().upper() for item in args.tasks.split(",") if item.strip()]
-    from rsi.platform import plans as _plans
+    if args.arms_report:
+        report = run_arm_report(args.scenario, tasks)
+        root = REPO / ".scratch" / "sim" / "lab" / args.scenario
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "arms_report.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+        return 0
+    if args.sweep:
+        deltas = [float(item) for item in args.deltas.split(",") if item.strip()]
+        factors = [float(item) for item in args.factors.split(",") if item.strip()]
+        report = run_sweep(args.scenario, args.rounds, deltas, factors)
+        root = REPO / ".scratch" / "sim" / "lab" / args.scenario
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "sweep.json").write_text(json.dumps(report, ensure_ascii=False, indent=1),
+                                        encoding="utf-8")
+        print(json.dumps(report["top"], ensure_ascii=False, indent=1))
+        return 0
     if args.compare:
         reports = {}
         for generation in ("gen1", "gen2"):

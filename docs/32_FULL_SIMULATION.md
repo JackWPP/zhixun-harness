@@ -183,3 +183,6 @@ Qwen3.8-27B 必须带 `enable_thinking: false`，否则 27B 会把 token 全耗�
    sha256 `25c264746e2c4e95c87cefb646083e53c4311db4b4b2606061783e8ba2eec92d`，
    `RSI_V2_CONTROLLER=kernel` 已写进镜像 env）、150 项 pytest 全绿；
 4. 平台 trial 需要用户确认后再上传/重跑（当前 3/10，剩 7 次）。
+
+
+后续实验报告：`docs/34_EXPERIMENT_REPORT.md`（假设检验、矩阵结果、异常鲁棒性）。

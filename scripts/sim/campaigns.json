@@ -1,0 +1,152 @@
+{
+  "C0": {
+    "description": "fake-provider smoke test for the campaign harness",
+    "scenario": "official",
+    "tasks": "A",
+    "rounds": 2,
+    "provider": "fake",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "arms": [
+      {
+        "tag": "policy-off",
+        "policy": "off"
+      },
+      {
+        "tag": "policy-on",
+        "policy": "on"
+      }
+    ],
+    "seeds": [
+      1
+    ]
+  },
+  "C1": {
+    "description": "A drift-policy ablation: pipeline route, 5 rounds, 2 seeds (kernel route validated separately)",
+    "scenario": "official",
+    "tasks": "A",
+    "rounds": 5,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "arms": [
+      {
+        "tag": "policy-off",
+        "policy": "off"
+      },
+      {
+        "tag": "policy-on",
+        "policy": "on"
+      }
+    ],
+    "seeds": [
+      1,
+      2
+    ]
+  },
+  "C2b": {
+    "description": "confirm top pair-delta candidates (pipeline, 5 rounds, 2 seeds)",
+    "scenario": "official",
+    "tasks": "A",
+    "rounds": 5,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "arms": [
+      {
+        "tag": "delta-3p75",
+        "policy": "on",
+        "pair_delta": -3.75
+      },
+      {
+        "tag": "delta-4p0",
+        "policy": "on",
+        "pair_delta": -4.0
+      }
+    ],
+    "seeds": [
+      1,
+      2
+    ]
+  },
+  "C3": {
+    "description": "B regression end-to-end check (pipeline, 5 rounds)",
+    "scenario": "official",
+    "tasks": "B",
+    "rounds": 5,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "arms": [
+      {
+        "tag": "policy-on",
+        "policy": "on"
+      }
+    ],
+    "seeds": [
+      1
+    ]
+  },
+  "C4": {
+    "description": "C regression end-to-end check (pipeline, 5 rounds)",
+    "scenario": "official",
+    "tasks": "C",
+    "rounds": 5,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "arms": [
+      {
+        "tag": "policy-on",
+        "policy": "on"
+      }
+    ],
+    "seeds": [
+      1
+    ]
+  },
+  "C5": {
+    "description": "external UCI gas generalisation (pipeline, 4 rounds)",
+    "scenario": "external",
+    "tasks": "A",
+    "rounds": 4,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "arms": [
+      {
+        "tag": "policy-off",
+        "policy": "off"
+      },
+      {
+        "tag": "policy-on",
+        "policy": "on"
+      }
+    ],
+    "seeds": [
+      1
+    ]
+  },
+  "C6": {
+    "description": "private-schema drift generalisation (pipeline, 3 rounds)",
+    "scenario": "schema",
+    "tasks": "A",
+    "rounds": 3,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "arms": [
+      {
+        "tag": "policy-off",
+        "policy": "off"
+      },
+      {
+        "tag": "policy-on",
+        "policy": "on"
+      }
+    ],
+    "seeds": [
+      1
+    ]
+  }
+}

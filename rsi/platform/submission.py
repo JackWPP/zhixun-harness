@@ -448,7 +448,15 @@ def _apply_drift_policy(ctx, chosen: dict) -> tuple[dict, str]:
     its public validation is *not materially worse* than the parent.  This is
     deliberately not a "best validation wins" rule: the platform trial showed
     that the public-validation optimum can invert on the hidden batch.
+
+    ``RSI_V2_DRIFT_POLICY=0`` turns the override off so controlled experiments
+    can compare the live policy against the deterministic pipeline choice.
     """
+    if os.environ.get("RSI_V2_DRIFT_POLICY", "1").strip().lower() in {
+            "0", "off", "false", "no"}:
+        print("train: drift_policy: disabled by RSI_V2_DRIFT_POLICY=0",
+              file=sys.stderr, flush=True)
+        return chosen, ""
     try:
         drift = _drift_brief(ctx)
         if str(drift.get("severity")) != "high" or ctx.task != "classification":
@@ -664,7 +672,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.11.0",
+        "version": "0.11.1",
         "task_key": task_key,
         "task": task,
         "metric": metric,
