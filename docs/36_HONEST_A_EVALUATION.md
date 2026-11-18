@@ -111,3 +111,13 @@ pair_hist raw .4250。batch-mode 全批统计可达 .69，但这是“整批可�
   `模型服务暂不可用，请稍后重试。`（PyTRiO 端点当时超时），由
   `.scratch/platform/certify_0.12.0.py` 自动重试 validate → 启动 trial → 轮询到终态。
 - 正式评测（formal，剩 2 次）**未触发**，需用户确认。
+
+## 7. 已落地但尚未接线的“可信选择”积木
+
+- `rsi/eval/stats.py`：block/cluster bootstrap CI、paired bootstrap、Holm 校正、覆盖率检查。
+- `rsi/eval/gate.py`：`evaluate_evidence(...)` 用“paired CI 下界 > 0 且 Δ ≥ max(margin, 1.5·SE)”
+  才 promote，支持 retain / abstain / rollback；`select_arm(...)` 在多个候选间做保守选择。
+- 7 个单测覆盖 promote / rollback / retain / abstain / 少块弃权 / 选择 / Holm。
+- 这些模块已进仓库与测试（162 passed），但**尚未接入 `submission._candidate_plans` 的选择路径**，
+  也未进入 0.12.0 镜像（0.12.0 镜像 = 本次认证所用）；下一步是把 gate 接到
+  “候选→选择”的唯一入口，并配合 blocked validation（最新揭示批不得同时用于拟合与选择）。
