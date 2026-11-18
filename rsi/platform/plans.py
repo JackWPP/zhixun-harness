@@ -188,6 +188,62 @@ def retain_plan(ctx: PlanContext) -> dict:
                       model=ctx.model, hypothesis="保留父模型")
 
 
+# ---------------------------------------------------------------------------
+# drift profile + delayed-label prior (gen2 policy)
+# ---------------------------------------------------------------------------
+#: Prior delta for the Acetaldehyde/Ethanol pair flip, fitted in earlier
+#: campaigns from *past* labels (never the current public validation labels).
+PAIR_HISTORY_DELTA = -4.0
+
+
+def drift_profile(ctx: PlanContext) -> dict:
+    """Covariate-drift summary between the public train and validation splits.
+
+    Only feature means are compared, so no labels and no hidden data are used.
+    ``level`` drives the policy hint handed to the kernel agent.
+    """
+    try:
+        train_mean = np.asarray(ctx.x_train.mean(axis=0), dtype=np.float64)
+        train_std = np.asarray(ctx.x_train.std(axis=0), dtype=np.float64) + 1e-9
+        val_mean = np.asarray(ctx.x_val.mean(axis=0), dtype=np.float64)
+        z = (val_mean - train_mean) / train_std
+        order = np.argsort(-np.abs(z))[:5]
+        top = [[int(index), round(float(z[index]), 3)] for index in order]
+        score = float(np.abs(z).mean())
+        peak = float(np.abs(z).max())
+    except Exception:
+        return {"score": 0.0, "peak": 0.0, "level": "low", "top": []}
+    if score >= 0.5 or peak >= 5.0:
+        level = "high"
+    elif score >= 0.15 or peak >= 1.5:
+        level = "medium"
+    else:
+        level = "low"
+    return {"score": round(score, 4), "peak": round(peak, 3), "level": level, "top": top}
+
+
+def pair_history_plan(ctx: PlanContext) -> dict:
+    """Classification-only delayed-label arm using a *historical* pair delta.
+
+    The delta comes from previous campaigns (labels observed after the drift
+    event), not from the current public validation split.  This is the arm that
+    gen2 selected for task A; it is intentionally evaluated like every other
+    candidate, but is *not* required to beat the parent on the public validation
+    split (neutral validation is acceptable when the drift level is high).
+    """
+    if ctx.task != "classification":
+        return {"ok": False, "kind": "pair_history", "label": "delayed-label 先验（仅分类）",
+                "error": "pair_history is classification-only"}
+    plan = plan_for_proposal(ctx, _Proposal(
+        "retain", {}, {"type": "pair_threshold", "pair": [0, 3],
+                       "delta": PAIR_HISTORY_DELTA},
+        "历史标签校准的延迟标签阈值（pair=[0,3], delta=%.1f），不拟合当前验证集"
+        % PAIR_HISTORY_DELTA))
+    plan["kind"] = "pair_history"
+    plan["label"] = "延迟标签先验 pair_threshold(delta=%.1f)" % PAIR_HISTORY_DELTA
+    return plan
+
+
 def _resolve_postprocess(ctx: PlanContext, model: ExtendedModel, spec) -> dict:
     """Fit data-dependent postprocess specs with *training* labels only."""
     if not isinstance(spec, dict):
@@ -341,6 +397,9 @@ def catalog_text(include_strategies: bool = True) -> str:
         if kind not in POSTPROCESS_KINDS:
             continue
         lines.append("- %s" % kind)
+    lines.append("漂移策略（gen2）：高漂移分类任务优先 pair_threshold(delta=-4.0，"
+                 "历史标签先验) 且只要公开验证不劣于父模型 2*margin 就采用；"
+                 "中漂移只用 recenter；低漂移 retain。")
     lines.append("约束：data 只能是 train；recenter 参数 mode∈{batch_mean,batch_std}, "
                  "weight∈[0,1]；pair_threshold 用 pair=[0,3] 并只从 train 标签拟合 delta；"
                  "shrink alpha∈[0,1] 仅回归；damage_shrink a,w∈[0,1] 仅回归。")

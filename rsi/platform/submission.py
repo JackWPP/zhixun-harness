@@ -409,6 +409,13 @@ def _kernel_brief(task_key: str, model: ExtendedModel, ctx, history: list[dict],
         "stats": stats_text,
         "history": list(history or []),
         "drift": drift,
+        "policy": {
+            "drift_level": drift.get("severity"),
+            "prefer_delayed_label_on_high_drift": True,
+            "note": ("高漂移分类任务：优先 pair_threshold(delta=%.1f) 且只要公开验证不劣于"
+                     "父模型 2*margin 就采用；中漂移只用 recenter；低漂移 retain。"
+                     % _plans.PAIR_HISTORY_DELTA),
+        },
         "catalog": _plans.catalog_text(),
         "skills": skills_text,
         "knowledge": knowledge_text,
@@ -433,6 +440,34 @@ def _choose_kernel_plan(kernel_round, ctx, direction: str) -> dict:
         if plan is not None and plan.get("ok"):
             return plan
     return _plans.retain_plan(ctx)
+
+def _apply_drift_policy(ctx, chosen: dict) -> tuple[dict, str]:
+    """Gen2 drift-aware override for the delayed-label arm.
+
+    On high covariate drift (task A) the historical pair delta is preferred when
+    its public validation is *not materially worse* than the parent.  This is
+    deliberately not a "best validation wins" rule: the platform trial showed
+    that the public-validation optimum can invert on the hidden batch.
+    """
+    try:
+        drift = _drift_brief(ctx)
+        if str(drift.get("severity")) != "high" or ctx.task != "classification":
+            return chosen, ""
+        arm = _plans.pair_history_plan(ctx)
+        if not arm.get("ok"):
+            return chosen, ""
+        margin = float(getattr(ctx, "margin", 0.0) or 0.0)
+        if float(arm["primary"]) + 2.0 * margin < float(ctx.parent_primary):
+            return chosen, ""
+        if str(chosen.get("kind")) == "pair_history":
+            return chosen, ""
+        return arm, "drift_policy: high drift %.2f, pair_history val=%.4f parent=%.4f" % (
+            float(drift.get("score") or 0.0), float(arm["primary"]),
+            float(ctx.parent_primary))
+    except Exception as exc:
+        print("train: drift policy skipped: %s: %s" % (type(exc).__name__, exc),
+              file=sys.stderr, flush=True)
+        return chosen, ""
 
 
 def _trim_config(payload: dict, limit: int = 60_000) -> dict:
@@ -597,6 +632,22 @@ def train(rnd):
         controller_note = "pipeline"
         choice_note = "pipeline 选择 %s" % chosen["kind"]
 
+    policy_note = ""
+    try:
+        policy_ctx = kernel_ctx
+        if policy_ctx is None:
+            policy_ctx = _plans.PlanContext.from_rows(
+                task_key, model, train_rows, validation_rows,
+                metric=metric, direction=direction,
+                margin=float(defaults["margin"]),
+                classes=list(model.meta.get("classes") or []))
+        chosen, policy_note = _apply_drift_policy(policy_ctx, chosen)
+        if policy_note:
+            print("train: %s" % policy_note, file=sys.stderr, flush=True)
+    except Exception as exc:
+        print("train: drift policy unavailable: %s: %s" % (type(exc).__name__, exc),
+              file=sys.stderr, flush=True)
+
     work = _work_dir()
     candidate_dir = Path(tempfile.mkdtemp(prefix="candidate-", dir=work))
     if kernel_state is not None and kernel_state.dir:
@@ -623,6 +674,7 @@ def train(rnd):
         "parent_checkpoint_sha256": rnd.parent.checkpoint_sha256,
         "chosen": chosen.get("kind"),
         "controller": controller_note,
+        "policy": policy_note[:200],
     }
     (candidate_dir / META_NAME).write_text(json.dumps(meta, sort_keys=True), encoding="utf-8")
     state = _state_payload(rnd, candidates, chosen,
@@ -637,6 +689,7 @@ def train(rnd):
         "candidates": candidates[:8],
         "chosen": chosen.get("kind"),
         "postprocess": postprocess,
+        "policy": policy_note[:200],
         "decision": {key: decision_note.get(key) for key in
                      ("decision", "experiment_id", "reason", "source", "delta")},
         "kernel": None if kernel_round is None else {

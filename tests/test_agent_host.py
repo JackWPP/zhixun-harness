@@ -176,3 +176,48 @@ def test_gateway_runtime_counts_retries_and_usage():
     assert runtime.call_ids == ["call-ok"]
     assert runtime.budget.used_input == 100
     assert runtime.budget.used_output == 20
+
+
+def plan_context_full():
+    from rsi.platform.plans import PlanContext
+
+    model, train, _ = load_task_a(limit_train=100000, limit_val=0)
+    validation = read_rows(TASK_A / "public" / "validation.jsonl", 100000)
+    return PlanContext.from_rows("A", model, train, validation, metric="macro_f1",
+                                 direction="higher", margin=0.004,
+                                 classes=list(model.meta.get("classes") or []))
+
+
+def test_drift_profile_levels_and_pair_history_arm():
+    from rsi.platform.plans import PAIR_HISTORY_DELTA, drift_profile, pair_history_plan
+
+    ctx = plan_context_full()
+    profile = drift_profile(ctx)
+    assert profile["level"] == "high"
+    arm = pair_history_plan(ctx)
+    assert arm["ok"] is True
+    assert arm["kind"] == "pair_history"
+    assert abs(float(arm["postprocess"]["delta"]) - PAIR_HISTORY_DELTA) < 1e-12
+    # The historical delta is a prior: it is *not* re-fitted on this validation.
+    assert arm["postprocess"]["type"] == "pair_threshold"
+
+
+def test_apply_drift_policy_prefers_history_arm_on_high_drift():
+    from rsi.platform import submission
+    from rsi.platform.plans import retain_plan
+
+    ctx = plan_context_full()
+    chosen, note = submission._apply_drift_policy(ctx, retain_plan(ctx))
+    assert chosen["kind"] == "pair_history"
+    assert note.startswith("drift_policy:")
+    # A recenter plan is also overridden while the historical arm passes the
+    # "not materially worse than parent" guard.
+    from rsi.executor import ExperimentProposal
+    from rsi.platform.plans import plan_for_proposal
+
+    recenter = plan_for_proposal(ctx, ExperimentProposal(
+        strategy="retain", params={},
+        postprocess={"type": "recenter", "mode": "batch_std", "weight": 0.2}))
+    chosen2, note2 = submission._apply_drift_policy(ctx, recenter)
+    assert chosen2["kind"] == "pair_history"
+    assert note2.startswith("drift_policy:")

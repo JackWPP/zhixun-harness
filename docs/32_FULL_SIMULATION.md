@@ -100,11 +100,40 @@ B/C 两代相同，说明规则没有在所有任务上乱动——这也是我�
 .venv/bin/python scripts/sim/strategy_lab.py --scenario official --rounds 3 --compare
 ```
 
+### 4.5 平台问题复现与漂移策略接入（已生效）
+
+平台 trial #3（0.10.4 镜像）暴露的问题：公开验证上选出的后处理在隐藏批上变差
+（A 选 `pair_threshold` delta=-4.3955，平台隐藏 macro-F1 仅 0.4768；B 选 shrink 后隐藏 RMSE 735.07）。
+本地模拟用同一 host 契约复现了「retain 不进化」基线，然后把 gen2 规则接回真实提交路径
+（`rsi/platform/submission.py:_apply_drift_policy`）：
+
+- 高漂移 + 分类：优先 `pair_threshold(delta=-4.0)`（历史先验，不重拟合当前验证集），
+  只要其公开验证不劣于父模型 2*margin 就采用；
+- 中漂移：只用 recenter；低漂移：retain；
+- 规则同时写进 kernel brief 与 `catalog_text()`，agent 能看到这条策略提示。
+
+| 场景 | 轮数 | 基线（retain） | 加漂移策略 | 变化 |
+| --- | --- | --- | --- | --- |
+| S1 官方 A | 3 | hidden 0.3330 | **0.4802** | +44% |
+| S1 官方 A | 10（平台同构） | hidden 0.3330 | **0.4802** | +44% |
+| S3 私有 schema A | 2 | hidden 0.1663 | **0.3190** | +92% |
+| S2 外部 A | 3 | 0.4554 | 0.4554 | 持平（未触发） |
+| S1 官方 B/C | 10 | 504.43 / 42.45 | 504.43 / 42.45 | 持平（无漂移证据不乱动） |
+
+平台 trial #3 的 A 隐藏分是 0.4768，与本模拟 10 轮 A 的 0.4802 同一量级；
+说明模拟能复现平台现象，而策略修复把「不进化」的 0.3330 拉回到平台水平。
+**诚实边界**：模拟隐藏代理来自公开 validation 留出段，不是平台真实隐藏流，
+所以不能声称线上一定提升；要验证必须再跑一次平台 trial（需用户确认）。
+
 ## 5. 复现命令
 
 ```bash
-# 官方 9 轮（真实 provider + kernel 路由 + SwanLab offline）
+# 官方 9 轮（真实 provider + kernel 路由 + SwanLab online）
 .venv/bin/python scripts/sim/full_env.py --scenario official --tasks A,B,C --rounds 3 \
+    --provider real --controller kernel --swanlab auto
+
+# 平台同构 30 轮（3 任务 × 10 轮）
+.venv/bin/python scripts/sim/full_env.py --scenario official --tasks A,B,C --rounds 10 \
     --provider real --controller kernel --swanlab auto
 
 # 外部数据 S2
@@ -127,10 +156,17 @@ Qwen3.8-27B 必须带 `enable_thinking: false`，否则 27B 会把 token 全耗�
 
 - `--swanlab auto`：有 `SWANLAB_API_KEY` 时 `mode=online`，否则 `mode=offline`；
 - 记录内容：每任务每轮的 `validation_primary` / `hidden_proxy_primary` / `model_calls` / `prompt_tokens` / `completion_tokens` / `wall_s`；
-- 当前机器没有 SwanLab API key，因此本轮记录为 offline（`.scratch/sim/runs/*/swanlab/`），
-  三个场景各有独立 run（official `run-*`、external、schema）；
-  有 key 后可用 `swanlab sync <run_dir>` 同步，或设置 `SWANLAB_API_KEY` 重跑；
-- 项目名默认 `zhixun-rsi`，可用 `SWANLAB_PROJECT` 覆盖。
+- 项目：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi>（公开项目 `zhixun-rsi`）；
+- API key 只存 `.scratch/swanlab.env`（0600，gitignore，不进入镜像）；
+- 已上传的 run：
+  - 基线 9 轮：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi/runs/q6803l60>
+  - 基线外部 S2：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi/runs/j6705h90>
+  - 基线 schema S3：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi/runs/7xxhxw2y>
+  - 漂移策略 9 轮：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi/runs/emdfnxxo>
+  - 漂移策略 30 轮（平台同构）：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi/runs/ue3wrmap>
+  - 漂移策略外部 S2：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi/runs/0phkv73l>
+  - 漂移策略 schema S3：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi/runs/nvl19xzu>
+- 记录内容：每任务每轮的 `validation_primary` / `hidden_proxy_primary` / `model_calls` / token 用量 / wall_s。
 
 ## 7. 边界与诚实说明
 
@@ -141,7 +177,7 @@ Qwen3.8-27B 必须带 `enable_thinking: false`，否则 27B 会把 token 全耗�
 
 ## 8. 下一步
 
-1. 把 gen2 规则接回 `submission.py` 的 kernel 目录与 `plans.catalog_text()`，让平台轮次也能用上「历史校准 → 漂移感知选择」；
-2. 用真实 SwanLab key 重跑 9 轮并公开 run；
-3. 跑 `pytest -m "not integration"` 与 emulator A/B/C 10 轮，确认 0.11.0 镜像；
-4. 平台 trial 需要用户确认后再上传/重跑。
+1. ✅ gen2 规则已接回 `submission.py` / `plans.catalog_text()`，并在三个场景中实测；
+2. ✅ 真实 SwanLab key 已接入，7 个 run 已公开上传；
+3. 待办：升版本 0.11.0、重建并 verify 镜像、跑 `pytest -m "not integration"` 与 emulator A/B/C 10 轮；
+4. 平台 trial 需要用户确认后再上传/重跑（当前 3/10，剩 7 次）。
