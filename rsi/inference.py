@@ -197,6 +197,20 @@ def resolve_postprocess(spec, model, calibration=None, train=None):
             raise ValueError("pair_threshold pair must be two class indices") from exc
         if left == right or not (0 <= left < len(classes)) or not (0 <= right < len(classes)):
             raise ValueError("pair_threshold pair must be two distinct valid class indices")
+        if spec.get("delta") is None and calibration is not None:
+            # Delayed-label reconciliation: fit only on the calibration split
+            # (historical labelled drift), never on selection/report labels.
+            try:
+                fitted = fit_pair_threshold(
+                    np.asarray(calibration.x, dtype=np.float64),
+                    np.asarray(calibration.y, dtype=np.float64),
+                    model, pair=(left, right))
+            except Exception:
+                fitted = None
+            if fitted is not None:
+                spec = dict(spec)
+                spec["delta"] = fitted["delta"]
+                spec["history_rows"] = int(fitted.get("rows", 0))
         if spec.get("delta") is None:
             raise ValueError("pair_threshold requires a fitted delta")
         delta = float(spec["delta"])

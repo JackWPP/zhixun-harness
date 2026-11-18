@@ -48,6 +48,8 @@ from rsi.inference import (
 )
 from rsi.metrics import from_predictions, primary as primary_metric
 from rsi.model import ExtendedModel
+from rsi.platform import agent_host as _agent_host
+from rsi.platform import plans as _plans
 
 TASKS = ("classification", "regression")
 
@@ -301,16 +303,143 @@ def _change_summary(chosen: dict) -> str:
     return "仅推理期后处理（%s），未改 checkpoint" % kind
 
 
-def _state_payload(rnd, plans, chosen, note: str) -> dict:
+def _state_payload(rnd, candidates, chosen, note: str) -> dict:
+    compact = []
+    for candidate in candidates or []:
+        primary = candidate.get("primary")
+        compact.append({"kind": candidate.get("kind"),
+                        "primary": float(primary) if primary is not None else None})
     return {
         "round_index": int(rnd.round_index),
         "dataset_key": rnd.dataset_key,
-        "chosen": chosen["kind"],
-        "postprocess": chosen["postprocess"],
-        "candidates": [{"kind": plan["kind"], "primary": float(plan["primary"])} for plan in plans],
+        "chosen": chosen.get("kind"),
+        "postprocess": chosen.get("postprocess"),
+        "candidates": compact,
         "parent_checkpoint_sha256": rnd.parent.checkpoint_sha256,
         "note": note,
     }
+
+
+# ---------------------------------------------------------------------------
+# controller routing: deterministic pipeline vs autonomous PI-agent kernel
+# ---------------------------------------------------------------------------
+def _controller_mode() -> str:
+    """``pipeline`` by default; the packaged image enables the kernel."""
+    explicit = os.environ.get("RSI_V2_CONTROLLER", "").strip().lower()
+    if explicit in ("pipeline", "kernel"):
+        return explicit
+    default = os.environ.get("RSI_V2_KERNEL_DEFAULT", "0").strip()
+    return "kernel" if default == "1" else "pipeline"
+
+
+def _drift_brief(ctx) -> dict:
+    """Cheap train-vs-validation covariate summary (no labels, no hidden data)."""
+    try:
+        train_mean = np.asarray(ctx.x_train.mean(axis=0), dtype=np.float64)
+        train_std = np.asarray(ctx.x_train.std(axis=0), dtype=np.float64) + 1e-9
+        val_mean = np.asarray(ctx.x_val.mean(axis=0), dtype=np.float64)
+        z = (val_mean - train_mean) / train_std
+        order = np.argsort(-np.abs(z))[:5]
+        top = {str(int(index)): round(float(z[index]), 3) for index in order}
+        peak = float(np.max(np.abs(z))) if len(z) else 0.0
+        severity = "high" if peak >= 2.0 else ("medium" if peak >= 1.0 else "low")
+        return {
+            "severity": severity,
+            "score": round(peak, 4),
+            "drift_type": "covariate_shift",
+            "feature_shift": top,
+            "max_feature_shift": {"index": int(order[0]) if len(order) else -1,
+                                  "z": round(peak, 3)},
+            "evidence": {"train_rows": int(len(ctx.x_train)),
+                         "val_rows": int(len(ctx.x_val))},
+            "causes": ["公开验证投影与 train 投影的特征分布差异（无标签）"],
+            "knowledge_hints": [],
+        }
+    except Exception:
+        return {"severity": "unknown", "score": 0.0, "drift_type": "unknown"}
+
+
+def _kernel_brief(task_key: str, model: ExtendedModel, ctx, history: list[dict],
+                  round_index: int, rounds_total: int, state) -> dict:
+    from rsi.knowledge import drift_context_for_brief
+
+    drift = _drift_brief(ctx)
+    memory_text = ""
+    lessons_text = ""
+    stats_text = ""
+    skills_text = ""
+    try:
+        if state is not None and state.memory is not None:
+            memory_text = state.memory.snapshot(task_key)
+    except Exception:
+        memory_text = ""
+    try:
+        if state is not None and state.recall is not None:
+            lessons_text = state.recall.lessons_text(task_key)
+            stats_text = state.recall.stats_text(task_key)
+    except Exception:
+        lessons_text, stats_text = "", ""
+    try:
+        if state is not None and state.skills is not None:
+            skills_text = state.skills.index_text()
+    except Exception:
+        skills_text = ""
+    knowledge_text = ""
+    try:
+        knowledge_text = drift_context_for_brief(drift, k=3)
+    except Exception:
+        knowledge_text = ""
+    return {
+        "task": {"key": task_key, "name": task_key, "name_en": task_key,
+                 "task": ctx.task, "primary_metric": ctx.metric,
+                 "direction": ctx.direction,
+                 "baseline_primary": float(ctx.parent_primary),
+                 "margin": float(TASK_DEFAULTS[task_key]["margin"])},
+        "goal": {"goal": "在漂移数据流上维持并提升 %s 的 %s" % (task_key, ctx.metric),
+                 "status": "running", "turns_used": 0,
+                 "max_turns": int(os.environ.get("RSI_V2_MAX_TURNS", "6") or 6)},
+        "round_index": int(round_index),
+        "rounds_total": int(rounds_total),
+        "metrics": {"parent": {"primary": float(ctx.parent_primary),
+                               "report": dict(ctx.parent_values or {})}},
+        "budget": {"token_cap": int(os.environ.get("RSI_V2_TOKEN_CAP", "0") or 0),
+                   "calls": 0, "note": "platform budget is enforced by the host"},
+        "memory": memory_text,
+        "lessons": lessons_text,
+        "stats": stats_text,
+        "history": list(history or []),
+        "drift": drift,
+        "catalog": _plans.catalog_text(),
+        "skills": skills_text,
+        "knowledge": knowledge_text,
+    }
+
+
+def _open_agent_state(work: Path, rnd):
+    try:
+        return _agent_host.open_state(work, rnd)
+    except Exception as exc:
+        print("train: agent state unavailable: %s: %s" % (type(exc).__name__, exc),
+              file=sys.stderr, flush=True)
+        return _agent_host.AgentState()
+
+
+def _choose_kernel_plan(kernel_round, ctx, direction: str) -> dict:
+    """Map the kernel decision onto a concrete, already-evaluated plan."""
+    decision = kernel_round.decision or {}
+    if str(decision.get("decision")) == "promote":
+        host = kernel_round.host
+        plan = host.plan_for(decision.get("experiment_id")) if host is not None else None
+        if plan is not None and plan.get("ok"):
+            return plan
+    return _plans.retain_plan(ctx)
+
+
+def _trim_config(payload: dict, limit: int = 60_000) -> dict:
+    text = json.dumps(payload, ensure_ascii=False, default=str)
+    if len(text) <= limit:
+        return payload
+    return {"truncated": True, "preview": text[:limit - 40] + "...(truncated)"}
 
 
 def _gateway_model(rnd, messages, max_tokens: int):
@@ -385,50 +514,106 @@ def train(rnd):
     if not train_rows or not validation_rows:
         raise ValueError("empty public projection")
 
-    plans = _candidate_plans(task_key, model, train_rows, validation_rows)
     history = []
     try:
         history = rnd.history()
     except Exception:  # host may legitimately return no history
         history = []
-    table = _format_plan_table(plans, metric)
-    prompt = (
-        "本轮是 %s 数据集第 %d 轮，指标 %s（方向 %s）。父模型在公开验证集上的 %s 已给出，"
-        "候选如下（数字为本机公开验证评估，平台会独立复测）：\n%s\n"
-        "请只用一行 JSON 回复：{\"choice\": <候选编号>, \"hypothesis\": \"...\", \"reason\": \"...\"}。"
-        "只能选改进父模型的候选；不确定时选 0。"
-    ) % (task_key, int(rnd.round_index), metric, direction, table, table)
-    receipt = _gateway_model(
-        rnd,
-        [{"role": "user", "content": prompt[:6000]}],
-        max_tokens=min(256, int(rnd.max_output_tokens)),
-    )
-    llm_choice = _parse_choice(receipt.text, len(plans))
-    fallback = _choose(plans, direction, defaults["margin"])
-    chosen = plans[fallback]
-    if llm_choice is not None and llm_choice != fallback:
-        candidate = plans[llm_choice]
-        parent_primary = float(plans[0]["primary"])
-        is_better = (candidate["primary"] > parent_primary + defaults["margin"]
-                     if direction == "higher"
-                     else candidate["primary"] < parent_primary - defaults["margin"])
-        if is_better:
-            chosen = candidate
+
+    # -- route: deterministic pipeline (default) or autonomous PI-agent kernel
+    controller = _controller_mode()
+    kernel_round = None
+    kernel_ctx = None
+    kernel_state = None
+    if controller == "kernel":
+        try:
+            kernel_ctx = _plans.PlanContext.from_rows(
+                task_key, model, train_rows, validation_rows,
+                metric=metric, direction=direction,
+                margin=float(defaults["margin"]),
+                classes=list(model.meta.get("classes") or []))
+            kernel_state = _open_agent_state(_work_dir(), rnd)
+            brief = _kernel_brief(task_key, model, kernel_ctx, history,
+                                  int(rnd.round_index),
+                                  int(getattr(rnd, "rounds_total", 10) or 10),
+                                  kernel_state)
+            kernel_round = _agent_host.run_kernel_round(
+                rnd, kernel_ctx, brief, kernel_state,
+                run_id="%s-r%d" % (task_key, int(rnd.round_index)),
+                round_index=int(rnd.round_index),
+                experiments_total=len(history),
+                max_turns=int(os.environ.get("RSI_V2_MAX_TURNS", "6") or 6))
+            print("train: kernel round calls=%d decision=%s" % (
+                kernel_round.calls,
+                (kernel_round.decision or {}).get("decision")),
+                file=sys.stderr, flush=True)
+        except Exception as exc:
+            print("train: kernel route failed, falling back to pipeline: %s: %s" % (
+                type(exc).__name__, exc), file=sys.stderr, flush=True)
+            kernel_round, kernel_ctx, kernel_state = None, None, None
+
+    plans = None
+    receipt = None
+    llm_choice = None
+    fallback_choice = None
+    if kernel_round is not None and kernel_round.calls > 0 and kernel_ctx is not None:
+        chosen = _choose_kernel_plan(kernel_round, kernel_ctx, direction)
+        candidates = list(kernel_round.host.results) if kernel_round.host else []
+        call_ids = list(kernel_round.call_ids)
+        decision_note = dict(kernel_round.decision or {})
+        controller_note = "kernel"
+        choice_note = "内核决策 %s" % decision_note.get("decision", "retain")
+    else:
+        plans = _candidate_plans(task_key, model, train_rows, validation_rows)
+        table = _format_plan_table(plans, metric)
+        prompt = (
+            "本轮是 %s 数据集第 %d 轮，指标 %s（方向 %s）。父模型在公开验证集上的 %s 已给出，"
+            "候选如下（数字为本机公开验证评估，平台会独立复测）：\n%s\n"
+            "请只用一行 JSON 回复：{\"choice\": <候选编号>, \"hypothesis\": \"...\", \"reason\": \"...\"}。"
+            "只能选改进父模型的候选；不确定时选 0。"
+        ) % (task_key, int(rnd.round_index), metric, direction, table, table)
+        receipt = _gateway_model(
+            rnd,
+            [{"role": "user", "content": prompt[:6000]}],
+            max_tokens=min(256, int(rnd.max_output_tokens)),
+        )
+        llm_choice = _parse_choice(receipt.text, len(plans))
+        fallback_choice = _choose(plans, direction, defaults["margin"])
+        chosen = plans[fallback_choice]
+        if llm_choice is not None and llm_choice != fallback_choice:
+            candidate = plans[llm_choice]
+            parent_primary = float(plans[0]["primary"])
+            is_better = (candidate["primary"] > parent_primary + defaults["margin"]
+                         if direction == "higher"
+                         else candidate["primary"] < parent_primary - defaults["margin"])
+            if is_better:
+                chosen = candidate
+        candidates = [{"kind": plan["kind"], "primary": float(plan["primary"])}
+                      for plan in plans]
+        call_ids = [receipt.call_id]
+        decision_note = {"decision": "retain" if chosen is plans[0] else "promote",
+                         "source": "pipeline",
+                         "reason": "确定性 margin 门控 + 模型选择"}
+        controller_note = "pipeline"
+        choice_note = "pipeline 选择 %s" % chosen["kind"]
 
     work = _work_dir()
     candidate_dir = Path(tempfile.mkdtemp(prefix="candidate-", dir=work))
-    state_dir = _new_state_dir(work, rnd)
+    if kernel_state is not None and kernel_state.dir:
+        state_dir = Path(kernel_state.dir)
+    else:
+        state_dir = _new_state_dir(work, rnd)
     checkpoint_model = chosen.get("model") or model
-    if chosen["kind"] in ("continue_train",):
+    if chosen.get("kind") == "continue_train":
         checkpoint_model.save(candidate_dir / CHECKPOINT_NAME)
     else:
         shutil.copyfile(parent_path, candidate_dir / CHECKPOINT_NAME)
-    postprocess = chosen["postprocess"]
+    postprocess = chosen.get("postprocess") or {"type": "none"}
     if postprocess == "FIT_DAMAGE":
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.10.4",
+        "version": "0.11.0",
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -436,21 +621,43 @@ def train(rnd):
         "postprocess": postprocess,
         "round_index": int(rnd.round_index),
         "parent_checkpoint_sha256": rnd.parent.checkpoint_sha256,
-        "chosen": chosen["kind"],
+        "chosen": chosen.get("kind"),
+        "controller": controller_note,
     }
     (candidate_dir / META_NAME).write_text(json.dumps(meta, sort_keys=True), encoding="utf-8")
-    state = _state_payload(rnd, plans, chosen, receipt.text[:1200])
+    state = _state_payload(rnd, candidates, chosen,
+                           (decision_note.get("reason") or choice_note or "")[:1200])
     (state_dir / "state.json").write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+    if kernel_round is not None:
+        (state_dir / "kernel_round.json").write_text(
+            json.dumps(_trim_config(kernel_round.to_dict()), ensure_ascii=False, default=str),
+            encoding="utf-8")
+    configuration = _trim_config({
+        "controller": controller_note,
+        "candidates": candidates[:8],
+        "chosen": chosen.get("kind"),
+        "postprocess": postprocess,
+        "decision": {key: decision_note.get(key) for key in
+                     ("decision", "experiment_id", "reason", "source", "delta")},
+        "kernel": None if kernel_round is None else {
+            "calls": kernel_round.calls,
+            "call_ids": call_ids[:8],
+            "experiments": len(candidates),
+            "error": kernel_round.error,
+            "trace": kernel_round.trace[-12:],
+        },
+        "llm_choice": llm_choice,
+        "fallback_choice": fallback_choice,
+    })
+    label = str(chosen.get("label") or chosen.get("kind") or "retain")
+    primary_value = chosen.get("primary")
+    primary_text = ("%.6f" % float(primary_value)) if primary_value is not None else "n/a"
 
     submitted = rnd.submit_candidate(
         candidate_dir,
-        hypothesis="本轮候选：%s" % chosen["label"],
+        hypothesis="本轮候选：%s" % label,
         change_summary=_change_summary(chosen),
-        configuration={"candidates": [{"kind": plan["kind"], "primary": float(plan["primary"])}
-                                      for plan in plans],
-                       "chosen": chosen["kind"],
-                       "llm_choice": llm_choice,
-                       "fallback_choice": fallback},
+        configuration=configuration,
         seed=20261117,
         checkpoint_paths=[CHECKPOINT_NAME],
         code_paths=[META_NAME],
@@ -459,14 +666,15 @@ def train(rnd):
     rnd.save_state(state_dir)
     rnd.finish(
         selected_artifact_id=submitted["artifact_id"],
-        hypothesis="本轮候选：%s" % chosen["label"],
+        hypothesis="本轮候选：%s" % label,
         change_summary=_change_summary(chosen),
-        reason="依公开验证指标与模型网关选择 %s（%s=%.6f）；模型调用 %s。" % (
-            chosen["kind"], metric, float(chosen["primary"]), receipt.call_id),
-        configuration={"chosen": chosen["kind"], "postprocess": postprocess},
+        reason="%s（%s）：决定 %s，%s=%s；宿主网关调用 %d 次。" % (
+            controller_note, choice_note, chosen.get("kind"), metric, primary_text,
+            len(call_ids)),
+        configuration=configuration,
         seed=20261117,
         history_ids=[item["id"] for item in history],
-        model_call_ids=[receipt.call_id],
+        model_call_ids=call_ids,
     )
 
 

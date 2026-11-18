@@ -313,6 +313,10 @@ POSTPROCESS_TYPES = {
         "w": {"type": "float", "min": 0.0, "max": 1.0},
         "fit": {"type": "string", "choices": ["train"]},
     },
+    "pair_threshold": {
+        "description": "Delayed-label pair threshold: flip the decision between two easily-confused classes only when the calibration-set labels justify it. Classification only; checkpoint unchanged.",
+        "pair": {"type": "list", "min": 2, "max": 2},
+    },
 }
 
 

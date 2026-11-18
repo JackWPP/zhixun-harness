@@ -99,6 +99,22 @@ def validate_postprocess(postprocess, task):
         if not 0.0 <= a <= 1.0 or not 0.0 <= w <= 1.0:
             raise InvalidExperiment("damage_shrink a/w must be within [0, 1]")
         return {"type": "damage_shrink", "a": a, "w": w, "fit": "train"}
+    if kind == "pair_threshold":
+        if task != "classification":
+            raise InvalidExperiment("pair_threshold is only meaningful for classification")
+        pair = spec.get("pair", [0, 3])
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            raise InvalidExperiment("pair_threshold pair must contain two class indices")
+        left, right = int(pair[0]), int(pair[1])
+        if left == right or left < 0 or right < 0:
+            raise InvalidExperiment("pair_threshold pair must be two distinct indices")
+        clean = {"type": "pair_threshold", "pair": [left, right]}
+        if spec.get("delta") is not None:
+            delta = float(spec["delta"])
+            if delta != delta or delta in (float("inf"), float("-inf")):
+                raise InvalidExperiment("pair_threshold delta must be finite")
+            clean["delta"] = delta
+        return clean
     raise InvalidExperiment(f"unsupported postprocess: {kind}")
 
 
