@@ -96,3 +96,18 @@ pair_hist raw .4250。batch-mode 全批统计可达 .69，但这是“整批可�
 .venv/bin/python scripts/sim/capacity_lab.py --seeds 3
 .venv/bin/python scripts/research/probe_a_stream.py
 ```
+
+## 6. 0.12.0 镜像与合规认证
+
+- 镜像：`.scratch/image/harness.tar`，**380,293,120 B**，sha256
+  `90e8b067d01b19fb0e5bd96add79e8e09f58f479e85b65c5a800617744e0a4de`；
+  `scripts/verify_image.sh` PASS（selftest/workspace_report 与 0.11.x 一致）。
+- 本轮新增内容进镜像：`rsi/eval/metrics.py`（固定类口径）、`rsi/capacity.py`（实验性，不启用）、
+  `rsi/platform/submission.py` 的累积标签续训候选与 `RSI_V2_ADAPT_ARM` / `RSI_V2_SEED` 门控、
+  `rsi/inference.py` 的因果后处理流（recenter/pair）、`scripts/sim/*` 实验脚本。
+- 平台：image archive `23a8fef463d7b076f00435e744ed9d4a`（ready）；submission
+  `c95fba98a47f0d4299e1bd1880611db0`（model Qwen/Qwen3.8-27B、source base）。
+- 合规 trial：主办方新规则下 trial **只验证合规、不给分数**；首次 validate 返回
+  `模型服务暂不可用，请稍后重试。`（PyTRiO 端点当时超时），由
+  `.scratch/platform/certify_0.12.0.py` 自动重试 validate → 启动 trial → 轮询到终态。
+- 正式评测（formal，剩 2 次）**未触发**，需用户确认。
