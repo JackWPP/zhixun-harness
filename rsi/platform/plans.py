@@ -351,6 +351,19 @@ def build_plans(ctx: PlanContext) -> list[dict]:
                                {}, {"type": "pair_threshold", "pair": [0, 3],
                                     "delta": None},
                                "延迟标签阈值校准（Ethanol vs Acetaldehyde，历史标签拟合）"))
+            candidates.append(("pair_history", "retain", "",
+                               {}, {"type": "pair_threshold", "pair": [0, 3],
+                                    "delta": PAIR_HISTORY_DELTA},
+                               "历史校准 pair 阈值（delta=%.3f，不重新拟合）" % PAIR_HISTORY_DELTA))
+            candidates.append(("continue_train", "continue_train", "",
+                               {"learning_rate": 1e-3, "epochs": 20},
+                               {"type": "none"},
+                               "累积标签续训 20 epoch（用当前 /data/train 全部已揭示行）"))
+            candidates.append(("continue_train_pair", "continue_train", "",
+                               {"learning_rate": 1e-3, "epochs": 20},
+                               {"type": "pair_threshold", "pair": [0, 3],
+                                "delta": PAIR_HISTORY_DELTA},
+                               "累积标签续训 + 历史校准 pair 阈值"))
     else:
         candidates.append(("shrink", "retain", "",
                            {}, {"type": "shrink", "alpha": 0.3, "center": ctx.target_mean},
@@ -359,6 +372,10 @@ def build_plans(ctx: PlanContext) -> list[dict]:
             candidates.append(("damage_shrink", "retain", "",
                                {}, {"type": "damage_shrink", "a": 0.5, "w": 0.6, "fit": "train"},
                                "damage_shrink 因果分段校准（train 标签拟合）"))
+            candidates.append(("continue_train", "continue_train", "",
+                               {"learning_rate": 1e-3, "epochs": 15},
+                               {"type": "none"},
+                               "累积标签续训 15 epoch（用当前 /data/train 全部已揭示行）"))
         if ctx.task_key == "C":
             candidates.append(("continue_train", "continue_train", "",
                                {"learning_rate": 1e-3, "epochs": 40},

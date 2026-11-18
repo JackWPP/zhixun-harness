@@ -155,17 +155,49 @@ def build_schema_package(root: Path) -> dict:
     return {"root": root, **meta_out, "checkpoint": root / "checkpoint.npz"}
 
 
+def build_a_stream_package(root: Path) -> dict:
+    """Official-A feature that keeps the *official* package untouched.
+
+    ``public/train.jsonl`` is UCI batch1, ``public/validation.jsonl`` is batch2
+    (the contest's public projection), and batches 3..10 are stored as ordered
+    stream drops.  A faithful official-sequence host reveals them one per round:
+    round r trains on batch1 + drops[0..r-2] and predicts drops[r-1].
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    _write_jsonl(root / "public" / "train.jsonl", _gas_rows(1))
+    _write_jsonl(root / "public" / "validation.jsonl", _gas_rows(2))
+    for batch in range(3, GAS_BATCHES + 1):
+        _write_jsonl(root / "stream" / f"b{batch:02d}.jsonl", _gas_rows(batch))
+    meta = {
+        "package": "sim-a-official-seq-v1",
+        "task": "classification",
+        "metric": "macro_f1",
+        "direction": "higher",
+        "classes": GAS_CLASSES,
+        "public_train_batch": 1,
+        "public_validation_batch": 2,
+        "stream_batches": list(range(3, GAS_BATCHES + 1)),
+        "note": "faithful cumulative-reveal protocol for the official A task",
+    }
+    (root / "sim_meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"root": root, **meta}
+
+
 def ensure_packages(base: Path | None = None) -> dict:
     base = base or (REPO / ".scratch" / "sim" / "datasets")
     gas_root = base / "sim-gas-ext-v1"
     schema_root = base / "sim-private-schema-v1"
+    stream_root = base / "sim-a-official-seq-v1"
     gas = build_gas_package(gas_root) if not (gas_root / "checkpoint.npz").is_file() else {
         "root": gas_root, "checkpoint": gas_root / "checkpoint.npz",
         **json.loads((gas_root / "sim_meta.json").read_text(encoding="utf-8"))}
     schema = build_schema_package(schema_root) if not (schema_root / "checkpoint.npz").is_file() else {
         "root": schema_root, "checkpoint": schema_root / "checkpoint.npz",
         **json.loads((schema_root / "sim_meta.json").read_text(encoding="utf-8"))}
-    return {"gas": gas, "schema": schema}
+    stream = build_a_stream_package(stream_root) if not (stream_root / "sim_meta.json").is_file() else {
+        "root": stream_root,
+        **json.loads((stream_root / "sim_meta.json").read_text(encoding="utf-8"))}
+    return {"gas": gas, "schema": schema, "a_stream": stream}
 
 
 if __name__ == "__main__":

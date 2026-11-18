@@ -267,21 +267,42 @@ def code_sha256(root, exclude_dirs=SOURCE_EXCLUDED_DIRS):
     return "sha256:" + digest.hexdigest()
 
 
+def checkpoint_metadata(path):
+    """Read only the JSON metadata entry of a checkpoint archive."""
+    path = Path(path)
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_CHECKPOINT_BYTES:
+        raise ValueError("checkpoint must be a regular file no larger than 16 MiB")
+    with np.load(path, allow_pickle=False) as arrays:
+        if "metadata" not in arrays:
+            raise ValueError("checkpoint metadata missing")
+        metadata = arrays["metadata"]
+        if metadata.ndim != 0 or metadata.dtype.kind != "U":
+            raise ValueError("invalid checkpoint metadata")
+        return json.loads(str(metadata))
+
+
 class ExtendedModel(Model):
     """Official NumPy MLP plus in-memory helpers used by the harness."""
 
     @classmethod
     def from_checkpoint(cls, path):
+        meta = checkpoint_metadata(path)
+        if meta.get("format") == "contest.cpu-mlp.v2":
+            from rsi.capacity import CapacityModel
+
+            return CapacityModel.load(path)
         return cls.load(path)
 
     def clone(self):
         return _copy.deepcopy(self)
 
     # -- parameter vector helpers (all layers or a named subset) -----------
-    def param_vector(self, names=PARAMETERS):
+    def param_vector(self, names=None):
+        names = tuple(self.params) if names is None else names
         return np.concatenate([self.params[name].ravel() for name in names])
 
-    def set_param_vector(self, vector, names=PARAMETERS):
+    def set_param_vector(self, vector, names=None):
+        names = tuple(self.params) if names is None else names
         offset = 0
         for name in names:
             size = self.params[name].size

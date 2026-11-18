@@ -464,6 +464,31 @@ def official_specs(tasks: list[str], rounds: int, cap_train: int) -> list[dict]:
     return specs
 
 
+def official_seq_spec(rounds: int = 10, seed: int = 0) -> dict:
+    """Faithful official-A protocol: b1 + revealed drops -> predict next drop.
+
+    Round r trains on UCI batch1 plus drops[0..r-2] (labels revealed by the
+    previous round) and predicts drops[r-1].  Validation stays the public
+    projection (batch2) so selection never sees the prediction target.
+    """
+    built = _datasets.ensure_packages()["a_stream"]
+    root = Path(built["root"])
+    rng = np.random.default_rng(0xA5EED + int(seed))
+    train = read_jsonl(root / "public" / "train.jsonl")
+    validation = read_jsonl(root / "public" / "validation.jsonl")
+    drops = [read_jsonl(path) for path in sorted((root / "stream").glob("b*.jsonl"))]
+    train = [train[index] for index in rng.permutation(len(train))]
+    validation = [validation[index] for index in rng.permutation(len(validation))]
+    rounds = max(1, min(int(rounds), len(drops)))
+    return {
+        "run_id": "sim-A-SEQ", "key": "A", "package": Path("datasets") / "cpu-a-guide-20261110-v1",
+        "task": "classification", "metric": "macro_f1", "direction": "higher",
+        "classes": list(built["classes"]), "rounds": rounds,
+        "train_rows": train, "validation_rows": validation, "hidden_rows": [],
+        "cap_train": 0, "drops": drops, "sequence": True, "seed": int(seed),
+    }
+
+
 def external_spec(rounds: int = 5) -> dict:
     built = _datasets.ensure_packages()["gas"]
     root = Path(built["root"])
@@ -497,7 +522,14 @@ def schema_spec(rounds: int = 2) -> dict:
 def stage_data(spec: dict, round_index: int, rounds: int, data_dir: Path) -> None:
     train = list(spec["train_rows"])
     validation = list(spec["validation_rows"])
-    if spec["drops"]:
+    if spec.get("sequence"):
+        # The public validation split is labelled public data: a faithful host
+        # exposes it to the participant together with the revealed drops.
+        train = list(spec["train_rows"]) + list(spec["validation_rows"])
+        for index in range(min(round_index - 1, len(spec["drops"]))):
+            train.extend(spec["drops"][index])
+        validation = list(spec["validation_rows"])
+    elif spec["drops"]:
         train = list(spec["train_rows"])
         for index in range(min(round_index - 1, len(spec["drops"]))):
             train.extend(spec["drops"][index])
@@ -538,7 +570,7 @@ def score(spec: dict, rows: list[dict], predicted: list) -> float:
 # ------------------------------------------------------------------- main --
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="full RSI simulation host (workspace v2)")
-    parser.add_argument("--scenario", choices=["official", "external", "schema"], default="official")
+    parser.add_argument("--scenario", choices=["official", "official-seq", "external", "schema"], default="official")
     parser.add_argument("--tasks", default="A,B,C")
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--cap-train", type=int, default=24000)
@@ -557,10 +589,15 @@ def main(argv=None) -> int:
     parser.add_argument("--hidden-every-round", action="store_true",
                         help="score the hidden proxy on every round (learning curve)")
     parser.add_argument("--tag", default="", help="experiment arm tag used in run dir/SwanLab name")
+    parser.add_argument("--seed", type=int, default=0, help="world seed (row order + participant init)")
+    parser.add_argument("--adapt-arm", choices=["auto", "pair", "retrain", "retrain_pair"],
+                        default="auto", help="restrict cumulative-adaptation candidate arms")
     args = parser.parse_args(argv)
 
     provider = resolve_provider(args)
     os.environ["RSI_V2_DRIFT_POLICY"] = "1" if args.policy == "on" else "0"
+    os.environ["RSI_V2_SEED"] = str(int(args.seed))
+    os.environ["RSI_V2_ADAPT_ARM"] = args.adapt_arm
     if args.pair_delta is not None:
         os.environ["RSI_V2_PAIR_DELTA"] = str(float(args.pair_delta))
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -573,6 +610,8 @@ def main(argv=None) -> int:
 
     if args.scenario == "official":
         specs = official_specs([item for item in args.tasks.split(",") if item], args.rounds, args.cap_train)
+    elif args.scenario == "official-seq":
+        specs = [official_seq_spec(args.rounds, args.seed)]
     elif args.scenario == "external":
         specs = [external_spec(args.rounds)]
     else:
@@ -598,6 +637,7 @@ def main(argv=None) -> int:
     summary = {"run_root": str(run_root), "scenario": args.scenario, "controller": args.controller,
                "provider": type(provider).__name__, "rounds": args.rounds,
                "policy": args.policy, "pair_delta": args.pair_delta, "tag": tag,
+               "seed": int(args.seed),
                "hidden_every_round": bool(args.hidden_every_round), "tasks": {}}
     for spec in specs:
         task_root = run_root / "tasks" / spec["key"]
@@ -637,10 +677,18 @@ def main(argv=None) -> int:
                                      spec["classes"], spec["key"], args.timeout, site_root)
             val_metric = score(spec, spec["validation_rows"], predicted)
             hidden_metric = None
-            if spec["hidden_rows"] and (args.hidden_every_round or round_index == rounds):
-                hidden_pred = predict_rows(artifact_dir, spec["hidden_rows"], spec["task"],
+            target_rows = None
+            if spec.get("sequence") and round_index <= len(spec["drops"]):
+                target_rows = spec["drops"][round_index - 1]
+            elif spec["hidden_rows"] and (args.hidden_every_round or round_index == rounds):
+                target_rows = spec["hidden_rows"]
+            if target_rows:
+                hidden_pred = predict_rows(artifact_dir, target_rows, spec["task"],
                                            spec["classes"], spec["key"], args.timeout, site_root)
-                hidden_metric = score(spec, spec["hidden_rows"], hidden_pred)
+                hidden_metric = score(spec, target_rows, hidden_pred)
+                if spec.get("sequence"):
+                    task_summary["hidden_proxy_per_round"] = task_summary.get("hidden_proxy_per_round") or []
+                    task_summary["hidden_proxy_per_round"].append(round(0.0 if hidden_metric is None else float(hidden_metric), 4))
                 if round_index == rounds:
                     task_summary["hidden_proxy"] = hidden_metric
             entry = {"round": round_index, "wall_s": round(wall, 1), "calls": len(served["call_ids"]),

@@ -313,3 +313,25 @@ def test_controller_mode_auto_routes_by_task(monkeypatch):
     monkeypatch.delenv("RSI_V2_CONTROLLER")
     monkeypatch.delenv("RSI_V2_KERNEL_DEFAULT", raising=False)
     assert submission._controller_mode("classification") == "pipeline"
+
+
+def test_adapt_arm_mode_filters_candidates(monkeypatch):
+    import rsi.platform.submission as sub
+
+    monkeypatch.delenv("RSI_V2_DRIFT_POLICY", raising=False)
+    monkeypatch.setenv("RSI_V2_ADAPT_ARM", "retrain")
+    assert sub._adapt_arm_mode() == "retrain"
+    assert sub._adapt_arms_enabled() is True
+    monkeypatch.setenv("RSI_V2_ADAPT_ARM", "weird")
+    assert sub._adapt_arm_mode() == "auto"
+    monkeypatch.setenv("RSI_V2_DRIFT_POLICY", "0")
+    assert sub._adapt_arms_enabled() is False
+
+
+def test_seed_reads_env(monkeypatch):
+    import rsi.platform.submission as sub
+
+    monkeypatch.delenv("RSI_V2_SEED", raising=False)
+    assert sub._seed() == 20261117
+    monkeypatch.setenv("RSI_V2_SEED", "7")
+    assert sub._seed() == 7

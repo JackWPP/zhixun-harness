@@ -372,12 +372,16 @@ class RecenterStream:
     the predictor can still answer line-by-line without waiting for EOF.
     """
 
-    def __init__(self, reference_mean, reference_scale, mode="batch_mean", window=2048, min_count=8):
+    def __init__(self, reference_mean, reference_scale, mode="batch_mean", window=2048, min_count=8,
+                 std_ratio_clip=None):
         self.reference_mean = np.asarray(reference_mean, dtype=np.float64)
         self.reference_scale = np.asarray(reference_scale, dtype=np.float64)
         self.mode = mode
         self.window = max(int(window), 2)
         self.min_count = max(int(min_count), 2)
+        self.std_ratio_clip = None if std_ratio_clip in (None, 0) else float(std_ratio_clip)
+        if self.std_ratio_clip is not None and self.std_ratio_clip <= 1.0:
+            raise ValueError("std_ratio_clip must be > 1")
         self.rows = []
         self.count = 0
 
@@ -394,8 +398,127 @@ class RecenterStream:
         if self.mode == "batch_std":
             scale = stack.std(axis=0)
             scale = np.where(scale < 1e-9, 1.0, scale)
+            if self.std_ratio_clip is not None:
+                ratio = scale / np.where(self.reference_scale < 1e-9, 1.0, self.reference_scale)
+                ratio = np.clip(ratio, 1.0 / self.std_ratio_clip, self.std_ratio_clip)
+                scale = ratio * np.where(self.reference_scale < 1e-9, 1.0, self.reference_scale)
             return (row - mean) / scale * self.reference_scale + self.reference_mean
         return row - mean + self.reference_mean
+
+
+class PairThresholdStream:
+    """Causal threshold for the (left, right) class pair.
+
+    The threshold defaults to the running median of ``right-left`` raw logit
+    gaps observed for rows that the base model places inside the pair.  It uses
+    no labels, so it is safe to apply to the incoming hidden batch.
+    """
+
+    def __init__(self, pair=(0, 3), window=512, min_count=64, fallback_delta=-4.0):
+        self.left, self.right = int(pair[0]), int(pair[1])
+        self.window = max(int(window), 2)
+        self.min_count = max(int(min_count), 2)
+        self.fallback_delta = float(fallback_delta)
+        self.scores = []
+        self.delta = self.fallback_delta
+        self.updates = 0
+
+    def score(self, logits):
+        logits = np.asarray(logits, dtype=np.float64).reshape(-1)
+        return float(logits[self.right] - logits[self.left])
+
+    def update(self, score, predicted):
+        predicted = int(predicted)
+        if predicted not in (self.left, self.right):
+            return self.delta
+        self.scores.append(float(score))
+        if len(self.scores) > self.window:
+            self.scores = self.scores[-self.window:]
+        self.updates += 1
+        if len(self.scores) >= self.min_count:
+            self.delta = float(np.median(self.scores))
+        return self.delta
+
+
+class PostprocessStream:
+    """Single implementation of inference-time postprocessing for one row.
+
+    Both the platform predictor and the offline replay use this class, so the
+    evaluated policy and the deployed policy cannot silently diverge.
+    """
+
+    def __init__(self, postprocess, model, window=2048, min_count=8):
+        self.spec = dict(postprocess or {"type": "none"})
+        self.kind = str(self.spec.get("type", "none"))
+        self.model = model
+        self.recenter = None
+        self.pair = None
+        self.base = None
+        if self.kind == "pair_threshold":
+            # legacy batch-mode spec: base recenter (if any) + static delta.
+            self.base = dict(self.spec.get("base") or {"type": "none"})
+            left, right = (int(value) for value in self.spec["pair"])
+            self.delta = float(self.spec["delta"])
+            self.pair_scores = np.zeros(1)
+            self.pair_classes = (left, right)
+        elif self.kind == "pair_stream":
+            self.base = dict(self.spec.get("base") or {"type": "none"})
+            self.pair = PairThresholdStream(
+                pair=tuple(self.spec.get("pair", (0, 3))),
+                window=int(self.spec.get("window", 512)),
+                min_count=int(self.spec.get("min_count", 64)),
+                fallback_delta=float(self.spec.get("fallback_delta", -4.0)))
+        if self.base and str(self.base.get("type", "none")) == "recenter":
+            self.recenter = RecenterStream(
+                model.mean, model.scale,
+                mode=self.base.get("mode", "batch_std"),
+                window=int(self.spec.get("window", 2048)),
+                min_count=int(self.spec.get("min_count", 8)),
+                std_ratio_clip=self.base.get("std_ratio_clip"))
+
+    def _base_probabilities(self, row):
+        raw = self.model.predict(row)
+        if self.recenter is None:
+            return np.asarray(raw, dtype=np.float64).reshape(-1)
+        adjusted = self.recenter.calibrate(row).reshape(1, -1)
+        calibrated = np.asarray(self.model.predict(adjusted), dtype=np.float64).reshape(-1)
+        weight = float((self.base or {}).get("weight", 1.0))
+        return (1.0 - weight) * np.asarray(raw, dtype=np.float64).reshape(-1) + weight * calibrated
+
+    def predict_row(self, row):
+        row = np.asarray(row, dtype=np.float64).reshape(1, -1)
+        probabilities = self._base_probabilities(row)
+        if self.model.meta["task"] != "classification":
+            return float(probabilities[0])
+        probabilities = np.clip(probabilities, 1e-12, None)
+        probabilities = probabilities / probabilities.sum()
+        if self.kind in ("pair_threshold", "pair_stream"):
+            left, right = (self.pair_classes if self.kind == "pair_threshold"
+                           else (self.pair.left, self.pair.right))
+            predicted = int(np.argmax(probabilities))
+            logits = self.model.predict_logits(row)[0]
+            if self.kind == "pair_stream":
+                score = self.pair.score(logits)
+                delta = self.pair.update(score, predicted)
+            else:
+                score = float(logits[right] - logits[left])
+                delta = self.delta
+            if predicted in (left, right):
+                target = right if score < delta else left
+                if predicted != target:
+                    probabilities = probabilities.copy()
+                    probabilities[left] = 0.0
+                    probabilities[right] = 0.0
+                    probabilities[target] = 1.0
+        return probabilities
+
+
+def apply_postprocess_stream(postprocess, model, x):
+    """Replay a streaming postprocess over an ordered feature matrix."""
+    stream = PostprocessStream(postprocess, model)
+    rows = np.asarray(x, dtype=np.float64)
+    outputs = [stream.predict_row(rows[index]) for index in range(len(rows))]
+    return np.asarray(outputs, dtype=np.float64)
 
 
 class DamageShrinkStream:

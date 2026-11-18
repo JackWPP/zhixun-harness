@@ -43,8 +43,10 @@ import numpy as np
 from rsi.inference import (
     POSTPROCESS_KINDS,
     DamageShrinkStream,
+    PostprocessStream,
     RecenterStream,
     apply_postprocess,
+    apply_postprocess_stream,
 )
 from rsi.metrics import from_predictions, primary as primary_metric
 from rsi.model import ExtendedModel
@@ -62,6 +64,13 @@ TASK_KEYS = "ABC"
 PREDICT_ARGV = ["python3", "/app/harness.py", "predict"]
 META_NAME = "submission_meta.json"
 CHECKPOINT_NAME = "checkpoint.npz"
+
+
+def _seed() -> int:
+    try:
+        return int(os.environ.get("RSI_V2_SEED", "20261117"))
+    except ValueError:
+        return 20261117
 
 
 def _work_dir() -> Path:
@@ -194,6 +203,16 @@ def _contract_value(contract, keys, default):
     return default
 
 
+def _adapt_arm_mode() -> str:
+    value = os.environ.get("RSI_V2_ADAPT_ARM", "auto").strip().lower()
+    return value if value in {"pair", "retrain", "retrain_pair"} else "auto"
+
+
+def _adapt_arms_enabled() -> bool:
+    return os.environ.get("RSI_V2_DRIFT_POLICY", "1").strip().lower() not in {
+        "0", "off", "false", "no"}
+
+
 def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> list[dict]:
     """Build candidate plan descriptors sorted by expected value (cheap first)."""
     task = model.meta.get("task")
@@ -226,6 +245,32 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> 
                 "postprocess": "FIT_PAIR",
                 "checkpoint": None,
             })
+            mode = _adapt_arm_mode()
+            if _adapt_arms_enabled() and mode in {"auto", "pair"}:
+                candidates.append({
+                    "kind": "pair_history",
+                    "label": "历史校准 pair 阈值（delta=%.3f，不重新拟合）" % _plans.PAIR_HISTORY_DELTA,
+                    "postprocess": {"type": "pair_threshold", "pair": [0, 3],
+                                    "delta": _plans.PAIR_HISTORY_DELTA},
+                    "checkpoint": None,
+                })
+            if _adapt_arms_enabled() and mode in {"auto", "retrain", "retrain_pair"}:
+                candidates.append({
+                    "kind": "continue_train",
+                    "label": "累积标签续训 20 epoch（用当前 /data/train 全部已揭示行）",
+                    "postprocess": {"type": "none"},
+                    "checkpoint": "CONTINUE_TRAIN",
+                    "epochs": 20,
+                })
+            if _adapt_arms_enabled() and mode in {"pair", "retrain_pair"}:
+                candidates.append({
+                    "kind": "continue_train_pair",
+                    "label": "累积标签续训 + 历史校准 pair 阈值",
+                    "postprocess": {"type": "pair_threshold", "pair": [0, 3],
+                                    "delta": _plans.PAIR_HISTORY_DELTA},
+                    "checkpoint": "CONTINUE_TRAIN",
+                    "epochs": 20,
+                })
     else:
         candidates.append({
             "kind": "shrink",
@@ -240,6 +285,14 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> 
                 "postprocess": "FIT_DAMAGE",
                 "checkpoint": None,
             })
+            if _adapt_arms_enabled():
+                candidates.append({
+                    "kind": "continue_train",
+                    "label": "累积标签续训 15 epoch（用当前 /data/train 全部已揭示行）",
+                    "postprocess": {"type": "none"},
+                    "checkpoint": "CONTINUE_TRAIN",
+                    "epochs": 15,
+                })
         if task_key == "C":
             candidates.append({
                 "kind": "continue_train",
@@ -250,10 +303,21 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> 
     for plan in candidates:
         postprocess = plan["postprocess"]
         checkpoint_kind = plan.get("checkpoint")
-        if checkpoint_kind == "CONTINUE_TRAIN_40":
-            candidate_model = ExtendedModel.from_checkpoint(Path(model.meta.get("_source_path", "")))
-            candidate_model.set_learning_rate(1e-3)
-            candidate_model.fit(x_train, y_train, epochs=40)
+        if checkpoint_kind in ("CONTINUE_TRAIN_40", "CONTINUE_TRAIN"):
+            source = Path(model.meta.get("_source_path") or "")
+            if not source.is_file():
+                candidate_model = model
+            else:
+                try:
+                    candidate_model = ExtendedModel.from_checkpoint(source)
+                    candidate_model.meta["seed"] = _seed()
+                    candidate_model.set_learning_rate(1e-3)
+                    epochs = int(plan.get("epochs", 40 if checkpoint_kind == "CONTINUE_TRAIN_40" else 20))
+                    y_fit = (np.asarray(y_train, dtype=np.int64) if task == "classification"
+                             else np.asarray(y_train, dtype=np.float64))
+                    candidate_model.fit(x_train, y_fit, epochs=epochs)
+                except Exception:
+                    candidate_model = model
         else:
             candidate_model = model
         if postprocess == "FIT_DAMAGE":
@@ -449,7 +513,7 @@ def _choose_kernel_plan(kernel_round, ctx, direction: str) -> dict:
             return plan
     return _plans.retain_plan(ctx)
 
-def _apply_drift_policy(ctx, chosen: dict) -> tuple[dict, str]:
+def _apply_drift_policy(ctx, chosen: dict, plans=None) -> tuple[dict, str]:
     """Gen2 drift-aware override for the delayed-label arm.
 
     On high covariate drift (task A) the historical pair delta is preferred when
@@ -467,19 +531,40 @@ def _apply_drift_policy(ctx, chosen: dict) -> tuple[dict, str]:
         return chosen, ""
     try:
         drift = _drift_brief(ctx)
+        margin = float(getattr(ctx, "margin", 0.0) or 0.0)
+        parent_primary = float(ctx.parent_primary)
+        usable = [plan for plan in (plans or [])
+                  if isinstance(plan, dict) and plan.get("primary") is not None
+                  and not plan.get("error")]
+        if (str(drift.get("severity")) == "high" and ctx.task == "classification"
+                and usable):
+            adapts = [plan for plan in usable
+                      if str(plan.get("kind", "")).startswith("continue_train")]
+            best = max(adapts, key=lambda plan: float(plan["primary"]), default=None)
+            if best is not None and float(best["primary"]) >= parent_primary + margin:
+                return best, ("drift_policy: high drift %.2f, %s val=%.4f parent=%.4f "
+                              "(cumulative labels)" % (
+                                  float(drift.get("score") or 0.0), best.get("kind"),
+                                  float(best["primary"]), parent_primary))
+            hist = [plan for plan in usable if str(plan.get("kind")) == "pair_history"]
+            if hist and float(hist[0]["primary"]) + 2.0 * margin >= parent_primary:
+                if str(chosen.get("kind")) == "pair_history":
+                    return chosen, ""
+                return hist[0], ("drift_policy: high drift %.2f, pair_history val=%.4f "
+                                 "parent=%.4f" % (
+                                     float(drift.get("score") or 0.0),
+                                     float(hist[0]["primary"]), parent_primary))
         if str(drift.get("severity")) != "high" or ctx.task != "classification":
             return chosen, ""
         arm = _plans.pair_history_plan(ctx)
         if not arm.get("ok"):
             return chosen, ""
-        margin = float(getattr(ctx, "margin", 0.0) or 0.0)
-        if float(arm["primary"]) + 2.0 * margin < float(ctx.parent_primary):
+        if float(arm["primary"]) + 2.0 * margin < parent_primary:
             return chosen, ""
         if str(chosen.get("kind")) == "pair_history":
             return chosen, ""
         return arm, "drift_policy: high drift %.2f, pair_history val=%.4f parent=%.4f" % (
-            float(drift.get("score") or 0.0), float(arm["primary"]),
-            float(ctx.parent_primary))
+            float(drift.get("score") or 0.0), float(arm["primary"]), parent_primary)
     except Exception as exc:
         print("train: drift policy skipped: %s: %s" % (type(exc).__name__, exc),
               file=sys.stderr, flush=True)
@@ -605,6 +690,7 @@ def train(rnd):
 
     plans = None
     receipt = None
+    plans = None
     llm_choice = None
     fallback_choice = None
     if kernel_round is not None and kernel_round.calls > 0 and kernel_ctx is not None:
@@ -657,7 +743,7 @@ def train(rnd):
                 metric=metric, direction=direction,
                 margin=float(defaults["margin"]),
                 classes=list(model.meta.get("classes") or []))
-        chosen, policy_note = _apply_drift_policy(policy_ctx, chosen)
+        chosen, policy_note = _apply_drift_policy(policy_ctx, chosen, plans)
         if policy_note:
             print("train: %s" % policy_note, file=sys.stderr, flush=True)
     except Exception as exc:
@@ -671,7 +757,7 @@ def train(rnd):
     else:
         state_dir = _new_state_dir(work, rnd)
     checkpoint_model = chosen.get("model") or model
-    if chosen.get("kind") == "continue_train":
+    if chosen.get("checkpoint") or str(chosen.get("kind", "")).startswith("continue_train"):
         checkpoint_model.save(candidate_dir / CHECKPOINT_NAME)
     else:
         shutil.copyfile(parent_path, candidate_dir / CHECKPOINT_NAME)
@@ -680,7 +766,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.11.2",
+        "version": "0.12.0",
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -727,7 +813,7 @@ def train(rnd):
         hypothesis="本轮候选：%s" % label,
         change_summary=_change_summary(chosen),
         configuration=configuration,
-        seed=20261117,
+        seed=_seed(),
         checkpoint_paths=[CHECKPOINT_NAME],
         code_paths=[META_NAME],
         predict_argv=PREDICT_ARGV,
@@ -741,7 +827,7 @@ def train(rnd):
             controller_note, choice_note, chosen.get("kind"), metric, primary_text,
             len(call_ids)),
         configuration=configuration,
-        seed=20261117,
+        seed=_seed(),
         history_ids=[item["id"] for item in history],
         model_call_ids=call_ids,
     )
@@ -798,9 +884,8 @@ def _load_artifact(model_dir) -> dict:
         "stream": None,
     }
     kind = str(postprocess.get("type", "none"))
-    if kind == "recenter":
-        payload["stream"] = RecenterStream(
-            model.mean, model.scale, mode=postprocess.get("mode", "batch_mean"), window=256, min_count=8)
+    if kind in ("recenter", "pair_threshold", "pair_stream"):
+        payload["stream"] = PostprocessStream(postprocess, model)
     elif kind == "damage_shrink":
         payload["stream"] = DamageShrinkStream(postprocess)
     _CACHE.clear()
@@ -916,24 +1001,11 @@ def _predict_one(sample, artifact: dict):
     kind = str(postprocess.get("type", "none"))
     raw = model.predict(row)
     if artifact["task"] == "classification":
-        scores = np.asarray(raw, dtype=np.float64).reshape(-1)
-        if kind == "recenter" and artifact.get("stream") is not None:
-            weight = float(postprocess.get("weight", 0.4))
-            calibrated = model.predict(artifact["stream"].calibrate(features).reshape(1, -1))
-            scores = (1.0 - weight) * scores + weight * np.asarray(calibrated).reshape(-1)
-        elif kind == "pair_threshold":
-            left, right = (int(value) for value in postprocess["pair"])
-            logits = model.predict_logits(row)[0]
-            score = float(logits[right] - logits[left])
-            predicted = int(np.argmax(scores))
-            if predicted == left and score < float(postprocess["delta"]):
-                scores = scores.copy()
-                scores[left] = 0.0
-                scores[right] = 1.0
-            elif predicted == right and score >= float(postprocess["delta"]):
-                scores = scores.copy()
-                scores[right] = 0.0
-                scores[left] = 1.0
+        stream = artifact.get("stream")
+        if stream is not None and hasattr(stream, "predict_row"):
+            scores = np.asarray(stream.predict_row(features), dtype=np.float64).reshape(-1)
+        else:
+            scores = np.asarray(raw, dtype=np.float64).reshape(-1)
         values = _uniform_scores(scores)
         return [
             {"label": label, "score": float(values[position])}

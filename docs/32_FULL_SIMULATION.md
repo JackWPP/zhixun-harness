@@ -186,3 +186,6 @@ Qwen3.8-27B 必须带 `enable_thinking: false`，否则 27B 会把 token 全耗�
 
 
 后续实验报告：`docs/34_EXPERIMENT_REPORT.md`（假设检验、矩阵结果、异常鲁棒性）。
+
+
+> 更正与官方同构协议结果见 `docs/36_HONEST_A_EVALUATION.md`（撤回旧 +0.147 / 3 类代理结论）。
