@@ -196,3 +196,24 @@ cd vendor/contest_harness-1.0.2 && ../../.venv/bin/python -m unittest \
 - 验证：`tests/test_platform_v2.py` 13 passed；全量 **143 passed / 3 deselected**；
   `scripts/emulate_workspace_v2.py --task A/B/C --rounds 10` 全部 PASS。
 - 版本 0.10.4；镜像重建与 verify 结果见 docs/13、docs/27。
+
+### 7.4 v0.11.0 镜像（PI-Agent kernel 默认 + gen2 漂移策略）
+
+- **版本冻结**：`pyproject.toml` / `rsi/__init__.py` / `submission_meta.json` / Makefile 均 **0.11.0**。
+- **镜像内 env（新增）**：`RSI_V2_CONTROLLER=kernel`、`RSI_V2_MAX_TURNS=6`。平台每轮默认走
+  PI-Agent 式 kernel 路由（`rsi/platform/agent_host.py`），内核异常/无有效动作时自动回退 pipeline，
+  仍保证每轮至少一次真实 `rnd.model` 调用。
+- **gen2 漂移策略**：`rsi/platform/submission.py:_apply_drift_policy` —— 高漂移分类任务优先
+  `pair_threshold(delta=-4.0)`（历史先验，不重拟合当前验证集），只要公开验证不劣于父模型 2*margin
+  就采用；中漂移只用 recenter；低漂移 retain。规则同时写入 kernel brief 与 `plans.catalog_text()`。
+- **重建（无 daemon 路径）**：`bash scripts/stage_image.sh` →
+  `python scripts/build_image_tar.py --tag zhixun-rsi-harness:0.11.0` → `bash scripts/verify_image.sh` → **PASS**：
+  - selftest A 数字不变：selection 0.703220 / report 0.686380 / calibration 0.763582 / probe 0.456803；
+  - `describe` 输出 `contest.harness.workspace.v2` 正确；
+  - v2 fake-host 一轮 PASS（日志可见 `train: drift_policy: high drift ...`）；
+  - 离线 A 两轮 workspace_report metric = `0.7345546845546845`。
+- **产物**：`.scratch/image/harness.tar` **380,149,760 B**，
+  sha256 **`25c264746e2c4e95c87cefb646083e53c4311db4b4b2606061783e8ba2eec92d`**
+  （config `887d4de605e0e92357e2d8cc33328615ecb3a40a983b7116887e6ff5a5edcfbe.json`，
+  tags `0.11.0/latest`）。**尚未上传平台。**
+- 全量测试：**150 passed, 3 deselected**。

@@ -179,5 +179,7 @@ Qwen3.8-27B 必须带 `enable_thinking: false`，否则 27B 会把 token 全耗�
 
 1. ✅ gen2 规则已接回 `submission.py` / `plans.catalog_text()`，并在三个场景中实测；
 2. ✅ 真实 SwanLab key 已接入，7 个 run 已公开上传；
-3. 待办：升版本 0.11.0、重建并 verify 镜像、跑 `pytest -m "not integration"` 与 emulator A/B/C 10 轮；
+3. ✅ 版本 0.11.0、镜像重建并 verify PASS（380,149,760 B，
+   sha256 `25c264746e2c4e95c87cefb646083e53c4311db4b4b2606061783e8ba2eec92d`，
+   `RSI_V2_CONTROLLER=kernel` 已写进镜像 env）、150 项 pytest 全绿；
 4. 平台 trial 需要用户确认后再上传/重跑（当前 3/10，剩 7 次）。

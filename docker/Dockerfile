@@ -17,7 +17,9 @@ ENV PYTHONUNBUFFERED=1 \
     RSI_STATE_DIR=/work/rsi-runs \
     RSI_TASKS=A,B,C \
     RSI_ROUNDS=10 \
-    RSI_LLM=auto
+    RSI_LLM=auto \
+    RSI_V2_CONTROLLER=kernel \
+    RSI_V2_MAX_TURNS=6
 
 WORKDIR /opt/zhixun/app
 
