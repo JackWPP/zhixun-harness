@@ -323,9 +323,17 @@ def _state_payload(rnd, candidates, chosen, note: str) -> dict:
 # ---------------------------------------------------------------------------
 # controller routing: deterministic pipeline vs autonomous PI-agent kernel
 # ---------------------------------------------------------------------------
-def _controller_mode() -> str:
-    """``pipeline`` by default; the packaged image enables the kernel."""
+def _controller_mode(task: str | None = None) -> str:
+    """``pipeline`` by default; the packaged image enables ``auto``.
+
+    ``auto`` keeps the PI-agent kernel for classification tasks (where drift
+    diagnosis and history-calibrated post-processing matter most) and uses the
+    deterministic pipeline for regression tasks (where the public-validation
+    ranking has repeatedly over-fit).
+    """
     explicit = os.environ.get("RSI_V2_CONTROLLER", "").strip().lower()
+    if explicit == "auto":
+        return "kernel" if (task or "").strip().lower() == "classification" else "pipeline"
     if explicit in ("pipeline", "kernel"):
         return explicit
     default = os.environ.get("RSI_V2_KERNEL_DEFAULT", "0").strip()
@@ -564,7 +572,7 @@ def train(rnd):
         history = []
 
     # -- route: deterministic pipeline (default) or autonomous PI-agent kernel
-    controller = _controller_mode()
+    controller = _controller_mode(task)
     kernel_round = None
     kernel_ctx = None
     kernel_state = None
@@ -672,7 +680,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.11.1",
+        "version": "0.11.2",
         "task_key": task_key,
         "task": task,
         "metric": metric,

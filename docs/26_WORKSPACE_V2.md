@@ -200,7 +200,7 @@ cd vendor/contest_harness-1.0.2 && ../../.venv/bin/python -m unittest \
 ### 7.4 v0.11.0 镜像（PI-Agent kernel 默认 + gen2 漂移策略）
 
 - **版本冻结**：`pyproject.toml` / `rsi/__init__.py` / `submission_meta.json` / Makefile 均 **0.11.0**。
-- **镜像内 env（新增）**：`RSI_V2_CONTROLLER=kernel`、`RSI_V2_MAX_TURNS=6`。平台每轮默认走
+- **镜像内 env（新增）**：`RSI_V2_CONTROLLER=auto`、`RSI_V2_MAX_TURNS=6`。平台每轮默认走
   PI-Agent 式 kernel 路由（`rsi/platform/agent_host.py`），内核异常/无有效动作时自动回退 pipeline，
   仍保证每轮至少一次真实 `rnd.model` 调用。
 - **gen2 漂移策略**：`rsi/platform/submission.py:_apply_drift_policy` —— 高漂移分类任务优先
@@ -224,7 +224,20 @@ cd vendor/contest_harness-1.0.2 && ../../.venv/bin/python -m unittest \
   `pair_history` 臂在公开验证上不劣于父模型（`+2·margin`），覆盖 pipeline/kernel 的
   当前选择；关闭时 `_apply_drift_policy` 直接返回原选择（用于消融）。
 - `RSI_V2_PAIR_DELTA`：覆盖历史 pair 臂的阈值（默认 -4.0），用于 delta 敏感性实验。
-- `RSI_V2_CONTROLLER=kernel|pipeline`：默认取镜像 ENV（0.11.0+ 为 kernel）；
+- `RSI_V2_CONTROLLER=auto|kernel|pipeline`：默认取镜像 ENV（0.11.0+ kernel；0.11.2 起 auto：分类走 kernel、回归走 pipeline）；
   pipeline 每轮 1 次真实网关调用，kernel 每轮 6+ 次；两条路径都经过漂移策略。
 - 实验证据与假设检验见 `docs/34_EXPERIMENT_REPORT.md`；全真模拟基线见
   `docs/32_FULL_SIMULATION.md`。
+
+### 7.6 0.11.2：`auto` 控制器与平台同构复跑
+
+trial #3 报告（0.10.4，kernel 全任务）显示协议全通过但隐藏批偏弱：A macro-F1 0.4768、B RMSE 735.07、C RMSE 56.12。
+平台同构模拟（真实 PyTRiO Qwen3.8-27B，policy on，A/B/C 各 10 轮，kernel）得到 A **0.4802**、B **504.43**、C **42.45**，
+与平台结论同量级；但实验矩阵证明回归任务用确定性 pipeline 更稳（B **283.52**、C **38.83**），而 A 的漂移收益来自
+PI-agent kernel + 历史校准 pair_threshold。
+
+因此 0.11.2 把镜像默认改为 `RSI_V2_CONTROLLER=auto`：分类任务走 kernel（每轮真实 `rnd.model` 调用 + drift policy），
+回归任务走 pipeline（每轮一次真实网关调用，确定性候选评估）。策略开关 `RSI_V2_DRIFT_POLICY` 保持默认开。
+
+镜像：`zhixun-rsi-harness:0.11.2`，tar 380,221,440 B，sha256 `b83b4eae5e7e7b0bf64fe8205257299805e8c30f21427d1b9c51eddcbb55f000`，
+`scripts/verify_image.sh` PASS；测试 153 passed。平台侧未上传、未重跑 trial（待用户确认）。

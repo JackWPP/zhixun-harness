@@ -97,7 +97,7 @@
    504.43；C 38.83 vs 42.45），因为 pipeline 的候选按公开验证选择、且 B/C 的公共
    validation 与隐藏批分布接近；外部 UCI gas 基本持平（+0.0056），私有 schema 大幅
    提升（+0.1527）。
-4. **对平台的建议**：0.11.1 镜像默认 `RSI_V2_DRIFT_POLICY=1` + `RSI_V2_CONTROLLER`
+4. **对平台的建议**：0.11.2 镜像默认 `RSI_V2_DRIFT_POLICY=1` + `RSI_V2_CONTROLLER=auto`（分类走 kernel、回归走 pipeline；见 docs/35）
    可选 kernel/pipeline；A 的平台分数预计落在 0.48 附近（模拟代理），不承诺超过
    trial #3 的 0.4768；重跑 trial 前应先确认版本与环境变量。
 5. **诚实边界**：hidden proxy 是公开 validation 的留出尾段，分布与平台隐藏流不完全

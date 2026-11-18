@@ -299,3 +299,17 @@ def test_predict_on_regression_artifact_with_classification_request(monkeypatch)
     scores = [item["score"] for item in output]
     assert scores.count(max(scores)) == 1
     assert all(0.0 <= score <= 1.0 for score in scores)
+
+
+def test_controller_mode_auto_routes_by_task(monkeypatch):
+    """auto = PI-agent kernel for classification, deterministic pipeline for regression."""
+    from rsi.platform import submission
+
+    monkeypatch.setenv("RSI_V2_CONTROLLER", "auto")
+    assert submission._controller_mode("classification") == "kernel"
+    assert submission._controller_mode("regression") == "pipeline"
+    monkeypatch.setenv("RSI_V2_CONTROLLER", "kernel")
+    assert submission._controller_mode("regression") == "kernel"
+    monkeypatch.delenv("RSI_V2_CONTROLLER")
+    monkeypatch.delenv("RSI_V2_KERNEL_DEFAULT", raising=False)
+    assert submission._controller_mode("classification") == "pipeline"

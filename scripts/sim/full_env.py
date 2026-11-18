@@ -542,7 +542,7 @@ def main(argv=None) -> int:
     parser.add_argument("--tasks", default="A,B,C")
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--cap-train", type=int, default=24000)
-    parser.add_argument("--controller", choices=["kernel", "pipeline"], default="kernel")
+    parser.add_argument("--controller", choices=["kernel", "pipeline", "auto"], default="kernel")
     parser.add_argument("--provider", choices=["real", "fake"], default="real")
     parser.add_argument("--base-url", default="")
     parser.add_argument("--api-key", default="")

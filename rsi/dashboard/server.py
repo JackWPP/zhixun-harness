@@ -1248,6 +1248,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 f"静态文件缺失：{name}（请检查 rsi/dashboard/static/ 是否完整）",
             )
             return
+        prefix = getattr(self.server, "public_prefix", "")
+        if prefix and name in ("index.html", "app.js", "style.css"):
+            text = body.decode("utf-8")
+            for token in ("/favicon.svg", "/style.css", "/app.js", "/api/"):
+                text = text.replace(f'"{token}', f'"{prefix}{token}')
+            body = text.encode("utf-8")
         self._send(HTTPStatus.OK, body, content_type)
 
     def _serve_state(self) -> None:
@@ -1435,10 +1441,18 @@ class DashboardServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, server_address, store: StateStore, quiet: bool = False):
+    def __init__(self, server_address, store: StateStore, quiet: bool = False, public_prefix: str = ""):
         super().__init__(server_address, DashboardHandler)
         self.store = store
         self.quiet = quiet
+        prefix = (public_prefix or "").strip()
+        if prefix in ("", "/"):
+            prefix = ""
+        else:
+            if not prefix.startswith("/"):
+                prefix = "/" + prefix
+            prefix = prefix.rstrip("/")
+        self.public_prefix = prefix
         self.started_monotonic = time.monotonic()
 
     @property
@@ -1459,9 +1473,10 @@ def create_server(
     records_path: str | Path | None = None,
     quiet: bool = False,
     follow_dir: str | Path | None = None,
+    public_prefix: str = "",
 ) -> DashboardServer:
     store = StateStore(state_path, records_path=records_path, follow_dir=follow_dir)
-    return DashboardServer((host, int(port)), store, quiet=quiet)
+    return DashboardServer((host, int(port)), store, quiet=quiet, public_prefix=public_prefix)
 
 
 def serve(server: DashboardServer) -> None:

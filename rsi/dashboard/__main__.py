@@ -41,6 +41,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--demo-out", default=DEFAULT_DEMO_STATE, help="未指定 --state 时演示数据的生成路径")
     parser.add_argument("--refresh-demo", action="store_true", help="即使演示数据已存在也重新生成")
     parser.add_argument("--quiet", action="store_true", help="关闭每个请求的访问日志")
+    parser.add_argument("--public-prefix", default="",
+                        help="反向代理路径前缀（如 /rsi-a），用于 nginx 子路径挂载")
     parser.add_argument("--version", action="version", version=f"zhixun-dashboard {VERSION}")
     return parser
 
@@ -94,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             records_path=records,
             quiet=args.quiet,
             follow_dir=follow_dir,
+            public_prefix=args.public_prefix,
         )
     except OSError as exc:
         print(f"[dashboard] 错误：无法监听 {args.host}:{args.port}：{exc}", file=sys.stderr)
