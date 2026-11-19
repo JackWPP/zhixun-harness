@@ -24,7 +24,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 APP = REPO / "docker" / "app"
-SDK_PARENT = REPO / "vendor" / "contest_harness-1.0.2"
+SDK_PARENT = REPO / "vendor" / "contest_harness-1.0.4"
 VALIDATION = REPO / "datasets" / "cpu-a-guide-20261110-v1" / "public" / "validation.jsonl"
 CLASSES = ["Ethanol", "Ethylene", "Ammonia", "Acetaldehyde", "Acetone", "Toluene"]
 

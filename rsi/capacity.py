@@ -506,3 +506,55 @@ def build_model(parent, spec: dict, *, seed=42):
     ``fit`` with the training rows.
     """
     return CapacityModel.from_model(parent, capacity_spec(**spec), seed=seed)
+
+
+def to_official(model: "CapacityModel"):
+    """Convert a single-hidden tanh capacity model to an official v1 checkpoint.
+
+    The official loader understands ``contest.cpu-mlp.v1`` only.  Any width or
+    loss choice is fine as long as the resulting network is the same one-hidden
+    tanh architecture; the conversion therefore refuses two-layer / ReLU models.
+    """
+    from rsi.model import ExtendedModel
+
+    if int(model.meta.get("hidden2") or 0) != 0:
+        raise ValueError("official checkpoint requires a single hidden layer")
+    if str(model.meta.get("activation")) != "tanh":
+        raise ValueError("official checkpoint requires tanh activation")
+    task = str(model.meta["task"])
+    hidden = int(model.meta["hidden"])
+    classes = list(model.meta["classes"])
+    output = len(classes) if task == "classification" else 1
+    params = {name: np.array(model.params[name], dtype=np.float64, copy=True)
+              for name in ("w1", "b1", "w2", "b2")}
+    expected = {"w1": (len(model.meta["paths"]), hidden), "b1": (hidden,),
+                "w2": (hidden, output), "b2": (output,)}
+    for name, shape in expected.items():
+        if params[name].shape != shape:
+            raise ValueError("capacity tensor shape mismatch: %s" % name)
+    count = int(sum(value.size for value in params.values()))
+    meta = {
+        "format": FORMAT,
+        "device": "cpu",
+        "task": task,
+        "paths": list(model.meta["paths"]),
+        "classes": classes,
+        "hidden": hidden,
+        "seed": int(model.meta.get("seed", 42)),
+        "epochs": int(model.meta.get("epochs", 0)),
+        "steps": int(model.meta.get("steps", 0)),
+        "learning_rate": float(model.meta.get("learning_rate", 3e-3)),
+        "batch_size": int(model.meta.get("batch_size", 128)),
+        "parameter_count": count,
+        "target_mean": float(model.meta.get("target_mean", 0.0)),
+        "target_scale": float(model.meta.get("target_scale", 1.0)),
+    }
+    official = ExtendedModel.__new__(ExtendedModel)
+    official.params = params
+    official.first = {name: np.zeros_like(value) for name, value in params.items()}
+    official.second = {name: np.zeros_like(value) for name, value in params.items()}
+    official.mean = np.array(model.mean, dtype=np.float64, copy=True)
+    official.scale = np.array(model.scale, dtype=np.float64, copy=True)
+    official.meta = meta
+    official.validate()
+    return official

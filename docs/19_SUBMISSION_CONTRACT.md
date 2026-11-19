@@ -392,9 +392,9 @@ curl -s -H "Authorization: Bearer $TOKEN" https://rsi-index.115.zone/api/v1/rule
 （`/runtime/v1/runs/...`）不再是主路径。镜像必须实现固定入口
 `python3 /app/harness.py describe|train|predict`，选手模块为 `/app/contest_submission.py`。
 
-- 规范来源：平台前端内嵌《选手 Harness SDK 使用说明》；SDK `1.0.2`（sha256
+- 规范来源：平台前端内嵌《选手 Harness SDK 使用说明》；SDK `1.0.4`（sha256
   `c676c8beeef69cece9cbec5a633d05dbb9832eb22b6f761913f2315bd1f85133`），已 vendored 到
-  `vendor/contest_harness-1.0.2/`。
+  `vendor/contest_harness-1.0.4/`。
 - 我们已实现并通过本地 fake-host 验证：`/app/harness.py` + `/app/contest_submission.py` +
   `rsi/platform/submission.py`；详见 **docs/26_WORKSPACE_V2.md**。
 - 平台诊断将调用 `harness.py describe`，期望输出

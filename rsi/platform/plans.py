@@ -387,6 +387,8 @@ def build_plans(ctx: PlanContext) -> list[dict]:
         plan["label"] = label
         plan["seed_plan"] = True
         plans.append(plan)
+    if ctx.task == "classification":
+        plans.extend(capacity_plans(ctx))
     return plans
 
 
@@ -396,6 +398,72 @@ class _Proposal:
     params: dict
     postprocess: dict
     hypothesis: str = ""
+
+
+# ---------------------------------------------------------------------------
+# opt-in capacity arms (loss / hidden-layer changes, official v1 compatible)
+# ---------------------------------------------------------------------------
+CAPACITY_ARM_ENV = "RSI_V2_CAPACITY_ARM"
+_CAPACITY_ARMS = {
+    "h64": {"name": "capacity_h64", "hidden": 64, "loss": None, "epochs": 120,
+            "label": "容量臂：单隐层 tanh h64（从零重训，checkpoint 为官方 v1 格式）"},
+    "ls10": {"name": "capacity_ls10", "hidden": 32,
+             "loss": {"type": "label_smoothing", "eps": 0.1}, "epochs": 120,
+             "label": "容量臂：label smoothing eps=0.1（单隐层 tanh h32，官方 v1 兼容）"},
+}
+
+
+def capacity_arm_mode() -> str:
+    return os.environ.get(CAPACITY_ARM_ENV, "off").strip().lower()
+
+
+def _capacity_arm_list() -> list[dict]:
+    mode = capacity_arm_mode()
+    if mode in ("", "off", "none", "0", "false"):
+        return []
+    names = ["h64", "ls10"] if mode in ("both", "all", "on") else [mode]
+    return [_CAPACITY_ARMS[name] for name in names if name in _CAPACITY_ARMS]
+
+
+def capacity_plans(ctx: PlanContext) -> list[dict]:
+    """Train opt-in capacity arms on the public train projection only.
+
+    Every arm is converted back to the official ``contest.cpu-mlp.v1`` layout so
+    the platform loader accepts it.  Only single-hidden tanh arms are allowed:
+    ReLU and two-layer models are not loadable by the official forward pass.
+    """
+    arms = _capacity_arm_list()
+    if not arms or ctx.task != "classification":
+        return []
+    from rsi.capacity import CapacityModel, normalize_loss, to_official
+
+    seed = int(os.environ.get("RSI_V2_SEED", "20261117"))
+    y = np.asarray(ctx.y_train, dtype=np.int64)
+    plans = []
+    for arm in arms:
+        try:
+            model = CapacityModel(
+                ctx.task, list(ctx.model.meta.get("paths") or []), ctx.classes,
+                ctx.x_train, y, hidden=int(arm["hidden"]), hidden2=0,
+                activation="tanh", dropout=0.0,
+                loss=normalize_loss(arm["loss"]) if arm.get("loss") else None,
+                seed=seed, learning_rate=3e-3, batch_size=64)
+            model.fit(ctx.x_train, y, int(arm["epochs"]))
+            official = to_official(model)
+            plan = _make_plan(ctx, kind=arm["name"], label=arm["label"],
+                              strategy="capacity",
+                              params={"hidden": int(arm["hidden"]),
+                                      "loss": arm.get("loss"), "epochs": int(arm["epochs"])},
+                              postprocess={"type": "none"}, model=official,
+                              hypothesis=arm["label"], checkpoint_changed=True)
+            plan["seed_plan"] = True
+            plans.append(plan)
+        except Exception as error:  # a broken capacity arm must not kill the round
+            plans.append({"ok": False, "kind": arm["name"], "strategy": "capacity",
+                          "primary": None, "values": {}, "metrics": {},
+                          "error": "%s: %s" % (type(error).__name__, error),
+                          "checkpoint_changed": False})
+    return plans
 
 
 def catalog_text(include_strategies: bool = True) -> str:

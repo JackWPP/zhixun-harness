@@ -213,7 +213,9 @@ def _adapt_arms_enabled() -> bool:
         "0", "off", "false", "no"}
 
 
-def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> list[dict]:
+def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
+                     metric: str = "macro_f1", direction: str = "higher",
+                     margin: float = 0.0) -> list[dict]:
     """Build candidate plan descriptors sorted by expected value (cheap first)."""
     task = model.meta.get("task")
     classes = list(model.meta.get("classes") or [])
@@ -300,6 +302,28 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> 
                 "postprocess": {"type": "none"},
                 "checkpoint": "CONTINUE_TRAIN_40",
             })
+    if task == "classification" and _plans.capacity_arm_mode() not in ("", "off", "none", "0", "false"):
+        try:
+            ctx = _plans.PlanContext.from_rows(
+                task_key, model, train, validation, metric=metric,
+                direction=direction, margin=float(margin),
+                classes=list(model.meta.get("classes") or []))
+            for plan in _plans.capacity_plans(ctx):
+                if not plan.get("ok"):
+                    continue
+                candidates.append({
+                    "kind": plan["kind"],
+                    "label": plan["label"],
+                    "postprocess": plan["postprocess"],
+                    "checkpoint": "CAPACITY",
+                    "model": plan["model"],
+                    "primary": plan["primary"],
+                    "values": plan["values"],
+                    "hypothesis": plan.get("hypothesis") or plan["label"],
+                })
+        except Exception as error:
+            print("train: capacity arms unavailable: %s: %s" % (type(error).__name__, error),
+                  file=sys.stderr, flush=True)
     for plan in candidates:
         postprocess = plan["postprocess"]
         checkpoint_kind = plan.get("checkpoint")
@@ -319,7 +343,15 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation) -> 
                 except Exception:
                     candidate_model = model
         else:
-            candidate_model = model
+            candidate_model = plan.get("model") or model
+        if plan.get("checkpoint") == "CAPACITY":
+            plans.append({
+                **plan,
+                "model": candidate_model,
+                "values": plan.get("values") or {},
+                "primary": plan.get("primary"),
+            })
+            continue
         if postprocess == "FIT_DAMAGE":
             from rsi.inference import fit_damage_shrink
             dataset = _as_dataset(x_train, y_train, classes, task)
@@ -701,7 +733,9 @@ def train(rnd):
         controller_note = "kernel"
         choice_note = "内核决策 %s" % decision_note.get("decision", "retain")
     else:
-        plans = _candidate_plans(task_key, model, train_rows, validation_rows)
+        plans = _candidate_plans(task_key, model, train_rows, validation_rows,
+                                  metric=metric, direction=direction,
+                                  margin=float(defaults["margin"]))
         table = _format_plan_table(plans, metric)
         prompt = (
             "本轮是 %s 数据集第 %d 轮，指标 %s（方向 %s）。父模型在公开验证集上的 %s 已给出，"
@@ -766,7 +800,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.12.0",
+        "version": "0.12.1",
         "task_key": task_key,
         "task": task,
         "metric": metric,

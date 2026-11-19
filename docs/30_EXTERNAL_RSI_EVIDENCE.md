@@ -78,8 +78,8 @@
      · predict: stdin 逐行 → CONTEST_ARTIFACT_PATH 产物 → 官方输出格式
 ```
 
-**SDK 适配**：已完成。平台 `contest.harness.workspace.v2` 的 SDK 1.0.2 已 vendor 进
-镜像（`vendor/contest_harness-1.0.2/`，sha256 `c676c8be…`），镜像内提供
+**SDK 适配**：已完成。平台 `contest.harness.workspace.v2` 的 SDK 1.0.4 已 vendor 进
+镜像（`vendor/contest_harness-1.0.4/`，sha256 `c676c8be…`），镜像内提供
 `/app/harness.py` 与 `/app/contest_submission.py`；本地 fake-host emulator 对 A/B/C
 各 10 轮 PASS；镜像 0.10.1 内 `describe/train/predict` 已通过验证；平台 submission
 已创建并进入 trial（详见第 7 节与文末）。

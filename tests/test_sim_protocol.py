@@ -82,3 +82,33 @@ def test_full_batches_repeat_keeps_ids_unique():
     for batch in batches:
         ids = [str(r["id"]) for r in batch.train]
         assert len(ids) == len(set(ids)), "history contains duplicate sample ids after repeat"
+
+
+def test_official_seq_stage_data_keeps_validation_out_of_training(tmp_path):
+    """SDK 1.0.4: the public validation split is measurement-only.
+
+    Regression guard for the official-sequence host: `/data/train` must grow
+    with the drops revealed by earlier rounds, never with the validation rows
+    that are used for selection.
+    """
+    import sys
+
+    sys.path.insert(0, str(REPO / "scripts" / "sim"))
+    import full_env
+
+    spec = full_env.official_seq_spec(rounds=3, seed=0)
+    expected = [len(spec["train_rows"])]
+    for drop in spec["drops"][:2]:
+        expected.append(expected[-1] + len(drop))
+    for round_index in (1, 2, 3):
+        full_env.stage_data(spec, round_index, 3, tmp_path / ("r%d" % round_index))
+        root = tmp_path / ("r%d" % round_index) / "public"
+        train = [json.loads(line) for line in
+                 (root / "train.jsonl").read_text(encoding="utf-8").splitlines()]
+        validation = [json.loads(line) for line in
+                      (root / "validation.jsonl").read_text(encoding="utf-8").splitlines()]
+        train_ids = {str(row["id"]) for row in train}
+        validation_ids = {str(row["id"]) for row in validation}
+        assert len(validation) == len(spec["validation_rows"])
+        assert not (train_ids & validation_ids), "validation rows leaked into training"
+        assert len(train) == expected[round_index - 1]

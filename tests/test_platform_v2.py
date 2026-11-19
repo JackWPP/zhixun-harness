@@ -13,7 +13,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 APP = REPO / "docker" / "app"
-SDK = REPO / "vendor" / "contest_harness-1.0.2"
+SDK = REPO / "vendor" / "contest_harness-1.0.4"
 
 
 def run_python(args, **kwargs):
@@ -37,7 +37,7 @@ def test_describe_speaks_workspace_v2():
         "protocol": "contest.harness.workspace.v2",
         "model_access": "host_gateway_rpc",
         "sdk": "contest_harness",
-        "sdk_version": "1.0.2",
+        "sdk_version": "1.0.4",
         "tasks": ["classification", "regression"],
     }
 

@@ -46,13 +46,23 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts" / "sim"))
 
 import datasets as _datasets  # noqa: E402
+from upload_host import UploadStore  # noqa: E402
 
 from rsi.metrics import from_predictions  # noqa: E402
 
 PYTHON = sys.executable
 APP = Path("/app") if Path("/app/harness.py").is_file() else REPO / "docker" / "app"
-SDK = REPO / "vendor" / "contest_harness-1.0.2"
+SDK = REPO / "vendor" / "contest_harness-1.0.4"
 SDK_PARENT = REPO if (REPO / "contest_harness").is_dir() else SDK
+
+_UPLOAD_LIMITS = {
+    "artifact_upload_protocol": "chunked-v1",
+    "artifact_bytes": 512 * 1024 * 1024,
+    "state_bytes": 512 * 1024 * 1024,
+    "candidate_upload_bytes_per_round": 512 * 1024 * 1024,
+    "state_upload_bytes_per_round": 512 * 1024 * 1024,
+    "upload_chunk_bytes": 1024 * 1024,
+}
 
 
 # ---------------------------------------------------------------- provider --
@@ -80,13 +90,24 @@ class OpenAIProvider:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
+        # Providers disagree on how to turn reasoning off.  tokenplus (the
+        # SiliconFlow-compatible endpoint) rejects ``enable_thinking`` and wants
+        # ``thinking={"type": "disabled"}``; PyTRiO accepts ``enable_thinking``.
+        lowered = self.base_url.lower()
+        self.thinking_style = "thinking" if ("tokenplus" in lowered or "siliconflow" in lowered) else "enable_thinking"
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.calls = 0
 
+    def _thinking_fields(self):
+        if self.thinking_style == "thinking":
+            return {"thinking": {"type": "disabled"}}
+        return {"enable_thinking": False}
+
     def chat(self, messages, *, max_tokens=512, temperature=0.0, tools=None, tool_choice="auto"):
         payload = {"model": self.model, "messages": messages, "temperature": temperature,
-                   "max_tokens": max_tokens, "enable_thinking": False}
+                   "max_tokens": max_tokens}
+        payload.update(self._thinking_fields())
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
@@ -114,6 +135,18 @@ class OpenAIProvider:
                 except Exception:
                     detail = ""
                 error = f"HTTP {exc.code}: {detail}"
+                if exc.code == 400 and "thinking" in detail and "enable_thinking" in detail:
+                    self.thinking_style = "thinking" if self.thinking_style == "enable_thinking" else "enable_thinking"
+                    payload.pop("enable_thinking", None)
+                    payload.pop("thinking", None)
+                    payload.update(self._thinking_fields())
+                    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                    continue
+                if exc.code == 400 and "enable_thinking" not in detail and self.thinking_style == "thinking":
+                    payload.pop("thinking", None)
+                    payload["enable_thinking"] = False
+                    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                    continue
                 time.sleep(0.8 * (attempt + 1))
             except Exception as exc:  # noqa: BLE001 - network/provider errors are retried
                 error = exc
@@ -160,7 +193,7 @@ def resolve_provider(args):
     api_key = args.api_key or os.environ.get("SIM_LLM_API_KEY") or os.environ.get("LLM_API_KEY")
     model = args.model or os.environ.get("SIM_LLM_MODEL") or os.environ.get("LLM_MODEL")
     if not (base_url and api_key and model):
-        for candidate in (REPO / ".scratch" / "pytrio.env", REPO / ".scratch" / "llm.env"):
+        for candidate in (REPO / ".scratch" / "llm.env", REPO / ".scratch" / "pytrio.env"):
             values = _load_env_file(candidate)
             base_url = base_url or values.get("LLM_BASE_URL")
             api_key = api_key or values.get("LLM_API_KEY")
@@ -229,6 +262,7 @@ def serve(process, frame, artifact_dir, state_dir, provider, round_index, model_
     sequence = 0
     call_ids: list[str] = []
     files: dict[str, bytes] = {}
+    uploads = UploadStore(max_bytes=int(frame.get("resource_limits", {}).get("artifact_bytes", 512 * 1024 * 1024)))
     while True:
         line = process.stdout.readline()
         if not line:
@@ -246,6 +280,11 @@ def serve(process, frame, artifact_dir, state_dir, provider, round_index, model_
         if reply.get("id") != sequence:
             raise RuntimeError("rpc sequence mismatch")
         sequence += 1
+        upload_reply = uploads.handle(reply)
+        if upload_reply is not None:
+            process.stdin.write(json.dumps(upload_reply, ensure_ascii=False) + "\n")
+            process.stdin.flush()
+            continue
         if kind == "history_request":
             out = {"type": "history_response", "id": reply["id"], "records": frame.get("history", [])}
         elif kind == "model_request":
@@ -273,13 +312,11 @@ def serve(process, frame, artifact_dir, state_dir, provider, round_index, model_
             artifact = reply.get("artifact") or {}
             if not isinstance(artifact, dict) or not artifact.get("checkpoint_paths"):
                 raise RuntimeError("candidate artifact invalid")
-            files = {}
-            for item in reply.get("files") or []:
-                name = item.get("path")
-                if not isinstance(name, str) or ".." in name:
-                    raise RuntimeError("candidate file path invalid")
-                files[name] = base64.b64decode(item.get("data_base64", ""), validate=True)
-            if len(files) > 64 or sum(len(value) for value in files.values()) > 64 * 1024 * 1024:
+            upload_id = reply.get("upload_id")
+            if not isinstance(upload_id, str) or not upload_id:
+                raise RuntimeError("candidate request is missing upload_id")
+            files = uploads.take(upload_id, "candidate")
+            if len(files) > 64 or sum(len(value) for value in files.values()) > 512 * 1024 * 1024:
                 raise RuntimeError("candidate too large")
             for name in list(artifact.get("checkpoint_paths", [])) + list(artifact.get("code_paths", [])):
                 if name not in files:
@@ -289,9 +326,10 @@ def serve(process, frame, artifact_dir, state_dir, provider, round_index, model_
                    "artifact_id": "sim-artifact-%s-r%d" % (frame.get("dataset_key"), round_index),
                    "summary": {"metrics": {}}}
         elif kind == "state_request":
-            payload = {}
-            for item in reply.get("files") or []:
-                payload[item["path"]] = base64.b64decode(item.get("data_base64", ""), validate=True)
+            upload_id = reply.get("upload_id")
+            if not isinstance(upload_id, str) or not upload_id:
+                raise RuntimeError("state request is missing upload_id")
+            payload = uploads.take(upload_id, "state")
             write_files(state_dir, payload)
             digest = hashlib.sha256(json.dumps(sorted(payload), default=str).encode()).hexdigest()
             out = {"type": "state_response", "id": reply["id"], "state_sha256": "sha256:" + digest}
@@ -333,7 +371,7 @@ def build_frame(spec: dict, round_index: int, rounds: int, data_dir: Path, paren
         "state_path": state_path,
         "state_sha256": state_sha,
         "max_output_tokens": 256,
-        "resource_limits": {"candidate_upload_bytes_per_round": 64 * 1024 * 1024},
+        "resource_limits": dict(_UPLOAD_LIMITS),
         "current_validation": {},
         "wall_seconds": 900,
     }
@@ -523,9 +561,10 @@ def stage_data(spec: dict, round_index: int, rounds: int, data_dir: Path) -> Non
     train = list(spec["train_rows"])
     validation = list(spec["validation_rows"])
     if spec.get("sequence"):
-        # The public validation split is labelled public data: a faithful host
-        # exposes it to the participant together with the revealed drops.
-        train = list(spec["train_rows"]) + list(spec["validation_rows"])
+        # SDK 1.0.4: the public validation split is for measurement/selection
+        # only and must not be merged into gradient training.  Training grows
+        # with the drops revealed by previous rounds, nothing else.
+        train = list(spec["train_rows"])
         for index in range(min(round_index - 1, len(spec["drops"]))):
             train.extend(spec["drops"][index])
         validation = list(spec["validation_rows"])
@@ -592,12 +631,15 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=0, help="world seed (row order + participant init)")
     parser.add_argument("--adapt-arm", choices=["auto", "pair", "retrain", "retrain_pair"],
                         default="auto", help="restrict cumulative-adaptation candidate arms")
+    parser.add_argument("--capacity-arm", choices=["off", "h64", "ls10", "both"],
+                        default="off", help="opt-in capacity arm (official v1 checkpoint)")
     args = parser.parse_args(argv)
 
     provider = resolve_provider(args)
     os.environ["RSI_V2_DRIFT_POLICY"] = "1" if args.policy == "on" else "0"
     os.environ["RSI_V2_SEED"] = str(int(args.seed))
     os.environ["RSI_V2_ADAPT_ARM"] = args.adapt_arm
+    os.environ["RSI_V2_CAPACITY_ARM"] = args.capacity_arm
     if args.pair_delta is not None:
         os.environ["RSI_V2_PAIR_DELTA"] = str(float(args.pair_delta))
     stamp = time.strftime("%Y%m%d-%H%M%S")

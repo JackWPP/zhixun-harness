@@ -46,11 +46,11 @@ else
 fi
 
 # 3. workspace v2 participant runtime (vendored platform SDK + /app entrypoint)
-VENDOR_SDK=${VENDOR_SDK:-vendor/contest_harness-1.0.2/contest_harness}
+VENDOR_SDK=${VENDOR_SDK:-vendor/contest_harness-1.0.4/contest_harness}
 if [ -d "$VENDOR_SDK" ]; then
     mkdir -p "$APP/contest_harness"
     rsync -a --exclude '__pycache__' --exclude '*.pyc' "$VENDOR_SDK/" "$APP/contest_harness/"
-    [ -f vendor/contest_harness-1.0.2/HARNESS_SDK.md ] && cp vendor/contest_harness-1.0.2/HARNESS_SDK.md "$APP/contest_harness/HARNESS_SDK.md"
+    [ -f vendor/contest_harness-1.0.4/HARNESS_SDK.md ] && cp vendor/contest_harness-1.0.4/HARNESS_SDK.md "$APP/contest_harness/HARNESS_SDK.md"
 else
     echo "[stage] ERROR: vendored contest_harness SDK missing at $VENDOR_SDK" >&2
     exit 1

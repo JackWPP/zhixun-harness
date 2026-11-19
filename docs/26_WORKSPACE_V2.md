@@ -8,9 +8,9 @@
 ## 1. 规范来源
 
 - 平台前端 bundle（`.scratch/platform/index-new.js`）内嵌《选手 Harness SDK 使用说明》，并给出下载地址
-  `/downloads/contest-harness-sdk-1.0.2.tar.gz`。
+  `/downloads/contest-harness-sdk-1.0.4.tar.gz`。
 - 已下载并校验：`sha256:c676c8beeef69cece9cbec5a633d05dbb9832eb22b6f761913f2315bd1f85133`
-  （与平台元数据一致）。仓库 `vendor/contest_harness-1.0.2/` 保存该 SDK 源码副本用于离线构建，
+  （与平台元数据一致）。仓库 `vendor/contest_harness-1.0.4/` 保存该 SDK 源码副本用于离线构建，
   升级 SDK 时替换目录并同步本文件。
 - 固定入口：镜像内 `python3 /app/harness.py describe|train|predict`，选手模块
   `/app/contest_submission.py`（可用 `CONTEST_SUBMISSION` 改名），导出 `train(rnd)`、`predict(sample, model_dir)`、`TASKS`。
@@ -19,7 +19,7 @@
 
 | 项 | 约定 |
 |---|---|
-| describe | 一行 JSON：`{"protocol":"contest.harness.workspace.v2","model_access":"host_gateway_rpc","sdk":"contest_harness","sdk_version":"1.0.2","tasks":[...]}` |
+| describe | 一行 JSON：`{"protocol":"contest.harness.workspace.v2","model_access":"host_gateway_rpc","sdk":"contest_harness","sdk_version":"1.0.4","tasks":[...]}` |
 | train | stdin 一帧 `start`；进程内通过 JSONL RPC 与宿主交互（history/model/candidate/state/artifact_read） |
 | round 生命周期 | `Round.start` → 读 `/data/train.jsonl`、`/data/validation.jsonl` → `rnd.model(...)`（宿主附加官方 prompt）→ `submit_candidate(dir, …)` → `save_state(dir)` → `finish(selected_artifact_id, …, model_call_ids=…)` → 发 `round_complete` 并等 `round_ack` |
 | 父产物 | `/previous` 只读；`rnd.parent.path("checkpoint.npz")` 会核对清单摘要，不匹配抛 `PARENT_DIGEST_MISMATCH` |
@@ -41,14 +41,14 @@
   - `predict(sample, model_dir)`：从 `CONTEST_ARTIFACT_PATH` 加载 checkpoint 与同目录 `submission_meta.json`；
     分类逐行用 `RecenterStream`（因果窗口）或 pair 阈值；回归用 shrink / `DamageShrinkStream`；输出严格符合 SDK 校验。
   - 合规边界：训练只用 `public/train.jsonl`；验证只用于评估与门控；从未把 `answer` 列喂给模型；产物不写 `/app`、不联网。
-- 镜像构建：`docker/requirements.txt` 不含 SDK（纯 Python），`vendor/contest_harness-1.0.2/contest_harness` 被拷到
+- 镜像构建：`docker/requirements.txt` 不含 SDK（纯 Python），`vendor/contest_harness-1.0.4/contest_harness` 被拷到
   `/opt/zhixun/app/contest_harness`；`docker/app/*` 被拷到镜像 `/app/`（`scripts/stage_image.sh` 同步支持无 daemon 构建）。
 
 ## 4. 本地验证
 
 ```bash
 # 1) describe（等价于平台诊断调用的入口）
-PYTHONPATH="$PWD:$PWD/vendor/contest_harness-1.0.2:$PWD/docker/app" \
+PYTHONPATH="$PWD:$PWD/vendor/contest_harness-1.0.4:$PWD/docker/app" \
   ./.venv/bin/python docker/app/harness.py describe
 
 # 2) 模拟宿主完整一轮（A：train → 候选上传 → state → predict 三条）
@@ -90,14 +90,14 @@ bash scripts/verify_image.sh .scratch/image/harness.tar
 ## 7. 2026-11-17 新版《选手 Harness SDK 使用说明》对照审计
 
 > 来源：用户 2026-11-17 提供的新版说明（`contest-harness-sdk-1.0.2 (1).txt`，11,864 B，文字与
-> `vendor/contest_harness-1.0.2/HARNESS_SDK.md` 基本一致，新增了“提交里要有什么 / 目录权限 / 公开数据 /
+> `vendor/contest_harness-1.0.4/HARNESS_SDK.md` 基本一致，新增了“提交里要有什么 / 目录权限 / 公开数据 /
 > 父模型 / 一轮训练 / 预测 / 本地检查”等操作细节）。逐项对照结果如下（PASS=无需改动；
 > 已修=本轮发现并修复；注意=边界说明）。
 
 | # | 官方要求 | 我们的实现 | 结论 |
 |---|---|---|---|
 | 1 | 镜像内安装 SDK，`/app/harness.py` 固定入口，选手模块默认 `/app/contest_submission.py` | `docker/app/harness.py` bootstrap 插入 `/opt/zhixun/{site-packages,app}` 后调 `contest_harness.cli.main`；`docker/Dockerfile` 拷 vendor SDK + 两个 app 文件；`entrypoint.sh` 对 `describe/train/predict` 直接 `exec python3 /app/harness.py "$@"` | PASS |
-| 2 | `describe` 向 stdout 打印一行 JSON，至少含 protocol/model_access/tasks；会 import 模块并检查 `train`/`predict`/任务声明 | 本地 `harness.py describe` 输出 `{"protocol":"contest.harness.workspace.v2","model_access":"host_gateway_rpc","sdk":"contest_harness","sdk_version":"1.0.2","tasks":["classification","regression"]}`；`TASKS` 恰好是两类 | PASS（`tests/test_platform_v2.py::test_describe_speaks_workspace_v2`） |
+| 2 | `describe` 向 stdout 打印一行 JSON，至少含 protocol/model_access/tasks；会 import 模块并检查 `train`/`predict`/任务声明 | 本地 `harness.py describe` 输出 `{"protocol":"contest.harness.workspace.v2","model_access":"host_gateway_rpc","sdk":"contest_harness","sdk_version":"1.0.4","tasks":["classification","regression"]}`；`TASKS` 恰好是两类 | PASS（`tests/test_platform_v2.py::test_describe_speaks_workspace_v2`） |
 | 3 | `tasks` 只能是镜像实际支持的分类/回归 | 两类都由同一份 `train/predict` 支持（A 分类，B/C 回归） | PASS |
 | 4 | `/app` 只读，不在其下建目录/改文件；不假设根目录可写 | 所有写操作在 `/workspace`；镜像 `PYTHONDONTWRITEBYTECODE=1`；bootstrap 只 `sys.path.insert` | PASS |
 | 5 | `/data/*` 是“当前阶段公开投影”，行字段 `id/inputs/answer`，训练/验证逐行读 | `train(rnd)` 只用 `rnd.data.training_rows()/validation_rows()`，`_xy_rows` 逐行 flatten；从不读 `answer` 之外的文件名假设 | PASS |
@@ -113,13 +113,13 @@ bash scripts/verify_image.sh .scratch/image/harness.tar
 | 15 | predict：`model_dir` 是 `/model` 根；`CONTEST_ARTIFACT_PATH` 是选中 checkpoint 文件；上下文协议 `contest.predict-context.v1`；样本 `task` 为 classification/regression | `_artifact_path` 优先 `CONTEST_ARTIFACT_PATH`，回退 `/model/checkpoint.npz|model.npz|*.npz`；meta 从 checkpoint 同目录读；`sample.task` 与 artifact task 不同则报错 | PASS |
 | 16 | 分类输出：label 非空唯一、score∈[0,1] 有限、最高分唯一；回归：`{"value": 非负有限}`；逐行 flush | `_uniform_scores` 归一化/裁剪到 [0,1] 并**强制唯一最高分**（本轮修复并列 top 时可能违反“最高分唯一”的边角）；回归 clamp 到非负数；SDK 逐行 `write+flush` | 已修（并列最高分） |
 | 17 | 不得把 PyTRiO Key/外部采样客户端放进镜像、源码、文档、训练记录 | Key 只在 `.scratch/llm.env`（gitignore、不入镜像）；镜像 `COPY` 列表不含 `.scratch`；仓库 `git grep 'sk-bceph'` 无命中；提交时 Key 只填平台密钥栏 | PASS |
-| 18 | 旧 `contest_sdk` HTTP 客户端（`/runtime/v1/runs/...`）与 v2 不同 | 我们完全走 v2 `contest_harness` 1.0.2，未用旧客户端 | PASS |
+| 18 | 旧 `contest_sdk` HTTP 客户端（`/runtime/v1/runs/...`）与 v2 不同 | 我们完全走 v2 `contest_harness` 1.0.4，未用旧客户端 | PASS |
 
 ### 7.1 本轮实际执行的验证
 
 ```bash
 # 官方 SDK 自带离线协议测试（15 项）
-cd vendor/contest_harness-1.0.2 && ../../.venv/bin/python -m unittest \
+cd vendor/contest_harness-1.0.4 && ../../.venv/bin/python -m unittest \
   tests.test_sdk tests.test_contract_regressions tests.test_transport_regressions -v
 # => Ran 15 tests OK
 
@@ -241,3 +241,36 @@ PI-agent kernel + 历史校准 pair_threshold。
 
 镜像：`zhixun-rsi-harness:0.11.2`，tar 380,221,440 B，sha256 `b83b4eae5e7e7b0bf64fe8205257299805e8c30f21427d1b9c51eddcbb55f000`，
 `scripts/verify_image.sh` PASS；测试 153 passed。平台侧未上传、未重跑 trial（待用户确认）。
+
+### 7.7 0.12.1：SDK 1.0.4 升级与分块上传
+
+平台于 2026-11-19 将 Harness SDK 从 1.0.2 升级到 **1.0.4**（下载包
+`/downloads/contest-harness-sdk-1.0.4.tar.gz`，27,979 B），仓库 vendored 到
+`vendor/contest_harness-1.0.4/`。与 1.0.2 相比：
+
+- `describe` 的 `sdk_version` 变为 `1.0.4`（镜像内 SDK 版本必须与平台声明一致）。
+- 候选/状态的 RPC 从“内联 files”改为**分块上传 chunked-v1**：
+  `upload_begin_request` → 多次 `upload_chunk_request` → `upload_finish_request`，
+  然后 candidate/state 请求只带 `upload_id`；宿主必须在 `resource_limits` 里声明
+  `artifact_upload_protocol="chunked-v1"`，否则 SDK 直接报 `CHUNKED_UPLOAD_UNSUPPORTED`
+  （不会退回旧内联协议）。
+- 预算：单次候选/状态 ≤64 文件、合计 512 MiB；每轮候选累计 1 GiB、状态累计 512 MiB；
+  默认分块 1 MiB。
+- 新增 `_outcome_unknown`：RPC 中断后本轮会话不可再复用（`RPC_OUTCOME_UNKNOWN`），不自动重试。
+- 沙箱说明：**2 核 / 4 GiB 内存**（work 4 GiB、output/temp 各 1 GiB；OOM 可能被 kill）。
+- **公开验证集只能用于测量/选择，不得并入梯度训练**（与隐藏标签是两条独立边界）；
+  `scripts/sim/full_env.py::stage_data` 的 official-seq 分支已按此修正，并加了回归测试
+  `tests/test_sim_protocol.py::test_official_seq_stage_data_keeps_validation_out_of_training`。
+
+本地模拟宿主同步升级：`scripts/sim/upload_host.py`（UploadStore）处理 begin/chunk/finish；
+`scripts/emulate_workspace_v2.py` 与 `scripts/sim/full_env.py` 的 `resource_limits` 改为 chunked-v1；
+SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块上传）。
+### 7.8 0.12.1 镜像与验证
+
+- 测试：`pytest -q -m "not integration"` → **163 passed, 3 deselected**（71.97s）。
+- 镜像：`zhixun-rsi-harness:0.12.1`，tar **380,334,080 B**，
+  sha256 **`1e8697b2888f8ab5a4f0c226cf9eb93704156b7b2f45c3064648a96569bf793d`**，
+  config `4ca4b333ec6024da760d3941bcb9f432272c67056999b4949ac139dc6ea2a3aa.json`。
+- `scripts/verify_image.sh` **PASS**：describe 报 `sdk_version:"1.0.4"`；fake-host A 一轮 PASS；
+  离线 A 两轮 workspace_report metric `0.7345546845546845`；selftest A 数字与 0.11.x 一致。
+- **尚未上传平台**。

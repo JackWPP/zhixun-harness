@@ -38,7 +38,7 @@ COPY tasks /opt/zhixun/app/tasks
 COPY pyproject.toml README.md Makefile /opt/zhixun/app/
 
 # Workspace v2 participant runtime (platform-provided SDK, vendored unpinned-free)
-COPY vendor/contest_harness-1.0.2/contest_harness /opt/zhixun/app/contest_harness
+COPY vendor/contest_harness-1.0.4/contest_harness /opt/zhixun/app/contest_harness
 COPY docker/app/harness.py docker/app/contest_submission.py /app/
 
 COPY docker/entrypoint.sh /opt/zhixun/bin/entrypoint.sh

@@ -30,9 +30,21 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 APP = Path("/app") if Path("/app/harness.py").is_file() else REPO / "docker" / "app"
-SDK = REPO / "vendor" / "contest_harness-1.0.2"
+SDK = REPO / "vendor" / "contest_harness-1.0.4"
 SDK_PARENT = REPO if (REPO / "contest_harness").is_dir() else SDK
 PYTHON = sys.executable
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "sim"))
+from upload_host import UploadStore  # noqa: E402
+
+_UPLOAD_LIMITS = {
+    "artifact_upload_protocol": "chunked-v1",
+    "artifact_bytes": 512 * 1024 * 1024,
+    "state_bytes": 512 * 1024 * 1024,
+    "candidate_upload_bytes_per_round": 512 * 1024 * 1024,
+    "state_upload_bytes_per_round": 512 * 1024 * 1024,
+    "upload_chunk_bytes": 1024 * 1024,
+}
 
 TASKS = {
     "A": {
@@ -176,7 +188,7 @@ def start_frame(task_key: str, package: Path, parent: dict, round_index: int, hi
         "state_path": state_path,
         "state_sha256": state_sha,
         "max_output_tokens": 256,
-        "resource_limits": {"candidate_upload_bytes_per_round": 64 * 1024 * 1024},
+        "resource_limits": dict(_UPLOAD_LIMITS),
         "current_validation": {},
         "wall_seconds": 300,
     }
@@ -195,6 +207,7 @@ def serve(process: subprocess.Popen, frame: dict, artifact_dir: Path, state_dir:
     sequence = 0
     call_ids: list[str] = []
     files: dict[str, bytes] = {}
+    uploads = UploadStore(max_bytes=int(frame.get("resource_limits", {}).get("artifact_bytes", 512 * 1024 * 1024)))
     while True:
         line = process.stdout.readline()
         if not line:
@@ -212,6 +225,11 @@ def serve(process: subprocess.Popen, frame: dict, artifact_dir: Path, state_dir:
         if reply.get("id") != sequence:
             raise RuntimeError("rpc sequence mismatch")
         sequence += 1
+        upload_reply = uploads.handle(reply)
+        if upload_reply is not None:
+            process.stdin.write(json.dumps(upload_reply, ensure_ascii=False) + "\n")
+            process.stdin.flush()
+            continue
         if kind == "history_request":
             out = {"type": "history_response", "id": reply["id"], "records": frame.get("history", [])}
         elif kind == "model_request":
@@ -229,13 +247,11 @@ def serve(process: subprocess.Popen, frame: dict, artifact_dir: Path, state_dir:
             artifact = reply.get("artifact") or {}
             if not isinstance(artifact, dict) or not artifact.get("checkpoint_paths"):
                 raise RuntimeError("candidate artifact invalid")
-            files = {}
-            for item in reply.get("files") or []:
-                name = item.get("path")
-                if not isinstance(name, str) or "/" in name and ".." in name:
-                    raise RuntimeError("candidate file path invalid")
-                files[name] = base64.b64decode(item.get("data_base64", ""), validate=True)
-            if len(files) > 64 or sum(len(value) for value in files.values()) > 64 * 1024 * 1024:
+            upload_id = reply.get("upload_id")
+            if not isinstance(upload_id, str) or not upload_id:
+                raise RuntimeError("candidate request is missing upload_id")
+            files = uploads.take(upload_id, "candidate")
+            if len(files) > 64 or sum(len(value) for value in files.values()) > 512 * 1024 * 1024:
                 raise RuntimeError("candidate too large")
             for name in list(artifact.get("checkpoint_paths", [])) + list(artifact.get("code_paths", [])):
                 if name not in files:
@@ -244,9 +260,10 @@ def serve(process: subprocess.Popen, frame: dict, artifact_dir: Path, state_dir:
             out = {"type": "candidate_response", "id": reply["id"],
                    "artifact_id": "emu-artifact-r%d" % round_index, "summary": {"metrics": {}}}
         elif kind == "state_request":
-            payload = {}
-            for item in reply.get("files") or []:
-                payload[item["path"]] = base64.b64decode(item.get("data_base64", ""), validate=True)
+            upload_id = reply.get("upload_id")
+            if not isinstance(upload_id, str) or not upload_id:
+                raise RuntimeError("state request is missing upload_id")
+            payload = uploads.take(upload_id, "state")
             state_dir.mkdir(parents=True, exist_ok=True)
             for name, data in payload.items():
                 target = state_dir / name
