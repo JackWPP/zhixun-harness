@@ -1,0 +1,10 @@
+--- a/lib/index.js	2026-11-09 23:10:15.620297666 +0800
++++ b/lib/index.js	2026-11-19 10:53:39.980256459 +0800
+@@ -793,6 +793,7 @@
+ 					inheritedEventCount: SessionLogOffset(boundary + 1),
+ 					meta: {
+ 						...source.header.cwd === void 0 ? {} : { cwd: source.header.cwd },
++						parentSession: source.header.id,
+ 						isSeeded: true,
+ 						...composition.agentPreset === void 0 ? {} : { agentPreset: composition.agentPreset }
+ 					},

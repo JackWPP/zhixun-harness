@@ -68,6 +68,13 @@ def expand(matrix: dict, only: list[str] | None) -> list[dict]:
                     "policy": arm.get("policy", "on"),
                     "pair_delta": arm.get("pair_delta"),
                     "hidden_every_round": bool(spec.get("hidden_every_round", False)),
+                    "adapt_arm": arm.get("adapt_arm", spec.get("adapt_arm", "auto")),
+                    "capacity_arm": arm.get("capacity_arm", spec.get("capacity_arm", "off")),
+                    "thinking": arm.get("thinking", spec.get("thinking", "auto")),
+                    "max_turns": int(arm.get("max_turns", spec.get("max_turns", 6))),
+                    "token_cap": int(arm.get("token_cap", spec.get("token_cap", 0))),
+                    "max_output": int(arm.get("max_output", spec.get("max_output", 256))),
+                    "cap_train": int(spec.get("cap_train", 24000)),
                 }
                 runs.append(run)
     return runs
@@ -82,8 +89,21 @@ def load_manifest() -> dict[str, dict]:
             item = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if item.get("status") == "done":
-            done[item["tag"]] = item
+        if item.get("status") != "done":
+            continue
+        run_root = item.get("run_root") or ""
+        summary_path = Path(run_root) / "summary.json" if run_root else None
+        if summary_path is None or not summary_path.is_file():
+            continue
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if summary.get("tag") != item.get("tag"):
+            continue
+        if int(summary.get("seed", -1)) != int(item.get("seed", 0)):
+            continue
+        done[item["tag"]] = item
     return done
 
 
@@ -103,12 +123,17 @@ def build_command(run: dict) -> list[str]:
         "--controller", run["controller"],
         "--policy", run["policy"],
         "--tag", run["tag"],
+        "--seed", str(run["seed"]),
         "--swanlab", "auto",
     ]
     if run.get("hidden_every_round"):
         command.append("--hidden-every-round")
     if run.get("pair_delta") is not None:
         command.extend(["--pair-delta", str(run["pair_delta"])])
+    command.extend(["--adapt-arm", run["adapt_arm"], "--capacity-arm", run["capacity_arm"],
+                    "--thinking", run["thinking"], "--max-turns", str(run["max_turns"]),
+                    "--token-cap", str(run["token_cap"]), "--max-output", str(run["max_output"]),
+                    "--cap-train", str(run["cap_train"])])
     return command
 
 
@@ -177,10 +202,11 @@ def main(argv=None) -> int:
     parser.add_argument("--force", action="store_true", help="rerun completed entries")
     parser.add_argument("--timeout", type=float, default=900.0)
     parser.add_argument("--out", default=str(DEFAULT_OUT))
+    parser.add_argument("--matrix", default=str(MATRIX), help="campaign matrix JSON")
     args = parser.parse_args(argv)
 
     load_env_files()
-    matrix = json.loads(MATRIX.read_text(encoding="utf-8"))
+    matrix = json.loads(Path(args.matrix).read_text(encoding="utf-8"))
     only = [item.strip() for item in args.only.split(",") if item.strip()] or None
     runs = expand(matrix, only)
     done = load_manifest()

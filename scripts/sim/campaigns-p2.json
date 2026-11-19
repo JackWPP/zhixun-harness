@@ -1,0 +1,248 @@
+{
+  "E1": {
+    "description": "capacity arms on official-seq A (pipeline, 8 rounds, 3 seeds)",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 8,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 8,
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "arms": [
+      {
+        "tag": "cap-off",
+        "capacity_arm": "off"
+      },
+      {
+        "tag": "cap-h64",
+        "capacity_arm": "h64"
+      },
+      {
+        "tag": "cap-ls10",
+        "capacity_arm": "ls10"
+      }
+    ]
+  },
+  "E2": {
+    "description": "adaptive arms on official-seq A (pipeline, 8 rounds, 2 seeds)",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 8,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 8,
+    "seeds": [
+      1,
+      2
+    ],
+    "arms": [
+      {
+        "tag": "pol-off",
+        "policy": "off"
+      },
+      {
+        "tag": "adapt-retrain",
+        "policy": "on",
+        "adapt_arm": "retrain"
+      },
+      {
+        "tag": "adapt-pair",
+        "policy": "on",
+        "adapt_arm": "pair"
+      },
+      {
+        "tag": "adapt-retrain-pair",
+        "policy": "on",
+        "adapt_arm": "retrain_pair"
+      }
+    ]
+  },
+  "E3": {
+    "description": "six-arm matrix re-run: baseline/retrain/retrain_pair (2 seeds)",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 8,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 8,
+    "seeds": [
+      1,
+      2
+    ],
+    "arms": [
+      {
+        "tag": "baseline",
+        "policy": "off"
+      },
+      {
+        "tag": "retrain",
+        "policy": "on",
+        "adapt_arm": "retrain"
+      },
+      {
+        "tag": "retrain-pair",
+        "policy": "on",
+        "adapt_arm": "retrain_pair"
+      }
+    ]
+  },
+  "E4b": {
+    "description": "B task pipeline on official scenario (10 rounds, 2 seeds)",
+    "scenario": "official",
+    "tasks": "B",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 8,
+    "seeds": [
+      1,
+      2
+    ],
+    "arms": [
+      {
+        "tag": "default"
+      }
+    ]
+  },
+  "E4c": {
+    "description": "C task pipeline on official scenario (10 rounds, 2 seeds)",
+    "scenario": "official",
+    "tasks": "C",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 8,
+    "seeds": [
+      1,
+      2
+    ],
+    "arms": [
+      {
+        "tag": "default"
+      }
+    ]
+  },
+  "E5": {
+    "description": "external + schema generalization (pipeline, 2 seeds)",
+    "scenario": "external",
+    "tasks": "A",
+    "rounds": 4,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 8,
+    "seeds": [
+      1,
+      2
+    ],
+    "arms": [
+      {
+        "tag": "external"
+      }
+    ]
+  },
+  "E6": {
+    "description": "thinking A/B on kernel route (2 rounds, 2 seeds)",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 2,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "token_cap": 0,
+    "max_output": 1536,
+    "seeds": [
+      1,
+      2
+    ],
+    "arms": [
+      {
+        "tag": "think-on",
+        "thinking": "on"
+      },
+      {
+        "tag": "think-off",
+        "thinking": "off"
+      }
+    ]
+  },
+  "E5b": {
+    "description": "schema variant generalization (pipeline, 3 rounds, 2 seeds)",
+    "scenario": "schema",
+    "tasks": "A",
+    "rounds": 3,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 8,
+    "seeds": [
+      1,
+      2
+    ],
+    "arms": [
+      {
+        "tag": "schema"
+      }
+    ]
+  },
+  "E1b": {
+    "description": "capacity follow-up: off vs ls10, seeds 4-6",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 8,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 8,
+    "seeds": [
+      4,
+      5,
+      6
+    ],
+    "arms": [
+      {
+        "tag": "cap-off",
+        "capacity_arm": "off"
+      },
+      {
+        "tag": "cap-ls10",
+        "capacity_arm": "ls10"
+      }
+    ]
+  },
+  "E2b": {
+    "description": "adaptation follow-up: off vs retrain, seeds 3-4",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 8,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 8,
+    "seeds": [
+      3,
+      4
+    ],
+    "arms": [
+      {
+        "tag": "pol-off",
+        "policy": "off"
+      },
+      {
+        "tag": "adapt-retrain",
+        "policy": "on",
+        "adapt_arm": "retrain"
+      }
+    ]
+  }
+}

@@ -251,3 +251,21 @@ def test_drift_policy_env_switch_reads_pair_delta(monkeypatch):
     finally:
         monkeypatch.delenv("RSI_V2_PAIR_DELTA", raising=False)
         importlib.reload(plans)
+
+
+def test_gateway_runtime_max_output_reads_env(monkeypatch):
+    from rsi.platform.agent_host import GatewayRuntime
+
+    captured = []
+
+    class Rnd:
+        round_index = 1
+
+        def model(self, messages, **options):
+            captured.append(int(options.get("max_tokens") or 0))
+            return FakeReceipt("{\"tool\": \"finish_round\", \"args\": {}}", "call-max-output")
+
+    monkeypatch.setenv("RSI_V2_MAX_OUTPUT", "1536")
+    runtime = GatewayRuntime(Rnd(), max_turns=2, token_cap=0)
+    runtime.model([{"role": "user", "content": "state"}])
+    assert captured == [1536]

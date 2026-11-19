@@ -86,10 +86,11 @@ def _load_env_file(path: Path) -> dict:
 class OpenAIProvider:
     """Minimal OpenAI-compatible chat-completions client with retries."""
 
-    def __init__(self, base_url: str, api_key: str, model: str):
+    def __init__(self, base_url: str, api_key: str, model: str, thinking: bool = False):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
+        self.thinking = bool(thinking)
         # Providers disagree on how to turn reasoning off.  tokenplus (the
         # SiliconFlow-compatible endpoint) rejects ``enable_thinking`` and wants
         # ``thinking={"type": "disabled"}``; PyTRiO accepts ``enable_thinking``.
@@ -100,9 +101,10 @@ class OpenAIProvider:
         self.calls = 0
 
     def _thinking_fields(self):
+        enabled = "enabled" if self.thinking else "disabled"
         if self.thinking_style == "thinking":
-            return {"thinking": {"type": "disabled"}}
-        return {"enable_thinking": False}
+            return {"thinking": {"type": enabled}}
+        return {"enable_thinking": bool(self.thinking)}
 
     def chat(self, messages, *, max_tokens=512, temperature=0.0, tools=None, tool_choice="auto"):
         payload = {"model": self.model, "messages": messages, "temperature": temperature,
@@ -127,6 +129,13 @@ class OpenAIProvider:
                 self.calls += 1
                 if not data.get("id"):
                     data["id"] = "sim-" + uuid.uuid4().hex
+                message = ((data.get("choices") or [{}])[0].get("message") or {})
+                if (not (message.get("content") or "").strip() and self.thinking
+                        and attempt < 2 and int(payload.get("max_tokens") or 0) < 4096):
+                    # Reasoning consumed the whole budget; retry once with room.
+                    payload["max_tokens"] = min(4096, max(1024, int(payload["max_tokens"]) * 2))
+                    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                    continue
                 return data
             except urllib.error.HTTPError as exc:  # noqa: PERF203 - include provider body
                 detail = ""
@@ -203,7 +212,11 @@ def resolve_provider(args):
     if not (base_url and api_key and model):
         raise SystemExit("no provider configured: set SIM_LLM_BASE_URL/SIM_LLM_API_KEY/SIM_LLM_MODEL "
                          "or use --provider fake")
-    return OpenAIProvider(base_url, api_key, model)
+    thinking_mode = str(getattr(args, "thinking", "auto") or "auto").lower()
+    # E6 A/B: thinking on gave identical decisions/scores but ~9x wall time,
+    # so "auto" now means off; --thinking on remains for debugging.
+    thinking = thinking_mode == "on"
+    return OpenAIProvider(base_url, api_key, model, thinking=thinking)
 
 
 # -------------------------------------------------------------------- host --
@@ -370,7 +383,7 @@ def build_frame(spec: dict, round_index: int, rounds: int, data_dir: Path, paren
         "history": history,
         "state_path": state_path,
         "state_sha256": state_sha,
-        "max_output_tokens": 256,
+        "max_output_tokens": int(os.environ.get("RSI_V2_MAX_OUTPUT", "256") or 256),
         "resource_limits": dict(_UPLOAD_LIMITS),
         "current_validation": {},
         "wall_seconds": 900,
@@ -398,7 +411,7 @@ def run_train(work: Path, previous: Path, frame: dict, artifact_dir: Path, state
                                stderr=subprocess.PIPE, text=True, cwd=str(work), env=env)
     try:
         served = serve(process, frame, artifact_dir, state_dir, provider, round_index,
-                       {"max_tokens": 768})
+                       {"max_tokens": int(os.environ.get("RSI_V2_MAX_OUTPUT", "768") or 768)})
     except Exception:
         try:
             process.kill()
@@ -633,6 +646,11 @@ def main(argv=None) -> int:
                         default="auto", help="restrict cumulative-adaptation candidate arms")
     parser.add_argument("--capacity-arm", choices=["off", "h64", "ls10", "both"],
                         default="off", help="opt-in capacity arm (official v1 checkpoint)")
+    parser.add_argument("--thinking", choices=["auto", "on", "off"], default="auto",
+                        help="provider reasoning mode: on for kernel/auto, off for pipeline")
+    parser.add_argument("--max-turns", type=int, default=6, help="kernel tool turns per round")
+    parser.add_argument("--token-cap", type=int, default=0, help="kernel token budget (0 = unlimited)")
+    parser.add_argument("--max-output", type=int, default=256, help="max output tokens per gateway call")
     args = parser.parse_args(argv)
 
     provider = resolve_provider(args)
@@ -640,6 +658,10 @@ def main(argv=None) -> int:
     os.environ["RSI_V2_SEED"] = str(int(args.seed))
     os.environ["RSI_V2_ADAPT_ARM"] = args.adapt_arm
     os.environ["RSI_V2_CAPACITY_ARM"] = args.capacity_arm
+    os.environ["RSI_V2_MAX_TURNS"] = str(int(args.max_turns))
+    os.environ["RSI_V2_TOKEN_CAP"] = str(int(args.token_cap))
+    os.environ["RSI_V2_MAX_OUTPUT"] = str(int(args.max_output))
+    os.environ["RSI_V2_THINKING"] = args.thinking
     if args.pair_delta is not None:
         os.environ["RSI_V2_PAIR_DELTA"] = str(float(args.pair_delta))
     stamp = time.strftime("%Y%m%d-%H%M%S")

@@ -274,3 +274,14 @@ SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块�
 - `scripts/verify_image.sh` **PASS**：describe 报 `sdk_version:"1.0.4"`；fake-host A 一轮 PASS；
   离线 A 两轮 workspace_report metric `0.7345546845546845`；selftest A 数字与 0.11.x 一致。
 - **尚未上传平台**。
+
+## 7.9 0.13.0 镜像（P2 结果落地）
+
+- 版本 `0.13.0`：新增 `RSI_V2_CAPACITY_ARM=ls10` 默认（仅分类、官方 v1 checkpoint），
+  `--thinking auto` 改为 off（E6 实测同分 9–10× 慢）。
+- 镜像：`.scratch/image/harness.tar` **380,354,560 B**，sha256
+  `8efa4c0c0a7e7746542774f0bd6d081de9e86fbde239a3dba171757778f14059`，
+  config `c64043272e2497d6e4a1f7ecf7db134c123bd2fc8633c5d5a07edc6a1c50d745.json`。
+- `scripts/verify_image.sh` PASS：describe 输出 `sdk_version:"1.0.4"`；fake-host A 一轮 PASS；
+  离线 A 两轮 workspace_report metric `0.7345546845546845`；selftest 数字与 0.10.2/0.11.x 一致。
+- 全量测试 `164 passed, 3 deselected`。

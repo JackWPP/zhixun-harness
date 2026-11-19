@@ -19,7 +19,8 @@ ENV PYTHONUNBUFFERED=1 \
     RSI_ROUNDS=10 \
     RSI_LLM=auto \
     RSI_V2_CONTROLLER=auto \
-    RSI_V2_MAX_TURNS=6
+    RSI_V2_MAX_TURNS=6 \
+    RSI_V2_CAPACITY_ARM=ls10
 
 WORKDIR /opt/zhixun/app
 

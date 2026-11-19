@@ -230,7 +230,16 @@ class GatewayRuntime:
                           usage=self.budget.to_dict())
 
     # -- host model --------------------------------------------------------
-    def model(self, messages, *, max_tokens: int = 256, tools=None):
+    def _max_output(self) -> int:
+        try:
+            value = int(os.environ.get("RSI_V2_MAX_OUTPUT", "256") or 256)
+        except (TypeError, ValueError):
+            value = 256
+        return max(64, min(4096, value))
+
+    def model(self, messages, *, max_tokens: int | None = None, tools=None):
+        if max_tokens is None:
+            max_tokens = self._max_output()
         last: Exception | None = None
         for attempt in range(3):
             try:
@@ -266,7 +275,7 @@ class GatewayRuntime:
                 error = "token budget exhausted"
                 break
             try:
-                receipt = self.model(messages, max_tokens=min(512, max(192, 256)))
+                receipt = self.model(messages)
             except Exception as exc:
                 error = "%s: %s" % (type(exc).__name__, exc)
                 break
@@ -541,10 +550,22 @@ def run_kernel_round(rnd, ctx: plans.PlanContext, brief: dict, state: AgentState
                      run_id: str = "", round_index: int = 1,
                      experiments_total: int = 0, max_turns: int = 6) -> KernelRound:
     """Run one PI-agent kernel round against the host gateway."""
-    runtime = GatewayRuntime(rnd, max_turns=max_turns,
-                             token_cap=int(os.environ.get("RSI_V2_TOKEN_CAP", "0") or 0))
+    try:
+        cap = int(os.environ.get("RSI_V2_TOKEN_CAP", "0") or 0)
+    except (TypeError, ValueError):
+        cap = 0
+    runtime = GatewayRuntime(rnd, max_turns=max_turns, token_cap=cap)
     task_cfg = _task_config(ctx)
-    guard = Guard(task_cfg, max_experiments_per_round=3, max_experiments_per_task=40)
+    try:
+        per_round = int(os.environ.get("RSI_V2_MAX_EXPERIMENTS_ROUND", "3") or 3)
+    except (TypeError, ValueError):
+        per_round = 3
+    try:
+        per_task = int(os.environ.get("RSI_V2_MAX_EXPERIMENTS_TASK", "40") or 40)
+    except (TypeError, ValueError):
+        per_task = 40
+    guard = Guard(task_cfg, max_experiments_per_round=max(1, per_round),
+                  max_experiments_per_task=max(1, per_task))
     host = PlatformKernelHost(ctx, brief, run_id=run_id,
                               history=list(brief.get("history") or []))
     kernel = Kernel(task_cfg, runtime, guard,
