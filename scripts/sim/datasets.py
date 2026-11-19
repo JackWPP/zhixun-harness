@@ -136,10 +136,22 @@ def build_schema_package(root: Path) -> dict:
 
     train = rows(source / "public" / "train.jsonl")
     validation = rows(source / "public" / "validation.jsonl")
-    half = len(validation) // 2
+    # Stratified split: A validation rows are grouped by class, so a naive
+    # "second half" hidden split would contain only 2 classes and make the
+    # fixed-6 macro-F1 ceiling 2/6. Split per class round-robin instead.
+    by_class: dict[str, list[dict]] = {}
+    for row in validation:
+        by_class.setdefault(str(row.get("answer")), []).append(row)
+    public_rows: list[dict] = []
+    hidden_rows: list[dict] = []
+    for label in sorted(by_class):
+        group = by_class[label]
+        for index, row in enumerate(group):
+            (public_rows if index % 2 == 0 else hidden_rows).append(row)
+    half = len(public_rows)
     _write_jsonl(root / "public" / "train.jsonl", train)
-    _write_jsonl(root / "public" / "validation.jsonl", validation[:half])
-    _write_jsonl(root / "hidden" / "private_schema.jsonl", validation[half:])
+    _write_jsonl(root / "public" / "validation.jsonl", public_rows)
+    _write_jsonl(root / "hidden" / "private_schema.jsonl", hidden_rows)
     meta_out = {
         "package": "sim-private-schema-v1",
         "task": "classification",

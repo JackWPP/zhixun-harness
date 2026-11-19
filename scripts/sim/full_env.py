@@ -642,10 +642,12 @@ def main(argv=None) -> int:
                         help="score the hidden proxy on every round (learning curve)")
     parser.add_argument("--tag", default="", help="experiment arm tag used in run dir/SwanLab name")
     parser.add_argument("--seed", type=int, default=0, help="world seed (row order + participant init)")
-    parser.add_argument("--adapt-arm", choices=["auto", "pair", "retrain", "retrain_pair"],
+    parser.add_argument("--adapt-arm", choices=["auto", "pair", "retrain", "retrain_pair", "off"],
                         default="auto", help="restrict cumulative-adaptation candidate arms")
     parser.add_argument("--capacity-arm", choices=["off", "h64", "ls10", "both"],
                         default="off", help="opt-in capacity arm (official v1 checkpoint)")
+    parser.add_argument("--gate", choices=["on", "off"], default="on",
+                        help="paired block-bootstrap selection gate (default on)")
     parser.add_argument("--thinking", choices=["auto", "on", "off"], default="auto",
                         help="provider reasoning mode: on for kernel/auto, off for pipeline")
     parser.add_argument("--max-turns", type=int, default=6, help="kernel tool turns per round")
@@ -655,6 +657,7 @@ def main(argv=None) -> int:
 
     provider = resolve_provider(args)
     os.environ["RSI_V2_DRIFT_POLICY"] = "1" if args.policy == "on" else "0"
+    os.environ["RSI_V2_GATE"] = args.gate
     os.environ["RSI_V2_SEED"] = str(int(args.seed))
     os.environ["RSI_V2_ADAPT_ARM"] = args.adapt_arm
     os.environ["RSI_V2_CAPACITY_ARM"] = args.capacity_arm

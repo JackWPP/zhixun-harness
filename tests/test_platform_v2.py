@@ -324,7 +324,11 @@ def test_adapt_arm_mode_filters_candidates(monkeypatch):
     assert sub._adapt_arms_enabled() is True
     monkeypatch.setenv("RSI_V2_ADAPT_ARM", "weird")
     assert sub._adapt_arm_mode() == "auto"
+    # Adapt arms are independent of the drift-policy switch (E7 needs policy
+    # off while still letting the selection gate compare retrain/pair arms).
     monkeypatch.setenv("RSI_V2_DRIFT_POLICY", "0")
+    assert sub._adapt_arms_enabled() is True
+    monkeypatch.setenv("RSI_V2_ADAPT_ARM", "off")
     assert sub._adapt_arms_enabled() is False
 
 

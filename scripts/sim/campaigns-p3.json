@@ -1,0 +1,141 @@
+{
+  "E7": {
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "pipeline",
+    "capacity_arm": "off",
+    "adapt_arm": "off",
+    "swanlab": "auto",
+    "seeds": [
+      1,
+      2
+    ],
+    "arms": [
+      {
+        "tag": "gate-on",
+        "gate": "on",
+        "policy": "off"
+      },
+      {
+        "tag": "gate-off",
+        "gate": "off",
+        "policy": "off"
+      }
+    ]
+  },
+  "E8": {
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "pipeline",
+    "capacity_arm": "ls10",
+    "adapt_arm": "retrain_pair",
+    "swanlab": "auto",
+    "seeds": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "arms": [
+      {
+        "tag": "retrain-pair",
+        "gate": "on",
+        "policy": "on"
+      }
+    ]
+  },
+  "E9": {
+    "scenario": "official",
+    "tasks": "B",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "pipeline",
+    "capacity_arm": "off",
+    "adapt_arm": "auto",
+    "swanlab": "auto",
+    "seeds": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "arms": [
+      {
+        "tag": "b10",
+        "gate": "on",
+        "policy": "on"
+      }
+    ]
+  },
+  "E10": {
+    "scenario": "official",
+    "tasks": "C",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "pipeline",
+    "capacity_arm": "off",
+    "adapt_arm": "auto",
+    "swanlab": "auto",
+    "seeds": [
+      1,
+      2
+    ],
+    "arms": [
+      {
+        "tag": "c10",
+        "gate": "on",
+        "policy": "on"
+      }
+    ]
+  },
+  "E11": {
+    "scenario": "external",
+    "tasks": "A",
+    "rounds": 6,
+    "provider": "real",
+    "controller": "pipeline",
+    "capacity_arm": "off",
+    "adapt_arm": "auto",
+    "swanlab": "auto",
+    "seeds": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "arms": [
+      {
+        "tag": "gas",
+        "gate": "on",
+        "policy": "on"
+      }
+    ]
+  },
+  "E12": {
+    "scenario": "schema",
+    "tasks": "A",
+    "rounds": 6,
+    "provider": "real",
+    "controller": "pipeline",
+    "capacity_arm": "off",
+    "adapt_arm": "auto",
+    "swanlab": "auto",
+    "seeds": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "arms": [
+      {
+        "tag": "private-schema",
+        "gate": "on",
+        "policy": "on"
+      }
+    ]
+  }
+}

@@ -285,3 +285,18 @@ SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块�
 - `scripts/verify_image.sh` PASS：describe 输出 `sdk_version:"1.0.4"`；fake-host A 一轮 PASS；
   离线 A 两轮 workspace_report metric `0.7345546845546845`；selftest 数字与 0.10.2/0.11.x 一致。
 - 全量测试 `164 passed, 3 deselected`。
+
+## 7.10 0.14.0 镜像（P3 冲刺上线版）
+
+- 版本 `0.14.0`：可信选择 gate（分类走配对 block bootstrap，`RSI_V2_GATE=on`）、
+  累积标签续训（`RSI_V2_ADAPT_ARM=auto`）、官方 v1 容量臂 `ls10`、schema 位置回退、
+  行去重 + 数据探针；默认 ENV 见 `docs/39_SPRINT_0.14.0.md` §6。
+- 镜像：`.scratch/image/harness.tar` **380,456,960 B**，sha256
+  **`3f28d64a99e90608b6a5060579797c48600310d452cba2d39a414f2d0e391eae`**，
+  config `b48ee4f1a43cf92d4f3a4bc86c282381176b147053ff82a71f4d8d2d26056b51.json`，
+  tags `0.14.0/latest`。
+- `scripts/verify_image.sh` **PASS**：describe `sdk_version:"1.0.4"`、fake-host A 一轮 PASS、
+  离线 A 两轮 workspace_report metric `0.7345546845546845`。
+- 全量测试 **200 passed, 3 deselected**；P2+P3 累计 96 个已完成 campaign run，
+  E7–E12 矩阵 22 run / 152 次真实网关调用 / 0 failure（`docs/39_SPRINT_0.14.0.md`）。
+- **尚未上传平台、未创建新 submission、未跑 trial**（0.13.0 的新的 trial 仍 queued）。

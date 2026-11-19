@@ -76,16 +76,46 @@ def load_specs(model: ExtendedModel) -> list[list[list[str]]]:
     return specs
 
 
-def flatten_row(specs: list[list[list[str]]], inputs: dict) -> np.ndarray:
+def _ordered_leaves(value) -> list[float]:
+    """Flatten an arbitrary input tree into floats, dict keys sorted.
+
+    Used only when the checkpoint path spec no longer matches a private data
+    schema (renamed keys / extra wrapper).  Sorted keys preserve the natural
+    column order of ``sensor_0000 … sensor_0127``-style schemas.
+    """
+    if isinstance(value, dict):
+        leaves: list[float] = []
+        for key in sorted(value):
+            leaves.extend(_ordered_leaves(value[key]))
+        return leaves
+    if isinstance(value, (list, tuple)):
+        leaves = []
+        for item in value:
+            leaves.extend(_ordered_leaves(item))
+        return leaves
+    return [float(value)]
+
+
+def flatten_row(specs: list[list[list[str]]], inputs: dict, *,
+                positional_fallback: bool = True) -> np.ndarray:
     values = []
-    for spec in specs:
-        current = inputs
-        for kind, argument in spec:
-            if kind in ("key", "index"):
-                current = current[argument]
-            else:  # pragma: no cover - malformed checkpoint metadata
-                raise ValueError(f"unsupported path spec: {spec}")
-        values.append(float(current))
+    try:
+        for spec in specs:
+            current = inputs
+            for kind, argument in spec:
+                if kind in ("key", "index"):
+                    current = current[argument]
+                else:  # pragma: no cover - malformed checkpoint metadata
+                    raise ValueError(f"unsupported path spec: {spec}")
+            values.append(float(current))
+    except (KeyError, IndexError, TypeError, ValueError):
+        if not positional_fallback:
+            raise
+        leaves = _ordered_leaves(inputs)
+        if len(leaves) < len(specs):
+            raise ValueError(
+                "input schema does not expose %d feature values" % len(specs))
+        values = leaves[: len(specs)]
     return np.asarray(values, dtype=np.float64)
 
 

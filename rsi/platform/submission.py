@@ -109,18 +109,8 @@ def _load_specs(model: ExtendedModel) -> list[list[list[str]]]:
 
 
 def _flatten_row(specs: list[list[list[str]]], inputs: dict) -> np.ndarray:
-    values = []
-    for spec in specs:
-        current = inputs
-        for kind, argument in spec:
-            if kind == "key":
-                current = current[argument]
-            elif kind == "index":
-                current = current[argument]
-            else:  # pragma: no cover - malformed checkpoint metadata
-                raise ValueError(f"unsupported path spec: {spec}")
-        values.append(float(current))
-    return np.asarray(values, dtype=np.float64)
+    """Strict checkpoint paths with a positional fallback for private schemas."""
+    return _plans.flatten_row(specs, inputs)
 
 
 def _xy_rows(rows: list[dict], model: ExtendedModel, classes: list[str]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -142,13 +132,13 @@ def _xy_rows(rows: list[dict], model: ExtendedModel, classes: list[str]) -> tupl
 
 
 def _evaluate(model: ExtendedModel, features: np.ndarray, labels: np.ndarray, task: str,
-              classes: list[str], postprocess: dict | None) -> tuple[dict, float]:
+              classes: list[str], postprocess: dict | None) -> tuple[dict, float, np.ndarray]:
     predicted = apply_postprocess(postprocess or {"type": "none"}, model, features)
     values = from_predictions(task, predicted, labels, classes)
     primary = values.get("primary")
     if primary is None:
         primary = primary_metric(task, values)
-    return values, float(primary)
+    return values, float(primary), np.asarray(predicted)
 
 
 def _choose(rows: list[dict], direction: str, margin: float) -> int:
@@ -169,6 +159,73 @@ def _choose(rows: list[dict], direction: str, margin: float) -> int:
     if direction == "lower":
         return best_position if best_value < parent_value - margin else 0
     return best_position if best_value > parent_value + margin else 0
+
+
+def _block_scores(task: str, predicted, labels, classes: list[str],
+                  block_size: int = 64) -> list[float]:
+    """Per-block primary metric, used as paired evidence for the selection gate.
+
+    ``predicted`` may be a probability matrix (pipeline) or a 1-D label vector
+    (tests / kernel arms); both are normalised to the official metric shape.
+    """
+    n = len(labels)
+    if n == 0:
+        return []
+    predicted = np.asarray(predicted)
+    if task == "classification" and predicted.ndim == 1:
+        count = max(len(classes), int(predicted.max()) + 1 if predicted.size else 1)
+        matrix = np.zeros((predicted.size, count), dtype=np.float64)
+        matrix[np.arange(predicted.size), predicted.astype(int)] = 1.0
+        predicted = matrix
+    size = max(1, int(block_size))
+    scores: list[float] = []
+    for start in range(0, n, size):
+        stop = min(n, start + size)
+        if stop - start < 8:
+            continue
+        if task == "classification":
+            values = from_predictions(
+                task, predicted[start:stop], labels[start:stop], classes)
+        else:
+            values = from_predictions(
+                task, predicted[start:stop], labels[start:stop], classes)
+        primary = values.get("primary")
+        if primary is None:
+            primary = primary_metric(task, values)
+        scores.append(float(primary))
+    return scores
+
+
+def _gate_choose(plans: list[dict], task: str, direction: str, margin: float,
+                 labels, classes: list[str]):
+    """Pick a candidate only when its paired block bootstrap clears zero+margin.
+
+    Returns ``(position, decisions)`` where decisions aligns with ``plans``.
+    """
+    from rsi.eval.gate import evaluate_evidence
+
+    n = len(labels)
+    block_size = max(16, n // 8) if n else 64
+    parent_scores = _block_scores(task, plans[0].get("predicted"), labels, classes, block_size)
+    blocks = list(range(len(parent_scores)))
+    decisions: list = [None]
+    for plan in plans[1:]:
+        predicted = plan.get("predicted")
+        if predicted is None:
+            decisions.append(None)
+            continue
+        scores = _block_scores(task, predicted, labels, classes, block_size)
+        decisions.append(evaluate_evidence(
+            parent_scores, scores, blocks, margin=float(margin), direction=direction,
+            arm=str(plan.get("kind") or ""), family="pipeline", reps=1000, min_blocks=3))
+    promotable = [(position, decision) for position, decision in enumerate(decisions)
+                  if decision is not None and decision.decision == "promote"]
+    if not promotable:
+        return 0, decisions
+    # ``paired_block_bootstrap`` always reports improvement as
+    # ``parent - candidate`` for lower-is-better metrics, so bigger = better.
+    position, _ = max(promotable, key=lambda item: (item[1].delta, -item[0]))
+    return position, decisions
 
 
 def _parse_choice(text: str, upper: int) -> int | None:
@@ -205,12 +262,15 @@ def _contract_value(contract, keys, default):
 
 def _adapt_arm_mode() -> str:
     value = os.environ.get("RSI_V2_ADAPT_ARM", "auto").strip().lower()
+    if value in {"0", "off", "false", "no"}:
+        return "off"
     return value if value in {"pair", "retrain", "retrain_pair"} else "auto"
 
 
 def _adapt_arms_enabled() -> bool:
-    return os.environ.get("RSI_V2_DRIFT_POLICY", "1").strip().lower() not in {
-        "0", "off", "false", "no"}
+    # Adapt arms are independent of the drift-policy switch: E7 needs policy=off
+    # while still letting the selection gate compare the retrain/pair arms.
+    return _adapt_arm_mode() != "off"
 
 
 def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
@@ -222,13 +282,15 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
     target_mean = float(model.meta.get("target_mean") or 0.0)
     x_train, y_train, _ = _xy_rows(train, model, classes)
     x_val, y_val, _ = _xy_rows(validation, model, classes)
-    parent_values, parent_primary = _evaluate(model, x_val, y_val, task, classes, None)
+    parent_values, parent_primary, parent_predicted = _evaluate(
+        model, x_val, y_val, task, classes, None)
     plans: list[dict] = [{
         "kind": "retain",
         "label": "保留父模型（不做任何改动）",
         "postprocess": {"type": "none"},
         "values": parent_values,
         "primary": parent_primary,
+        "predicted": parent_predicted,
         "checkpoint": None,
     }]
     candidates = []
@@ -344,14 +406,6 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                     candidate_model = model
         else:
             candidate_model = plan.get("model") or model
-        if plan.get("checkpoint") == "CAPACITY":
-            plans.append({
-                **plan,
-                "model": candidate_model,
-                "values": plan.get("values") or {},
-                "primary": plan.get("primary"),
-            })
-            continue
         if postprocess == "FIT_DAMAGE":
             from rsi.inference import fit_damage_shrink
             dataset = _as_dataset(x_train, y_train, classes, task)
@@ -362,13 +416,14 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
             postprocess = ({"type": "pair_threshold", "pair": [0, 3],
                             **{k: v for k, v in fitted.items() if k != "type"}}
                            if fitted else {"type": "none"})
-        values, primary = _evaluate(candidate_model, x_val, y_val, task, classes, postprocess)
+        values, primary, predicted = _evaluate(
+            candidate_model, x_val, y_val, task, classes, postprocess)
         plans.append({
             **plan,
             "postprocess": postprocess,
-            "values_values": None,
             "values": values,
             "primary": primary,
+            "predicted": predicted,
             "model": candidate_model,
             "y_train": y_train,
         })
@@ -399,7 +454,55 @@ def _change_summary(chosen: dict) -> str:
     return "仅推理期后处理（%s），未改 checkpoint" % kind
 
 
-def _state_payload(rnd, candidates, chosen, note: str) -> dict:
+def _dedupe_rows(rows: list[dict]) -> tuple[list[dict], int]:
+    """Deduplicate the projected training rows by id, keeping the newest copy.
+
+    The platform re-projects earlier stages every round; a row can therefore
+    appear more than once.  Duplicates would silently re-weight the fit, so the
+    participant de-duplicates before anything is trained.
+    """
+    seen: dict[str, int] = {}
+    ordered: list[dict] = []
+    duplicates = 0
+    for row in rows:
+        row_id = str(row.get("id") or "")
+        if row_id and row_id in seen:
+            ordered[seen[row_id]] = row
+            duplicates += 1
+            continue
+        if row_id:
+            seen[row_id] = len(ordered)
+        ordered.append(row)
+    return ordered, duplicates
+
+
+def _data_probe(train_rows: list[dict], validation_rows: list[dict],
+                duplicates: int, round_index: int) -> dict:
+    """Cheap, honest projection fingerprint written into the saved state."""
+    import hashlib
+
+    def digest(rows: list[dict]) -> str:
+        hasher = hashlib.sha256()
+        for row in rows:
+            hasher.update(str(row.get("id") or "").encode("utf-8"))
+        return hasher.hexdigest()[:16]
+
+    label_counts: dict[str, int] = {}
+    for row in train_rows:
+        key = str(row.get("answer"))
+        label_counts[key] = label_counts.get(key, 0) + 1
+    return {
+        "round_index": int(round_index),
+        "train_rows": len(train_rows),
+        "duplicate_rows": int(duplicates),
+        "train_id_sha256": digest(train_rows),
+        "validation_rows": len(validation_rows),
+        "validation_id_sha256": digest(validation_rows),
+        "label_counts": label_counts,
+    }
+
+
+def _state_payload(rnd, candidates, chosen, note: str, probe: dict | None = None) -> dict:
     compact = []
     for candidate in candidates or []:
         primary = candidate.get("primary")
@@ -413,12 +516,23 @@ def _state_payload(rnd, candidates, chosen, note: str) -> dict:
         "candidates": compact,
         "parent_checkpoint_sha256": rnd.parent.checkpoint_sha256,
         "note": note,
+        "data_probe": probe,
     }
 
 
 # ---------------------------------------------------------------------------
 # controller routing: deterministic pipeline vs autonomous PI-agent kernel
 # ---------------------------------------------------------------------------
+def _gate_mode() -> str:
+    """``on`` (default) uses the paired block-bootstrap gate for selection.
+
+    ``RSI_V2_GATE=off`` restores the legacy point-estimate selector; it exists
+    only for controlled A/B experiments (E7) and must not be used in production.
+    """
+    value = os.environ.get("RSI_V2_GATE", "on").strip().lower()
+    return "off" if value in {"0", "off", "false", "no"} else "on"
+
+
 def _controller_mode(task: str | None = None) -> str:
     """``pipeline`` by default; the packaged image enables ``auto``.
 
@@ -681,6 +795,11 @@ def train(rnd):
     validation_rows = list(rnd.data.validation_rows())
     if not train_rows or not validation_rows:
         raise ValueError("empty public projection")
+    train_rows, duplicate_rows = _dedupe_rows(train_rows)
+    probe = _data_probe(train_rows, validation_rows, duplicate_rows, int(rnd.round_index))
+    print("train: data probe rows=%d duplicates=%d val=%d labels=%s" % (
+        probe["train_rows"], probe["duplicate_rows"], probe["validation_rows"],
+        sorted(probe["label_counts"].items())[:8]), file=sys.stderr, flush=True)
 
     history = []
     try:
@@ -693,6 +812,7 @@ def train(rnd):
     kernel_round = None
     kernel_ctx = None
     kernel_state = None
+    gate_decisions = None
     if controller == "kernel":
         try:
             kernel_ctx = _plans.PlanContext.from_rows(
@@ -749,22 +869,63 @@ def train(rnd):
             max_tokens=min(256, int(rnd.max_output_tokens)),
         )
         llm_choice = _parse_choice(receipt.text, len(plans))
-        fallback_choice = _choose(plans, direction, defaults["margin"])
+        class_labels = list(model.meta.get("classes") or [])
+        try:
+            if _gate_mode() == "off" or task != "classification":
+                gate_decisions = None
+                fallback_choice = _choose(plans, direction, defaults["margin"])
+            else:
+                _x_val, y_val, _ = _xy_rows(validation_rows, model, class_labels)
+                fallback_choice, gate_decisions = _gate_choose(
+                    plans, task, direction, float(defaults["margin"]), y_val, class_labels)
+        except Exception as exc:
+            print("train: gate unavailable, falling back to point estimate: %s: %s"
+                  % (type(exc).__name__, exc), file=sys.stderr, flush=True)
+            gate_decisions = None
+            fallback_choice = _choose(plans, direction, defaults["margin"])
         chosen = plans[fallback_choice]
+        if gate_decisions is not None:
+            print("train: gate " + ", ".join(
+                "%s=%s(%.4f)" % (plans[position].get("kind"), decision.decision,
+                                 decision.delta)
+                for position, decision in enumerate(gate_decisions) if decision is not None),
+                file=sys.stderr, flush=True)
+        else:
+            print("train: gate off, point-estimate choice=%s"
+                  % plans[fallback_choice].get("kind"), file=sys.stderr, flush=True)
         if llm_choice is not None and llm_choice != fallback_choice:
-            candidate = plans[llm_choice]
-            parent_primary = float(plans[0]["primary"])
-            is_better = (candidate["primary"] > parent_primary + defaults["margin"]
-                         if direction == "higher"
-                         else candidate["primary"] < parent_primary - defaults["margin"])
-            if is_better:
-                chosen = candidate
+            decision = (gate_decisions[llm_choice]
+                        if gate_decisions is not None and llm_choice < len(gate_decisions)
+                        else None)
+            if decision is not None:
+                if decision.decision == "promote":
+                    chosen = plans[llm_choice]
+            else:
+                # Gate intentionally skipped (e.g. regression): fall back to the
+                # deterministic margin comparison so the LLM cannot pick a stale arm.
+                candidate_primary = float(plans[llm_choice]["primary"])
+                parent_primary = float(plans[0]["primary"])
+                margin = float(defaults["margin"])
+                better = (candidate_primary > parent_primary + margin
+                          if direction == "higher"
+                          else candidate_primary < parent_primary - margin)
+                if better:
+                    chosen = plans[llm_choice]
+        if gate_decisions is not None:
+            decision_note_gate = {}
+            for position, decision in enumerate(gate_decisions):
+                if decision is None:
+                    continue
+                decision_note_gate[str(plans[position].get("kind"))] = decision.to_dict()
+        else:
+            decision_note_gate = {}
         candidates = [{"kind": plan["kind"], "primary": float(plan["primary"])}
                       for plan in plans]
         call_ids = [receipt.call_id]
         decision_note = {"decision": "retain" if chosen is plans[0] else "promote",
                          "source": "pipeline",
-                         "reason": "确定性 margin 门控 + 模型选择"}
+                         "reason": "paired block-bootstrap 门控 + 模型选择",
+                         "gate": decision_note_gate}
         controller_note = "pipeline"
         choice_note = "pipeline 选择 %s" % chosen["kind"]
 
@@ -784,6 +945,23 @@ def train(rnd):
         print("train: drift policy unavailable: %s: %s" % (type(exc).__name__, exc),
               file=sys.stderr, flush=True)
 
+    # The gate also vetoes *any* non-policy arm that a stale point estimate or the
+    # LLM might have picked.  A drift-policy override is exempt because it carries
+    # its own delayed-label rule (and is the arm validated by E2/E7).
+    if policy_note == "" and gate_decisions is not None and plans is not None \
+            and chosen is not plans[0]:
+        veto = None
+        for position, plan in enumerate(plans):
+            if plan is chosen:
+                veto = gate_decisions[position] if position < len(gate_decisions) else None
+                break
+        if veto is not None and veto.decision != "promote":
+            print("train: gate veto %s (%s) -> retain" % (
+                veto.arm or "candidate", veto.reason),
+                file=sys.stderr, flush=True)
+            chosen = plans[0]
+            policy_note = "gate_veto:%s->retain" % (veto.arm or "candidate")
+
     work = _work_dir()
     candidate_dir = Path(tempfile.mkdtemp(prefix="candidate-", dir=work))
     if kernel_state is not None and kernel_state.dir:
@@ -800,7 +978,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.13.0",
+        "version": "0.14.0",
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -814,8 +992,11 @@ def train(rnd):
     }
     (candidate_dir / META_NAME).write_text(json.dumps(meta, sort_keys=True), encoding="utf-8")
     state = _state_payload(rnd, candidates, chosen,
-                           (decision_note.get("reason") or choice_note or "")[:1200])
+                           (decision_note.get("reason") or choice_note or "")[:1200],
+                           probe=probe)
     (state_dir / "state.json").write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+    (state_dir / "data_probe.json").write_text(
+        json.dumps(probe, sort_keys=True), encoding="utf-8")
     if kernel_round is not None:
         (state_dir / "kernel_round.json").write_text(
             json.dumps(_trim_config(kernel_round.to_dict()), ensure_ascii=False, default=str),
@@ -837,6 +1018,8 @@ def train(rnd):
         },
         "llm_choice": llm_choice,
         "fallback_choice": fallback_choice,
+        "data_probe": {key: probe.get(key) for key in
+                       ("train_rows", "duplicate_rows", "validation_rows")},
     })
     label = str(chosen.get("label") or chosen.get("kind") or "retain")
     primary_value = chosen.get("primary")
