@@ -91,7 +91,9 @@ SwanLab online。结果与去留结论见 `docs/37_CAPACITY_ABLATION.md` 与 §6
   → **默认 off**，仅保留开关。
 - **默认开关**：`RSI_V2_CONTROLLER=auto`（现有）、`RSI_V2_DRIFT_POLICY=1`（现有）、
   `RSI_V2_CAPACITY_ARM=ls10`（新）、`RSI_V2_THINKING` 不设（=off）、平台路径不传 thinking。
-- 版本 0.13.0（镜像重建后填写 sha）；平台合规 trial 等模型服务恢复后执行。
+- 版本 0.13.0：镜像 sha256 `8efa4c0c…4059`（380,354,560 B），verify PASS；
+  平台合规 trial 已启动：submission `4385210dd3c33f436b6a43a4d4930978`、
+  run `f83623338e79962dcb808e0e4c6efc63`（image archive `818d63e0…7ce6`）。
 
 ## 7. 边界
 
