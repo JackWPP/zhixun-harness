@@ -12,6 +12,7 @@ import time
 from . import prompts
 from .runtime import PIRuntime, RoleResult
 from .tools import ToolSink, build_toolset
+from .views import agent_view
 
 ROLE_TOOLSETS = {
     "experimenter": "plan",
@@ -43,7 +44,7 @@ async def call_role_agent(runtime: PIRuntime, role: str, brief: str, context: di
     sink = ToolSink()
     tools = build_toolset(ROLE_TOOLSETS[role], sink, context)
     system_prompt = prompts.SYSTEM_PROMPTS[role]
-    user_prompt = f"{brief}\n{ROLE_BRIEFS.get(role, '')}"
+    user_prompt = f"{agent_view(brief)}\n{ROLE_BRIEFS.get(role, '')}"
     try:
         agent = await runtime.arun_agent(
             system_prompt, user_prompt, tools,

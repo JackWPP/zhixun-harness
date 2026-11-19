@@ -25,6 +25,8 @@ from rsi.executor import ExperimentProposal, InvalidExperiment, validate_proposa
 from rsi.selection import GateDecision, gate
 from rsi.tasks import TaskConfig
 
+from .views import heldout_text
+
 ALLOWED_TRAIN_DATA = {"train"}  # see rsi.policy for opt-in "extended"
 DENIED_ACTIONS = {"train+calibration", "train+all-public", "validation", "hidden"}
 
@@ -127,6 +129,8 @@ class Guard:
     def scan_text(self, text: str, where: str = "text") -> str:
         """Return sanitized text; raise when it contains secrets/injection."""
         self._scan_text(text, where)
+        if heldout_text(text):
+            raise GuardViolation(f"{where} refers to held-out evaluation evidence")
         cleaned = text
         for key in _PROBE_METRIC_KEYS:
             cleaned = re.sub(rf"\b{key}[_a-z]*\s*[:=]\s*[-+0-9.]+", "", cleaned, flags=re.I)
@@ -144,6 +148,8 @@ class Guard:
 
     def check_skill_text(self, text: str) -> None:
         self._scan_text(text, "skill")
+        if heldout_text(text):
+            raise GuardViolation("skill refers to held-out evaluation evidence")
 
     # -- audit -------------------------------------------------------------
     def audit(self, action: str, payload: dict | None = None) -> dict:

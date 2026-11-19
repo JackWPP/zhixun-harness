@@ -10,10 +10,10 @@ and writes one prediction per line to stdout::
     {"outputs": [{"label": "...", "score": ...}, ...]}     # classification
     {"outputs": {"value": ...}}                              # regression
 
-The platform evaluates in batch mode, so the default mode buffers all rows and
-applies the round's postprocess (e.g. per-batch recentering) before answering.
-``--mode stream`` keeps the official line-by-line behaviour using a causal rolling
-recentering window.
+The default batch mode buffers all rows and applies the round's postprocess
+(e.g. per-batch recentering) before answering. Use ``--mode stream`` for the
+official line-by-line protocol: each prediction is flushed before reading the
+next request, using only the current and preceding rows for calibration.
 """
 from __future__ import annotations
 
@@ -26,26 +26,41 @@ import numpy as np
 
 from rsi.inference import (DamageShrinkStream, RecenterStream, apply_postprocess,
                            format_outputs, resolve_postprocess)
+from rsi.data_official import flatten, json_value
 from rsi.model import ExtendedModel
 
 
-def _read_rows(stream):
-    rows = []
-    for line in stream:
+def _read_features(stream, model):
+    """Validate requests lazily; never read ahead in interactive stream mode."""
+    for number, line in enumerate(stream, 1):
         line = line.strip()
         if not line:
             continue
-        rows.append(json.loads(line))
-    return rows
+        try:
+            yield _features(json_value(line), model)
+        except ValueError as exc:
+            raise ValueError(f"line {number}: {exc}") from exc
 
 
-def _features(row):
-    inputs = row.get("inputs") or {}
-    if "features" in inputs:
-        return np.asarray(inputs["features"], dtype=np.float64)
-    if "sensors" in inputs:
-        return np.asarray(inputs["sensors"], dtype=np.float64)
-    raise ValueError(f"unsupported inputs keys: {sorted(inputs)}")
+def _features(row, model):
+    if not isinstance(row, dict) or "inputs" not in row or set(row) - {"task", "inputs"}:
+        raise ValueError("prediction request requires only task and inputs")
+    task = model.meta["task"]
+    requested = row.get("task", task)
+    # The official protocol uses classification/regression. Accept a dataset
+    # alias only when it matches the checkpoint's own profile, so B cannot
+    # silently select a C model merely because both perform regression.
+    profile = model.meta.get("profile")
+    alias_matches = (isinstance(requested, str) and isinstance(profile, str)
+                     and requested.upper() == profile.upper())
+    if requested != task and not alias_matches:
+        raise ValueError(f"prediction task mismatch: {requested!r}; "
+                         f"checkpoint task is {task!r}, profile is {profile!r}")
+    paths, values = flatten(row["inputs"])
+    if paths != model.meta["paths"]:
+        raise ValueError("prediction feature schema differs from checkpoint "
+                         f"(expected {len(model.meta['paths'])} paths, got {len(paths)})")
+    return np.asarray(values, dtype=np.float64)
 
 
 def _load_postprocess(spec_arg: str, model: ExtendedModel):
@@ -99,41 +114,37 @@ def main(argv=None) -> int:
     task = model.meta["task"]
     classes = list(model.meta.get("classes") or [])
 
-    rows = _read_rows(sys.stdin)
-    if not rows:
-        return 0
-
-    if args.mode == "stream":
-        stream = None
-        if postprocess.get("type") == "damage_shrink":
-            stream = DamageShrinkStream(postprocess)
-        elif postprocess.get("type") == "recenter":
-            stream = RecenterStream(model.mean, model.scale,
-                                    mode=postprocess.get("mode", "batch_mean"),
-                                    window=args.stream_window)
-        for row in rows:
-            row_task = row.get("task", task)
-            if row_task != task:
-                sys.stdout.write(json.dumps({"error": f"task mismatch: {row_task} != {task}"}) + "\n")
+    try:
+        features = _read_features(sys.stdin, model)
+        if args.mode == "stream":
+            stream = None
+            if postprocess.get("type") == "damage_shrink":
+                stream = DamageShrinkStream(postprocess)
+            elif postprocess.get("type") == "recenter":
+                stream = RecenterStream(model.mean, model.scale,
+                                        mode=postprocess.get("mode", "batch_mean"),
+                                        window=args.stream_window)
+            for row_features in features:
+                predicted = _predict_row_stream(model, postprocess, row_features, stream)
+                output = json.dumps(format_outputs(predicted, task, classes), allow_nan=False)
+                sys.stdout.write(output + "\n")
                 sys.stdout.flush()
-                continue
-            features = _features(row)
-            predicted = _predict_row_stream(model, postprocess, features, stream)
-            sys.stdout.write(json.dumps(format_outputs(predicted, task, classes)) + "\n")
-            sys.stdout.flush()
-        return 0
+            return 0
 
-    # batch mode: the platform evaluates batches; compute the batch statistic once
-    tasks = [row.get("task", task) for row in rows]
-    if any(item != task for item in tasks):
-        sys.stderr.write("warning: mixed task keys in one batch; checkpoint task is "
-                         f"{task}, got {sorted(set(tasks))}\n")
-    x = np.vstack([_features(row) for row in rows])
-    predicted = apply_postprocess(postprocess, model, x)
-    for index in range(len(rows)):
-        value = predicted[index]
-        sys.stdout.write(json.dumps(format_outputs(value, task, classes)) + "\n")
-    sys.stdout.flush()
+        # Batch mode deliberately computes calibration from the entire batch.
+        # Validate every request first, so a bad schema cannot produce a
+        # partially populated batch response.
+        rows = list(features)
+        if not rows:
+            return 0
+        predicted = apply_postprocess(postprocess, model, np.vstack(rows))
+        for value in predicted:
+            output = json.dumps(format_outputs(value, task, classes), allow_nan=False)
+            sys.stdout.write(output + "\n")
+        sys.stdout.flush()
+    except ValueError as exc:
+        sys.stderr.write(f"rsi-predict: {exc}\n")
+        return 2
     return 0
 
 

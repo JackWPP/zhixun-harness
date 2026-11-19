@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -44,6 +45,7 @@ from rsi.records import Recorder, atomic_write_json, utcnow_iso
 from rsi.selection import best_candidate, gate, relative_change
 from rsi.splits import build_splits, sha256_file
 from rsi.tasks import TaskConfig, resolve_tasks
+from rsi.agent.views import agent_view
 
 HARNESS_ROOT = Path(__file__).resolve().parent.parent
 
@@ -183,8 +185,7 @@ class Runner:
         self.db_path = Path(db_path or os.environ.get("RSI_DB_PATH")
                             or (self.state_dir / "rsi_state.db"))
         self.memory = MemoryStore(self.memory_root) if self.memory_enabled else None
-        self.skills = (SkillStore(HARNESS_ROOT / "skills", on_use=self._note_skill_use)
-                       if self.memory_enabled else None)
+        self.skills = self._build_skill_store() if self.memory_enabled else None
         self.db = StateDB(self.db_path) if self.memory_enabled else None
         if self.db is not None and hasattr(self.recorder, "attach_db"):
             self.recorder.attach_db(self.db)
@@ -221,6 +222,23 @@ class Runner:
                             "delegates": 0, "panels": 0, "memory_writes": 0,
                             "skill_writes": 0, "kernel_tokens": 0}
         self._init_swanlab()
+
+    def _build_skill_store(self):
+        """Give each persistent run state its own writable skill library.
+
+        Seed skills are copied from the repository once; agent-created or
+        patched skills therefore cannot mutate the submitted source tree.
+        """
+        seed_root = HARNESS_ROOT / "skills"
+        writable_root = self.memory_root / "skills"
+        writable_root.mkdir(parents=True, exist_ok=True)
+        for name in SkillStore(seed_root).names():
+            source = seed_root / name / "SKILL.md"
+            target = writable_root / name / "SKILL.md"
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+        return SkillStore(writable_root, on_use=self._note_skill_use)
 
     # -- memory helpers ----------------------------------------------------
     def _note_skill_use(self, name: str) -> None:
@@ -604,7 +622,7 @@ class Runner:
         review_info: dict = {}
         if self.reviewer is not None:
             try:
-                review_info = self.reviewer.review(key, state.rounds)
+                review_info = self.reviewer.review(key, agent_view(state.rounds))
             except Exception as exc:
                 review_info = {"error": f"{exc.__class__.__name__}: {exc}"}
         curated: list = []
@@ -791,13 +809,9 @@ class Runner:
                  f"round {round_number}: {result.experiment_id} {status}"
                  + (f" selection_primary={result.metrics['selection']['primary']:.6f}"
                     if result.ok and result.metrics.get("selection") else ""))
-        payload = result.to_dict()
-        # The agent may only see the public validation splits. Probe (external
-        # drift evidence) metrics stay with the supervisor and never enter the
-        # kernel context.
-        payload["metrics"] = {k: v for k, v in (payload.get("metrics") or {}).items()
-                              if k in ("selection", "report")}
-        return payload
+        # Keep the complete result for audit artifacts. Agent-facing tool
+        # responses apply the selection-only projection in rsi.agent.views.
+        return result.to_dict()
 
     def _apply_promotion(self, state: TaskState, best: dict) -> None:
         state.parent_path = Path(best["candidate_checkpoint"])

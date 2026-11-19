@@ -71,3 +71,21 @@ def test_patch_requires_unique_old_string(tmp_path):
         store.patch("my-skill", "Step A.", "Step B.")
     with pytest.raises(MemoryError_):
         store.patch("my-skill", "missing text", "x")
+
+
+def test_runner_skill_store_is_run_local(tmp_path):
+    from rsi.runner import HARNESS_ROOT, Runner
+
+    runner = Runner.__new__(Runner)
+    runner.memory_root = tmp_path / "run-state"
+    runner.db = None
+    store = runner._build_skill_store()
+    source = HARNESS_ROOT / "skills" / "drift-diagnosis" / "SKILL.md"
+    original = source.read_text(encoding="utf-8")
+    before = store.load("drift-diagnosis").body
+
+    store.patch("drift-diagnosis", "每轮诊断至少引用 2 个数值字段", "临时实验更新")
+
+    assert source.read_text(encoding="utf-8") == original
+    assert store.load("drift-diagnosis").body != before
+    assert store.root == runner.memory_root / "skills"

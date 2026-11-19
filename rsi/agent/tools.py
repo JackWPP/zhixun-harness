@@ -13,6 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .views import agent_view
+
 
 class ContextParams(BaseModel):
     section: Literal["task", "drift", "history", "metrics", "catalog", "budget"] = Field(
@@ -90,7 +92,7 @@ def _submit_handler(kind: str, sink: ToolSink, store_key: str | None = None):
 def context_handler(context: dict):
     async def handler(tool_call_id, params, signal, on_update):
         section = getattr(params, "section", "task")
-        payload = context.get(section, {"note": "section unavailable"})
+        payload = agent_view(context.get(section, {"note": "section unavailable"}))
         text = json.dumps(payload, ensure_ascii=False)
         if len(text) > 6000:
             text = text[:6000] + "...(truncated)"

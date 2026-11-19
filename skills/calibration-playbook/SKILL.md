@@ -18,7 +18,7 @@ tags: calibration, TTA, postprocess
 # 坑
 - 窗口太小时批统计噪声大；batch 评分先读全批再算统计。
 - recenter 假设批内类别分布不变；类别极偏的批次会放大偏差。
-- 校准后的 selection 提升必须再看 report 是否同步改善。
+- 校准后的 selection 提升由门控确认；report 只由 supervisor 留作最终审计，不能回灌到 Agent 的后续选择。
 
 # 验收
 每轮记录 postprocess 类型、模式、weight/alpha、selection 前后主指标与 delta。

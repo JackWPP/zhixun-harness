@@ -54,7 +54,7 @@ def default_subgoals(rounds_target: int) -> list[str]:
     return [
         f"在 {rounds_target} 轮内完成全部轮次，且每一轮都有可核验的记录（实验、指标、决策）。",
         "每一轮至少执行 1 个有效实验，或给出明确的 retain/rollback 理由并写明证据。",
-        "只使用 train / train+calibration 训练；不读取隐藏测试标签，不把验证集用于训练或调参。",
+        "只使用 train 拟合；selection 仅用于公开候选选择，不读取隐藏测试标签。",
         "在预算内完成；若预算不足，优先保留当前最优模型并写清降级决策。",
     ]
 
