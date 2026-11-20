@@ -64,7 +64,7 @@ def expand(matrix: dict, only: list[str] | None) -> list[dict]:
                     "tasks": spec.get("tasks", "A"),
                     "rounds": int(spec.get("rounds", 3)),
                     "provider": spec.get("provider", "real"),
-                    "controller": spec.get("controller", "kernel"),
+                    "controller": arm.get("controller", spec.get("controller", "kernel")),
                     "policy": arm.get("policy", "on"),
                     "gate": arm.get("gate", spec.get("gate", "on")),
                     "pair_delta": arm.get("pair_delta"),
@@ -76,6 +76,9 @@ def expand(matrix: dict, only: list[str] | None) -> list[dict]:
                     "token_cap": int(arm.get("token_cap", spec.get("token_cap", 0))),
                     "max_output": int(arm.get("max_output", spec.get("max_output", 256))),
                     "cap_train": int(spec.get("cap_train", 24000)),
+                    "kernel_tools": arm.get("kernel_tools", spec.get("kernel_tools", "full")),
+                    "native_tools": arm.get("native_tools", spec.get("native_tools", "on")),
+                    "kernel_context": arm.get("kernel_context", spec.get("kernel_context", "full")),
                 }
                 runs.append(run)
     return runs
@@ -135,7 +138,10 @@ def build_command(run: dict) -> list[str]:
     command.extend(["--adapt-arm", run["adapt_arm"], "--capacity-arm", run["capacity_arm"],
                     "--thinking", run["thinking"], "--max-turns", str(run["max_turns"]),
                     "--token-cap", str(run["token_cap"]), "--max-output", str(run["max_output"]),
-                    "--cap-train", str(run["cap_train"])])
+                    "--cap-train", str(run["cap_train"]),
+                    "--kernel-tools", run.get("kernel_tools", "full"),
+                    "--native-tools", run.get("native_tools", "on"),
+                    "--kernel-context", run.get("kernel_context", "full")])
     return command
 
 

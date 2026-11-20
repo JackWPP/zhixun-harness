@@ -359,3 +359,52 @@ def test_gateway_downgrades_when_host_rejects_options():
     assert receipt.call_id == "call-2"
     assert rnd.seen[0].get("enable_thinking") is False
     assert "enable_thinking" not in rnd.seen[-1]
+
+
+def test_kernel_tool_subset_core_filters_surface(monkeypatch):
+    from types import SimpleNamespace
+    from rsi.agent.actions import build_kernel_tools
+
+    monkeypatch.setenv("RSI_V2_KERNEL_TOOLS", "core")
+    tools = build_kernel_tools(SimpleNamespace())
+    names = {tool.name for tool in tools}
+    assert names == {"get_run_state", "get_lessons", "get_context",
+                     "propose_experiment", "run_experiment",
+                     "compare_candidates", "decide", "finish_round"}
+    monkeypatch.setenv("RSI_V2_KERNEL_TOOLS", "full")
+    assert len(build_kernel_tools(SimpleNamespace())) > len(names)
+
+
+def test_kernel_prompt_states_turn_budget():
+    from rsi.agent.prompts_kernel import kernel_round_prompt
+
+    text = kernel_round_prompt({"task": {"key": "A"}, "round_index": 1,
+                                "rounds_total": 10, "max_turns": 10})
+    assert "工具调用预算" in text
+    assert "finish_round" in text
+
+
+def test_safety_net_plans_include_cumulative_retrain(monkeypatch):
+    from rsi.platform import submission
+
+    monkeypatch.setenv("RSI_V2_ADAPT_ARM", "auto")
+    monkeypatch.setenv("RSI_V2_CAPACITY_ARM", "off")
+    ctx = plan_context()
+    plans = submission._safety_net_plans(ctx)
+    kinds = [plan.get("kind") for plan in plans]
+    assert kinds[0] == "retain"
+    assert "continue_train" in kinds
+    assert "continue_train_pair" in kinds
+    for plan in plans:
+        assert plan.get("ok") is True
+        assert "predicted" in plan
+
+
+def test_safety_net_respects_adapt_off(monkeypatch):
+    from rsi.platform import submission
+
+    monkeypatch.setenv("RSI_V2_ADAPT_ARM", "off")
+    monkeypatch.setenv("RSI_V2_CAPACITY_ARM", "off")
+    ctx = plan_context()
+    kinds = [plan.get("kind") for plan in submission._safety_net_plans(ctx)]
+    assert kinds == ["retain"]

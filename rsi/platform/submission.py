@@ -48,6 +48,7 @@ from rsi.inference import (
     apply_postprocess,
     apply_postprocess_stream,
 )
+from rsi.executor import ExperimentProposal
 from rsi.metrics import from_predictions, primary as primary_metric
 from rsi.model import ExtendedModel
 from rsi.platform import agent_host as _agent_host
@@ -226,6 +227,63 @@ def _gate_choose(plans: list[dict], task: str, direction: str, margin: float,
     # ``parent - candidate`` for lower-is-better metrics, so bigger = better.
     position, _ = max(promotable, key=lambda item: (item[1].delta, -item[0]))
     return position, decisions
+
+
+
+
+def _safety_net_plans(ctx) -> list[dict]:
+    """Deterministic candidates always worth evaluating before trusting the kernel.
+
+    The platform reveals historical labels in ``/data/train`` across rounds; the
+    agent may spend its turn budget on diagnosis and never evaluate a cumulative
+    retrain arm (observed in trials).  These arms are cheap and are gated by the
+    same paired block bootstrap, so they can only replace the agent's choice when
+    the evidence is positive.
+    """
+    plans = [_plans.retain_plan(ctx)]
+    modes = _adapt_arm_mode()
+    if modes != "off":
+        try:
+            plan = _plans.plan_for_proposal(ctx, ExperimentProposal(
+                strategy="continue_train", params={"learning_rate": 1e-3, "epochs": 20},
+                postprocess={"type": "none"}, hypothesis="cumulative-label retrain"))
+            if plan.get("ok"):
+                plans.append(plan)
+            else:
+                print("train: safety_net continue_train unavailable: %s"
+                      % plan.get("error"), file=sys.stderr, flush=True)
+        except Exception as exc:
+            print("train: safety_net continue_train error: %s: %s"
+                  % (type(exc).__name__, exc), file=sys.stderr, flush=True)
+        if modes in ("auto", "pair", "retrain_pair"):
+            try:
+                plan = _plans.plan_for_proposal(ctx, ExperimentProposal(
+                    strategy="continue_train", params={"learning_rate": 1e-3, "epochs": 20},
+                    postprocess={"type": "pair_threshold", "pair": [0, 3],
+                                 "delta": _plans.PAIR_HISTORY_DELTA},
+                    hypothesis="cumulative-label retrain + delayed-label pair"))
+                if plan.get("ok"):
+                    plans.append(plan)
+                else:
+                    print("train: safety_net retrain_pair unavailable: %s"
+                          % plan.get("error"), file=sys.stderr, flush=True)
+            except Exception as exc:
+                print("train: safety_net retrain_pair error: %s: %s"
+                      % (type(exc).__name__, exc), file=sys.stderr, flush=True)
+    try:
+        import os as _os
+        if _os.environ.get("RSI_V2_CAPACITY_ARM", "off").strip().lower() not in {"", "off", "0", "none"}:
+            plans.extend([p for p in _plans.capacity_plans(ctx) if p.get("ok")])
+    except Exception:
+        pass
+    seen, unique = set(), []
+    for plan in plans:
+        kind = str(plan.get("kind"))
+        if kind in seen:
+            continue
+        seen.add(kind)
+        unique.append(plan)
+    return unique
 
 
 def _parse_choice(text: str, upper: int) -> int | None:
@@ -607,6 +665,9 @@ def _kernel_brief(task_key: str, model: ExtendedModel, ctx, history: list[dict],
         knowledge_text = drift_context_for_brief(drift, k=3)
     except Exception:
         knowledge_text = ""
+    if os.environ.get("RSI_V2_KERNEL_CONTEXT", "full").strip().lower() == "minimal":
+        skills_text = ""
+        knowledge_text = ""
     return {
         "task": {"key": task_key, "name": task_key, "name_en": task_key,
                  "task": ctx.task, "primary_metric": ctx.metric,
@@ -615,7 +676,7 @@ def _kernel_brief(task_key: str, model: ExtendedModel, ctx, history: list[dict],
                  "margin": float(TASK_DEFAULTS[task_key]["margin"])},
         "goal": {"goal": "在漂移数据流上维持并提升 %s 的 %s" % (task_key, ctx.metric),
                  "status": "running", "turns_used": 0,
-                 "max_turns": int(os.environ.get("RSI_V2_MAX_TURNS", "6") or 6)},
+                 "max_turns": int(os.environ.get("RSI_V2_MAX_TURNS", "10") or 10)},
         "round_index": int(round_index),
         "rounds_total": int(rounds_total),
         "metrics": {"parent": {"primary": float(ctx.parent_primary),
@@ -830,7 +891,7 @@ def train(rnd):
                 run_id="%s-r%d" % (task_key, int(rnd.round_index)),
                 round_index=int(rnd.round_index),
                 experiments_total=len(history),
-                max_turns=int(os.environ.get("RSI_V2_MAX_TURNS", "6") or 6))
+                max_turns=int(os.environ.get("RSI_V2_MAX_TURNS", "10") or 10))
             print("train: kernel round calls=%d decision=%s" % (
                 kernel_round.calls,
                 (kernel_round.decision or {}).get("decision")),
@@ -854,6 +915,7 @@ def train(rnd):
                   % kernel_inactive_note, file=sys.stderr, flush=True)
 
     plans = None
+    policy_plans = None
     receipt = None
     plans = None
     llm_choice = None
@@ -865,10 +927,44 @@ def train(rnd):
         decision_note = dict(kernel_round.decision or {})
         controller_note = "kernel"
         choice_note = "内核决策 %s" % decision_note.get("decision", "retain")
+        # Safety net: evaluate cumulative-retrain/capacity arms that the agent may
+        # have skipped, but only override when the paired gate promotes one.
+        safety = []
+        try:
+            safety = _safety_net_plans(kernel_ctx) if kernel_ctx is not None else []
+            if len(safety) > 1:
+                class_labels = list(model.meta.get("classes") or [])
+                _x_val, y_val, _ = _xy_rows(validation_rows, model, class_labels)
+                position, safety_gate = _gate_choose(
+                    safety, task, direction, float(defaults["margin"]), y_val, class_labels)
+                note = {str(plan.get("kind")): decision.to_dict()
+                        for plan, decision in zip(safety, safety_gate) if decision is not None}
+                decision_note["safety_gate"] = note
+                if position > 0:
+                    chosen = safety[position]
+                    choice_note = "safety_net 覆盖内核 -> %s" % chosen.get("kind")
+                    controller_note = "kernel+safety"
+                    print("train: safety_net promoted %s (gate=%s)" % (
+                        chosen.get("kind"),
+                        safety_gate[position].decision), file=sys.stderr, flush=True)
+                print("train: safety_net " + ", ".join(
+                    "%s=%s(%.4f)" % (plan.get("kind"), decision.decision, decision.delta)
+                    for plan, decision in zip(safety, safety_gate) if decision is not None),
+                    file=sys.stderr, flush=True)
+        except Exception as exc:
+            print("train: safety_net unavailable: %s: %s" % (
+                type(exc).__name__, exc), file=sys.stderr, flush=True)
+        # The drift policy needs the candidate list to prefer cumulative-label
+        # retrain over the constant pair arm; kernel rounds otherwise have no
+        # pipeline plans to inspect.
+        policy_plans = list(safety)
+        if all(plan is not chosen for plan in policy_plans):
+            policy_plans.append(chosen)
     else:
         plans = _candidate_plans(task_key, model, train_rows, validation_rows,
                                   metric=metric, direction=direction,
                                   margin=float(defaults["margin"]))
+        policy_plans = plans
         table = _format_plan_table(plans, metric)
         prompt = (
             "本轮是 %s 数据集第 %d 轮，指标 %s（方向 %s）。父模型在公开验证集上的 %s 已给出，"
@@ -957,7 +1053,7 @@ def train(rnd):
                 metric=metric, direction=direction,
                 margin=float(defaults["margin"]),
                 classes=list(model.meta.get("classes") or []))
-        chosen, policy_note = _apply_drift_policy(policy_ctx, chosen, plans)
+        chosen, policy_note = _apply_drift_policy(policy_ctx, chosen, policy_plans)
         if policy_note:
             print("train: %s" % policy_note, file=sys.stderr, flush=True)
     except Exception as exc:
@@ -997,7 +1093,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.2",
+        "version": "0.14.3",
         "task_key": task_key,
         "task": task,
         "metric": metric,

@@ -205,3 +205,13 @@ trial_kind=legacy，status=completed，training_complete=true，210,648 tokens�
 
 默认镜像 ENV：`RSI_V2_NATIVE_TOOLS=1`、`RSI_V2_KERNEL_THINKING=off`、
 `RSI_V2_MAX_OUTPUT=256`（平台硬上限）、`RSI_V2_CONTROLLER=auto`。
+
+## 12. 0.14.3 追加：适配调优与安全网（详见 docs/40）
+
+0.14.2 修好“256 输出预算 + thinking”导致的 kernel 空转后，又做了全量同构消融（K1/K2/K3）：
+native vs text、full vs core 工具、10 vs 6 轮、full vs minimal skills、thinking on/off、
+以及“kernel 决策 + 确定性安全网”的组合。结论已写入 `docs/40_ADAPTATION_TUNING.md`，
+关键数字：安全网 5 seeds 均值 .5871，安全网 + 容量臂 ls10 6 seeds 均值 **.6278**；
+B/C 回归仍以 pipeline 为准（B 283.52 vs kernel 414.73，C 38.72 vs 37.54）。
+默认配置新增：`RSI_V2_MAX_TURNS=10`、`RSI_V2_NATIVE_TOOLS=1`、
+`RSI_V2_KERNEL_THINKING=off`、`RSI_V2_KERNEL_TOOLS=full`（镜像 0.14.3）。

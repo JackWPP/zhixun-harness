@@ -648,6 +648,12 @@ def main(argv=None) -> int:
                         default="off", help="opt-in capacity arm (official v1 checkpoint)")
     parser.add_argument("--gate", choices=["on", "off"], default="on",
                         help="paired block-bootstrap selection gate (default on)")
+    parser.add_argument("--kernel-tools", choices=["full", "core"], default="full",
+                        help="kernel tool surface: full 19 tools or a compact core set")
+    parser.add_argument("--native-tools", choices=["on", "off"], default="on",
+                        help="native OpenAI tool calling for the host gateway")
+    parser.add_argument("--kernel-context", choices=["full", "minimal"], default="full",
+                        help="kernel brief context: full skills/knowledge or minimal")
     parser.add_argument("--thinking", choices=["auto", "on", "off"], default="auto",
                         help="provider reasoning mode: on for kernel/auto, off for pipeline")
     parser.add_argument("--max-turns", type=int, default=6, help="kernel tool turns per round")
@@ -665,6 +671,9 @@ def main(argv=None) -> int:
     os.environ["RSI_V2_TOKEN_CAP"] = str(int(args.token_cap))
     os.environ["RSI_V2_MAX_OUTPUT"] = str(int(args.max_output))
     os.environ["RSI_V2_THINKING"] = args.thinking
+    os.environ["RSI_V2_KERNEL_TOOLS"] = args.kernel_tools
+    os.environ["RSI_V2_NATIVE_TOOLS"] = "1" if args.native_tools == "on" else "0"
+    os.environ["RSI_V2_KERNEL_CONTEXT"] = args.kernel_context
     if args.pair_delta is not None:
         os.environ["RSI_V2_PAIR_DELTA"] = str(float(args.pair_delta))
     stamp = time.strftime("%Y%m%d-%H%M%S")

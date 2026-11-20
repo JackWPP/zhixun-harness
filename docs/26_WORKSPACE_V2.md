@@ -332,3 +332,24 @@ SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块�
   fake-host A 一轮、离线 A 两轮 workspace_report metric 0.7345546845546845）。
 - 镜像 ENV 增加 `RSI_V2_NATIVE_TOOLS=1`、`RSI_V2_KERNEL_THINKING=off`、
   `RSI_V2_MAX_OUTPUT=256`；`RSI_V2_CAPACITY_ARM=ls10`、`RSI_V2_CONTROLLER=auto` 不变。
+
+## 7.13 0.14.3 镜像（PyTRiO 适配 + native tool-calling + 确定性安全网）
+
+- 版本：0.14.2 → **0.14.3**（pyproject/rsi/__init__/Makefile/submission meta/docs13）。
+- 镜像：`.scratch/image/harness.tar` **380,661,760 B**，
+  sha256 **`a87c3658c9c1910c6fcb5e67652c852a4b091ebcb166b4787bfa8005edc20722`**，
+  config `d717573903713477b5f5a3b4d0cb101f0c580de5278c81aaa40670563c861eb9.json`，
+  tags `0.14.3/latest`。
+- `scripts/verify_image.sh` **PASS**：describe `sdk_version: 1.0.4`、fake-host A 一轮 PASS、
+  离线 A 两轮 `workspace_report` metric 0.7345546845546845。
+- 默认 ENV 新增：`RSI_V2_MAX_TURNS=10`、`RSI_V2_NATIVE_TOOLS=1`、
+  `RSI_V2_KERNEL_THINKING=off`、`RSI_V2_KERNEL_TOOLS=full`（Dockerfile 与
+  `scripts/build_image_tar.py` 已同步）。
+- 代码：`agent_host` native tool calling + thinking 协商 + 逐级降级；`prompts_kernel`
+  效率铁律与工具预算；`actions` 工具子集；`submission` 确定性安全网（retain /
+  continue_train / continue_train_pair / 容量臂，gate promote 才覆盖 agent 决策）；
+  `plans.evaluate` 返回 predicted、`continue_train_pair` 独立 kind。
+- 实验与结论见 `docs/40_ADAPTATION_TUNING.md`（K1=6.06e-1 前安全网 .4250；安全网
+  5 seeds .5871；安全网+ls10 6 seeds **.6278**；B/C 回归保持 pipeline）。
+- 测试：**207 passed, 3 deselected**；未上传平台、未跑 trial（trial 额度 8/10 未动，
+  formal 2 次未动）。

@@ -8,6 +8,7 @@ and every call is appended to ``env.trace`` for the experiment record.
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Literal
@@ -450,7 +451,7 @@ def build_kernel_tools(env: KernelEnv):
                  ok=bool(result.get("ok", True)))
         return _result(result)
 
-    return [
+    tools = [
         tool("get_run_state", "读取当前运行状态、目标进度、父模型指标与预算（无隐藏数据）。",
              EmptyParams, h_state),
         tool("get_history", "读取最近几轮的精简记录（决策、指标、策略、哈希）。",
@@ -490,6 +491,18 @@ def build_kernel_tools(env: KernelEnv):
         tool("skill_manage", "创建/修改/删除过程性技能（SKILL.md，有大小与安全限制）。",
              SkillManageParams, h_skill),
     ]
+
+    mode = os.environ.get("RSI_V2_KERNEL_TOOLS", "full").strip().lower()
+    if mode and mode != "full":
+        if mode == "core":
+            allowed = {"get_run_state", "get_lessons", "get_context",
+                       "propose_experiment", "run_experiment",
+                       "compare_candidates", "decide", "finish_round"}
+        else:
+            allowed = {name.strip() for name in mode.split(",") if name.strip()}
+        if allowed:
+            tools = [tool for tool in tools if tool.name in allowed]
+    return tools
 
 
 KERNEL_SYSTEM_PROMPT = KERNEL_SYSTEM

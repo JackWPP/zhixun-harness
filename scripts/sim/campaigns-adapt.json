@@ -1,0 +1,36 @@
+{
+  "K1": {
+    "description": "PyTRiO kernel adaptation + prompt/tool/skill variants on official-seq A (10 rounds, kernel)",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "seeds": [0],
+    "arms": [
+      {"tag": "base", "policy": "on"},
+      {"tag": "core", "policy": "on", "kernel_tools": "core"},
+      {"tag": "text", "policy": "on", "native_tools": "off"},
+      {"tag": "t6", "policy": "on", "max_turns": 6},
+      {"tag": "think", "policy": "on", "thinking": "on"},
+      {"tag": "minctx", "policy": "on", "kernel_tools": "core", "kernel_context": "minimal"}
+    ]
+  },
+  "K2": {
+    "description": "full B/C check: pipeline baseline vs kernel controller (10 rounds each)",
+    "scenario": "official-seq",
+    "tasks": "B,C",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "seeds": [0],
+    "arms": [
+      {"tag": "pipeline", "policy": "on"},
+      {"tag": "kernel", "policy": "on", "kernel_tools": "core"}
+    ]
+  }
+}

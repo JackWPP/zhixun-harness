@@ -1,5 +1,5 @@
 # ============================================================================
-#  智训引擎 RSI Harness —— 工程入口（v0.14.2）
+#  智训引擎 RSI Harness —— 工程入口（v0.14.3）
 #  新 harness 在 rsi/；harness/ 与 audit/ 是旧原型的审计留档（legacy-* 目标）。
 # ============================================================================
 SHELL := /bin/bash
@@ -84,7 +84,7 @@ image-stage:              ## 组装镜像 overlay（代码 + 数据 + 依赖）
 image-tar:                ## 生成 docker save 兼容 tar
 	$(PY) scripts/build_image_tar.py --rootfs .scratch/image/rootfs \
 		--overlay .scratch/image/overlay --output .scratch/image/harness.tar \
-		--tag zhixun-rsi-harness:0.14.2
+		--tag zhixun-rsi-harness:0.14.3
 
 image-verify:             ## 解包 tar 并做镜像内 selftest（bwrap）
 	bash scripts/verify_image.sh

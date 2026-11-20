@@ -179,7 +179,7 @@ class PlanContext:
                   train_rows=train_rows, val_rows=val_rows,
                   x_train=x_train, y_train=y_train, x_val=x_val, y_val=y_val,
                   target_mean=float(model.meta.get("target_mean") or 0.0))
-        ctx.parent_values, ctx.parent_primary = evaluate(ctx, model, {"type": "none"})
+        ctx.parent_values, ctx.parent_primary, _ = evaluate(ctx, model, {"type": "none"})
         return ctx
 
 
@@ -189,15 +189,16 @@ def evaluate(ctx: PlanContext, model: ExtendedModel, postprocess: dict | None):
     primary = values.get("primary")
     if primary is None:
         primary = primary_metric(ctx.task, values)
-    return values, float(primary)
+    return values, float(primary), predicted
 
 
 def _make_plan(ctx: PlanContext, *, kind: str, label: str, strategy: str,
                params: dict, postprocess: dict, model: ExtendedModel,
                hypothesis: str = "", checkpoint_changed: bool = False) -> dict:
-    values, primary = evaluate(ctx, model, postprocess)
+    values, primary, predicted = evaluate(ctx, model, postprocess)
     return {
         "ok": True,
+        "predicted": predicted,
         "kind": kind,
         "label": label,
         "strategy": strategy,
@@ -348,7 +349,12 @@ def plan_for_proposal(ctx: PlanContext, proposal) -> dict:
     try:
         model, changed = _candidate_model(ctx, strategy, params)
         postprocess = _resolve_postprocess(ctx, model, raw_post)
-        kind = strategy if strategy != "retain" else str(postprocess.get("type", "retain"))
+        if strategy == "continue_train":
+            kind = ("continue_train_pair"
+                    if str(postprocess.get("type")) == "pair_threshold"
+                    else "continue_train")
+        else:
+            kind = strategy if strategy != "retain" else str(postprocess.get("type", "retain"))
         if strategy == "retain" and kind == "none":
             kind = "retain"
         label = "%s + %s" % (strategy, str(postprocess.get("type", "none")))

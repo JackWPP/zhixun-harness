@@ -1,0 +1,58 @@
+{
+  "K3": {
+    "description": "safety net: kernel decisions + mandatory cumulative retrain/capacity gate (A official-seq, 10 rounds, 2 seeds)",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "off",
+    "seeds": [0, 1],
+    "arms": [
+      {"tag": "safety", "policy": "on", "kernel_tools": "full", "native_tools": "on"}
+    ]
+  },
+  "K1b": {
+    "description": "minimal skill/knowledge context with core tools (A official-seq, 10 rounds)",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "off",
+    "seeds": [0],
+    "arms": [
+      {"tag": "minctx", "policy": "on", "kernel_tools": "core", "kernel_context": "minimal"}
+    ]
+  },
+  "K2p": {
+    "description": "B/C full 10-round pipeline baseline",
+    "scenario": "official-seq",
+    "tasks": "B,C",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "off",
+    "seeds": [0],
+    "arms": [{"tag": "pipeline", "policy": "on"}]
+  },
+  "K2k": {
+    "description": "B/C full 10-round kernel core adaptation",
+    "scenario": "official-seq",
+    "tasks": "B,C",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "off",
+    "seeds": [0],
+    "arms": [{"tag": "kernel-core", "policy": "on", "kernel_tools": "core"}]
+  }
+}

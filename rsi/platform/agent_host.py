@@ -170,7 +170,7 @@ class GatewayRuntime:
 
     backend = "host-gateway"
 
-    def __init__(self, rnd, *, max_turns: int = 6, token_cap: int = 0,
+    def __init__(self, rnd, *, max_turns: int = 10, token_cap: int = 0,
                  timeout_seconds: float = 900.0):
         self.rnd = rnd
         self.max_turns = max(1, int(max_turns))
@@ -312,7 +312,9 @@ class GatewayRuntime:
                 break
             last_text = _message_text(message)
             if os.environ.get("SIM_AGENT_DEBUG"):
-                print("[agent] turn=%d text=%r" % (turn, last_text[:900]), file=sys.stderr, flush=True)
+                print("[agent] turn=%d text=%r message=%r" % (turn, last_text[:900],
+                      message if not hasattr(message, "__dict__") else message.__dict__),
+                      file=sys.stderr, flush=True)
             native_calls = _native_tool_calls(message)
             if native_calls:
                 tool_name = native_calls[0][0]
@@ -575,7 +577,7 @@ def _task_config(ctx: plans.PlanContext) -> TaskConfig:
 
 def run_kernel_round(rnd, ctx: plans.PlanContext, brief: dict, state: AgentState, *,
                      run_id: str = "", round_index: int = 1,
-                     experiments_total: int = 0, max_turns: int = 6) -> KernelRound:
+                     experiments_total: int = 0, max_turns: int = 10) -> KernelRound:
     """Run one PI-agent kernel round against the host gateway."""
     try:
         cap = int(os.environ.get("RSI_V2_TOKEN_CAP", "0") or 0)

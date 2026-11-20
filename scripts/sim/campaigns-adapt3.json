@@ -1,0 +1,43 @@
+{
+  "K3": {
+    "description": "safety net extra seeds (A official-seq 10 rounds)",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "off",
+    "seeds": [2, 3, 4],
+    "arms": [
+      {"tag": "safety", "policy": "on", "kernel_tools": "full", "native_tools": "on"}
+    ]
+  },
+  "K2p": {
+    "description": "B/C full 10-round pipeline baseline",
+    "scenario": "official",
+    "tasks": "B,C",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "pipeline",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "off",
+    "seeds": [0],
+    "arms": [{"tag": "pipeline", "policy": "on"}]
+  },
+  "K2k": {
+    "description": "B/C full 10-round kernel core adaptation",
+    "scenario": "official",
+    "tasks": "B,C",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "off",
+    "seeds": [0],
+    "arms": [{"tag": "kernel-core", "policy": "on", "kernel_tools": "core"}]
+  }
+}
