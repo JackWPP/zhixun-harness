@@ -353,3 +353,15 @@ SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块�
   5 seeds .5871；安全网+ls10 6 seeds **.6278**；B/C 回归保持 pipeline）。
 - 测试：**207 passed, 3 deselected**；未上传平台、未跑 trial（trial 额度 8/10 未动，
   formal 2 次未动）。
+
+## 7.14 0.14.4 镜像（recent-block holdout + 回归 guardrail）
+
+- 版本 0.14.4；镜像 `.scratch/image/harness.tar` **380,702,720 B**，sha256
+  **`55826c3bc15caec29d918cf630e18f6ec50e7147b6d24029b070ac1d8b633ea9`**，config
+  `83653577abd568ea1a70a6eb0886c7a3c58d96f6b74df631c88cd640c27f5ecb.json`，tags 0.14.4/latest。
+- `scripts/verify_image.sh` **PASS**（describe sdk 1.0.4、fake-host A 一轮、离线 A 两轮 metric
+  0.7345546845546845）。
+- 代码：recent-block holdout（非劣 retrain 覆盖）、arrival drift、回归 guardrail（B/C shrink/damage）、
+  kernel guidance；测试 **207 passed, 3 deselected**。
+- 实验：A 11 seeds 均值 **.7192**（sd .0121）；B kernel=pipeline 283.52；C kernel 38.30 vs pipeline 38.92。
+- 详见 docs/40 §6。

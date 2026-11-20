@@ -1,0 +1,32 @@
+{
+  "BCmulti": {
+    "description": "B/C multi-seed: pipeline baseline vs kernel+regression guardrail",
+    "scenario": "official",
+    "tasks": "B,C",
+    "rounds": 10,
+    "provider": "real",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "off",
+    "seeds": [0, 1, 2],
+    "arms": [
+      {"tag": "BC-pipe", "controller": "pipeline", "policy": "on"},
+      {"tag": "BC-kernel", "controller": "kernel", "policy": "on", "kernel_tools": "core"}
+    ]
+  },
+  "Aextra": {
+    "description": "A official-seq extra seeds 7-10 with safety net + capacity ls10",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "ls10",
+    "seeds": [7, 8, 9, 10],
+    "arms": [
+      {"tag": "A-safety-ls10", "policy": "on", "kernel_tools": "full"}
+    ]
+  }
+}

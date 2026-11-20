@@ -119,3 +119,50 @@ done
 
 SwanLab：项目 `zhixun-rsi`（online）；汇总表由 `scripts/sim/summarize_adapt.py K1` 与
 `.scratch/sim/runs/*/summary.json` 生成。测试：`207 passed, 3 deselected`。
+
+## 6. 0.14.4：陈旧验证集问题与 recent-block holdout（A 从双峰 .60 到稳定 .72）
+
+### 6.1 问题
+0.14.3 的 A official-seq 结果呈双峰：好 seed 每轮均值 ~.66，坏 seed ~.54。
+诊断发现：一旦后续轮次用累积揭示的漂移批训练，**冻结的公开验证集 b2 已不再代表下一批**。
+继续用 b2 做选择时，retrain 的 b2 分数会从 .968 掉到 .94–.95，于是 gate/policy 拒绝它，
+模型被冻结，后续 drop 的 hidden 直接掉到 .29–.44。
+
+### 6.2 改法（能力级，不是调参）
+- `rsi/platform/submission.py` 新增 **recent-block holdout**：训练行 ≥800 且漂移为 high 时，
+  把最新 25%（200–2000 行）揭示批留作 holdout，用更早的行训练候选，在该新鲜块上做配对
+  block bootstrap；promote 才覆盖内核决策；若无显著 promote 但 retrain 在该块上
+  **non-inferior**（≥ parent − margin），也允许 retrain（冻结的代价远大于一次小退步）。
+- `_drift_brief` 增加 **arrival drift**：用最新揭示块相对模型参考分布计算漂移，
+  避免“train 与 val 的聚合统计”在累积后把漂移洗掉。
+- 内核仍是决策主体：holdout 只提供无偏证据；确定性安全网只在没有决策/gate 否决时兜底。
+
+### 6.3 结果（A official-seq，真实 PyTRiO，kernel，10 轮，11 seeds）
+| seed | hidden 逐轮均值 | 末轮 |
+|---|---|---|
+| 0 | .7081 | .7008 |
+| 1 | .7053 | .6956 |
+| 2 | .7198 | .7125 |
+| 3 | .7203 | .6994 |
+| 4 | .7508 | .7164 |
+| 5 | .7120 | .7011 |
+| 6 | .7242 | .7054 |
+| 7 | .7055 | .7149 |
+| 8 | .7219 | .7004 |
+| 9 | .7229 | .7217 |
+| 10 | .7206 | .7017 |
+- **均值 .7192，sd .0121，最小 .7053，最大 .7508**（对比 0.14.3 的 6 seeds 均值 .6278、sd≈.05）。
+- 早期轮次仍保留 pair/adaptive，r5–r6 起 holdout 触发累计 retrain，后续批稳定在 .68–.72。
+
+### 6.4 B/C 多 seed（official，10 轮，pipeline vs kernel+回归 guardrail，3 seeds）
+| 任务 | pipeline | kernel+guardrail |
+|---|---|---|
+| B RMSE | 283.52 / 283.52 / 283.52 | 283.52 / 283.52 / 283.52 |
+| C RMSE | 38.72 / 38.71 / 39.32 | 38.00 / 38.04 / 38.88 |
+- B 上 agent 路由与 pipeline 打平（回归 guardrail 阻止了越训越差）；C 上略好（均值 38.30 vs 38.92）。
+- 结论：`auto` 路由（分类 kernel、回归 pipeline）仍成立；回归 guardrail 已让 kernel 路径安全可用。
+
+### 6.5 边界
+- 仍是本地同构代理（official-seq 用公开数据按批揭示）；平台隐藏流不同，绝对值不可外推。
+- 11 seeds 均值 .719 是“公开数据代理”的估计，不是平台分数；平台 trial 仍排队。
+- 改动包含确定性 holdout/gate，agent 仍是提假设、选实验、写记忆的主体；安全网只否决/兜底。

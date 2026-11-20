@@ -1,0 +1,17 @@
+{
+  "Aguide": {
+    "description": "A official-seq with kernel guidance (retrain awareness), 4 seeds",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "ls10",
+    "seeds": [7, 8, 9, 10],
+    "arms": [
+      {"tag": "A-guide", "policy": "on", "kernel_tools": "full"}
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "Asat": {
+    "description": "A official-seq saturation-aware retrain preference (bad seeds retest)",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "ls10",
+    "seeds": [7, 8, 10],
+    "arms": [
+      {"tag": "A-sat", "policy": "on", "kernel_tools": "full"}
+    ]
+  }
+}

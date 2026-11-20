@@ -1,0 +1,16 @@
+{
+  "AfinA": {
+    "description": "A official-seq final holdout selection, seeds 0-5",
+    "scenario": "official-seq", "tasks": "A", "rounds": 10, "provider": "real",
+    "controller": "kernel", "hidden_every_round": true, "max_turns": 10,
+    "capacity_arm": "ls10", "seeds": [0,1,2,3,4,5],
+    "arms": [{"tag": "A-fin", "policy": "on", "kernel_tools": "full"}]
+  },
+  "AfinB": {
+    "description": "A official-seq final holdout selection, seeds 6-10",
+    "scenario": "official-seq", "tasks": "A", "rounds": 10, "provider": "real",
+    "controller": "kernel", "hidden_every_round": true, "max_turns": 10,
+    "capacity_arm": "ls10", "seeds": [6,7,8,9,10],
+    "arms": [{"tag": "A-fin", "policy": "on", "kernel_tools": "full"}]
+  }
+}

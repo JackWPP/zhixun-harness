@@ -1,0 +1,17 @@
+{
+  "Ahold2": {
+    "description": "A official-seq recent-block holdout selection, 4 seeds",
+    "scenario": "official-seq",
+    "tasks": "A",
+    "rounds": 10,
+    "provider": "real",
+    "controller": "kernel",
+    "hidden_every_round": true,
+    "max_turns": 10,
+    "capacity_arm": "ls10",
+    "seeds": [0, 1, 2, 3],
+    "arms": [
+      {"tag": "A-holdout2", "policy": "on", "kernel_tools": "full"}
+    ]
+  }
+}

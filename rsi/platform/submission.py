@@ -270,6 +270,32 @@ def _safety_net_plans(ctx) -> list[dict]:
             except Exception as exc:
                 print("train: safety_net retrain_pair error: %s: %s"
                       % (type(exc).__name__, exc), file=sys.stderr, flush=True)
+    if ctx.task == "regression":
+        # Guardrail arms for B/C: the agent has repeatedly picked validation-
+        # improving retrain arms that over-fit the public ranking; evaluate the
+        # target-mean shrink / damage-shrink arms as deterministic candidates.
+        try:
+            shrink = _plans.plan_for_proposal(ctx, ExperimentProposal(
+                strategy="retain", params={},
+                postprocess={"type": "shrink", "alpha": 0.3,
+                             "center": float(ctx.target_mean)},
+                hypothesis="target-mean shrink guardrail"))
+            if shrink.get("ok"):
+                plans.append(shrink)
+        except Exception as exc:
+            print("train: safety_net shrink error: %s: %s" % (type(exc).__name__, exc),
+                  file=sys.stderr, flush=True)
+        if ctx.task_key == "B":
+            try:
+                damage = _plans.plan_for_proposal(ctx, ExperimentProposal(
+                    strategy="retain", params={},
+                    postprocess={"type": "damage_shrink"},
+                    hypothesis="damage-shrink guardrail"))
+                if damage.get("ok"):
+                    plans.append(damage)
+            except Exception as exc:
+                print("train: safety_net damage error: %s: %s" % (type(exc).__name__, exc),
+                      file=sys.stderr, flush=True)
     try:
         import os as _os
         if _os.environ.get("RSI_V2_CAPACITY_ARM", "off").strip().lower() not in {"", "off", "0", "none"}:
@@ -619,6 +645,32 @@ def _drift_brief(ctx) -> dict:
         top = {str(int(index)): round(float(z[index]), 3) for index in order}
         peak = float(np.max(np.abs(z))) if len(z) else 0.0
         severity = "high" if peak >= 2.0 else ("medium" if peak >= 1.0 else "low")
+        arrival = {}
+        try:
+            # Batch-vs-reference drift: as revealed batches accumulate, the
+            # aggregate train~val statistic above can wash out and hide the
+            # ongoing shift. Compare the newest revealed chunk against the
+            # model's frozen reference statistics instead.
+            model = getattr(ctx, "model", None)
+            if model is not None and len(ctx.x_train) >= 32:
+                recent = np.asarray(ctx.x_train[-min(512, len(ctx.x_train)):],
+                                    dtype=np.float64)
+                ref_mean = np.asarray(model.mean, dtype=np.float64)
+                ref_scale = np.asarray(model.scale, dtype=np.float64) + 1e-9
+                z2 = (recent.mean(axis=0) - ref_mean) / ref_scale
+                peak2 = float(np.max(np.abs(z2))) if z2.size else 0.0
+                sev2 = "high" if peak2 >= 2.0 else ("medium" if peak2 >= 1.0 else "low")
+                arrival = {"peak": round(peak2, 4), "severity": sev2,
+                           "rows": int(len(recent))}
+                order2 = np.argsort(-np.abs(z2))[:3]
+                arrival["top"] = {str(int(i)): round(float(z2[i]), 3) for i in order2}
+                rank = {"low": 0, "medium": 1, "high": 2}
+                if rank.get(sev2, -1) > rank.get(severity, -1):
+                    severity = sev2
+                if peak2 > peak:
+                    peak = peak2
+        except Exception:
+            arrival = {}
         return {
             "severity": severity,
             "score": round(peak, 4),
@@ -626,9 +678,11 @@ def _drift_brief(ctx) -> dict:
             "feature_shift": top,
             "max_feature_shift": {"index": int(order[0]) if len(order) else -1,
                                   "z": round(peak, 3)},
+            "arrival": arrival,
             "evidence": {"train_rows": int(len(ctx.x_train)),
                          "val_rows": int(len(ctx.x_val))},
-            "causes": ["公开验证投影与 train 投影的特征分布差异（无标签）"],
+            "causes": ["公开验证投影与 train 投影的特征分布差异（无标签）",
+                       "已揭示新批相对模型参考分布的漂移（无标签）"],
             "knowledge_hints": [],
         }
     except Exception:
@@ -696,9 +750,21 @@ def _kernel_brief(task_key: str, model: ExtendedModel, ctx, history: list[dict],
                      % _plans.PAIR_HISTORY_DELTA),
         },
         "catalog": _plans.catalog_text(),
+        "guidance": _kernel_guidance(ctx, drift),
         "skills": skills_text,
         "knowledge": knowledge_text,
     }
+
+
+def _kernel_guidance(ctx, drift: dict) -> str:
+    """Round guidance shown to the kernel (agent decides; this is not a rule)."""
+    if ctx.task == "classification":
+        return ("已揭示的累积训练行随轮次增长；公开验证(b2)已接近饱和，验证分不变不代表没有"
+                "提升空间。高漂移下优先尝试 continue_train / continue_train_pair（用当前全部"
+                "已揭示训练行），不要因为验证分不变就连续 retain；可用 compare_candidates 对比"
+                "各候选的公开验证值后再决定。")
+    return ("回归任务优先考虑 target-mean shrink 以及小步 continue_train；公开验证与隐藏批"
+            "可能不同步，不要只挑验证最优，优先选择相对父模型稳定不劣的候选。")
 
 
 def _open_agent_state(work: Path, rnd):
@@ -753,6 +819,16 @@ def _apply_drift_policy(ctx, chosen: dict, plans=None) -> tuple[dict, str]:
                               "(cumulative labels)" % (
                                   float(drift.get("score") or 0.0), best.get("kind"),
                                   float(best["primary"]), parent_primary))
+            # Saturated public validation: once the parent already scores > .95 on
+            # the public split, a 0.4-1.0pt drop there is noise, but freezing the
+            # model loses the newly revealed labels. Prefer a non-inferior
+            # cumulative retrain when the drift level is high.
+            if (best is not None and parent_primary >= 0.95
+                    and float(best["primary"]) >= parent_primary - 3.0 * margin):
+                return best, ("drift_policy: high drift %.2f, saturated validation "
+                              "(parent=%.4f), prefer %s val=%.4f (cumulative labels)" % (
+                                  float(drift.get("score") or 0.0), parent_primary,
+                                  best.get("kind"), float(best["primary"])))
             hist = [plan for plan in usable if str(plan.get("kind")) == "pair_history"]
             if hist and float(hist[0]["primary"]) + 2.0 * margin >= parent_primary:
                 if str(chosen.get("kind")) == "pair_history":
@@ -761,6 +837,18 @@ def _apply_drift_policy(ctx, chosen: dict, plans=None) -> tuple[dict, str]:
                                  "parent=%.4f" % (
                                      float(drift.get("score") or 0.0),
                                      float(hist[0]["primary"]), parent_primary))
+        if os.environ.get("RSI_DEBUG_DRIFT", "").strip() in {"1", "true", "yes"}:
+            _dbg = [("%s:%.4f" % (p.get("kind"), float(p.get("primary") or -1)))
+                    for p in usable]
+            _dbg_best = max([float(p.get("primary") or -1) for p in usable
+                             if str(p.get("kind", "")).startswith("continue_train")],
+                            default=-1)
+            print("train: drift debug severity=%s score=%s arrival=%s parent=%s margin=%s "
+                  "chosen=%s usable=%s best_retrain=%.4f"
+                  % (drift.get("severity"), drift.get("score"),
+                     (drift.get("arrival") or {}).get("peak"),
+                     ctx.parent_primary, ctx.margin, chosen.get("kind"), _dbg, _dbg_best),
+                  file=sys.stderr, flush=True)
         if str(drift.get("severity")) != "high" or ctx.task != "classification":
             return chosen, ""
         arm = _plans.pair_history_plan(ctx)
@@ -954,6 +1042,64 @@ def train(rnd):
         except Exception as exc:
             print("train: safety_net unavailable: %s: %s" % (
                 type(exc).__name__, exc), file=sys.stderr, flush=True)
+        # Recent-block validation: once training absorbs drifted drops, the
+        # frozen public validation (b2) stops predicting the next drop.  Hold out
+        # the newest revealed rows, train candidates on the older rows, and use a
+        # paired gate on the fresh block.  The agent still owns the decision; this
+        # only surfaces an unbiased holdout to the same safety-net machinery.
+        try:
+            if (task == "classification" and len(train_rows) >= 800
+                    and str(_drift_brief(kernel_ctx).get("severity")) == "high"):
+                holdout_n = min(2000, max(200, int(len(train_rows) * 0.25)))
+                holdout_rows = train_rows[-holdout_n:]
+                past_rows = train_rows[:-holdout_n]
+                recent_ctx = _plans.PlanContext.from_rows(
+                    task_key, model, past_rows, holdout_rows,
+                    metric=metric, direction=direction,
+                    margin=float(defaults["margin"]),
+                    classes=list(model.meta.get("classes") or []))
+                recent = _safety_net_plans(recent_ctx)
+                if len(recent) > 1:
+                    r_labels = list(model.meta.get("classes") or [])
+                    r_pos, r_gate = _gate_choose(
+                        recent, task, direction, float(defaults["margin"]),
+                        recent_ctx.y_val, r_labels)
+                    r_note = {str(plan.get("kind")): decision.to_dict()
+                              for plan, decision in zip(recent, r_gate)
+                              if decision is not None}
+                    decision_note["recent_holdout"] = r_note
+                    promote_pos = r_pos if (r_pos > 0 and str(
+                        recent[r_pos].get("kind", "")).startswith("continue_train")) else 0
+                    if promote_pos == 0:
+                        # No significant promote: accept a non-inferior retrain on
+                        # the fresh holdout rather than freezing the model -- the
+                        # cost of freezing under continuing drift is much larger.
+                        parent_hold = float(recent_ctx.parent_primary)
+                        retrains = [(i, plan) for i, plan in enumerate(recent)
+                                    if str(plan.get("kind", "")).startswith("continue_train")]
+                        if retrains:
+                            best_i, best_plan = max(
+                                retrains, key=lambda item: float(item[1]["primary"]))
+                            if float(best_plan["primary"]) >= parent_hold - float(
+                                    defaults["margin"]):
+                                promote_pos = best_i
+                    if promote_pos > 0:
+                        chosen = recent[promote_pos]
+                        choice_note = "recent_holdout 覆盖内核 -> %s" % chosen.get("kind")
+                        controller_note = "kernel+recent"
+                        print("train: recent_holdout promoted %s (holdout=%d, gate=%s)"
+                              % (chosen.get("kind"), holdout_n,
+                                 (r_gate[promote_pos].decision if promote_pos < len(r_gate)
+                                  and r_gate[promote_pos] is not None else "non-inferior")),
+                              file=sys.stderr, flush=True)
+                    else:
+                        print("train: recent_holdout no promote "
+                              "(holdout=%d) -> keep %s"
+                              % (holdout_n, chosen.get("kind")),
+                              file=sys.stderr, flush=True)
+        except Exception as exc:
+            print("train: recent_holdout unavailable: %s: %s"
+                  % (type(exc).__name__, exc), file=sys.stderr, flush=True)
         # The drift policy needs the candidate list to prefer cumulative-label
         # retrain over the constant pair arm; kernel rounds otherwise have no
         # pipeline plans to inspect.
@@ -1093,7 +1239,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.3",
+        "version": "0.14.4",
         "task_key": task_key,
         "task": task,
         "metric": metric,
