@@ -315,3 +315,20 @@ SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块�
 - `scripts/verify_image.sh` **PASS**：describe sdk 1.0.4、fake-host A 一轮、
   离线 A 两轮 workspace_report metric 0.7345546845546845；全量测试
   **201 passed, 3 deselected**（72.62s）。
+
+## 7.12 0.14.2 镜像（native tool calling + thinking 协商）
+
+- 根因：平台 `max_output_tokens=256` + PyTRiO `Qwen/Qwen3.8-27B` 默认 thinking on，
+  reasoning 吃满输出预算导致 content 为空，文本 JSON 动作协议解析失败（详见
+  `docs/39_SPRINT_0.14.0.md` §12）。
+- 修复：`GatewayRuntime` 默认启用 native tool calling（`tools` + `tool_choice="auto"`），
+  优先解析 `tool_calls`；默认 `enable_thinking=False`，宿主拒绝时逐级降级；
+  0.14.1 的 `kernel->pipeline` 降级保留为兜底。
+- 回归：`tests/test_agent_host.py` 12 passed；全量测试 **203 passed, 3 deselected**（72.61s）。
+- 镜像：`.scratch/image/harness.tar` **380,641,280 B**，sha256
+  **`1b85e0692f8ebd55fc1aa686e0f29976016fcf1fd903d1a9b595039bf78be8bb`**，
+  config `1b8224512c40dba64d1fea147e18c06faa64ca0f0026c806aa02b0f9171372fa.json`，
+  tags `0.14.2/latest`；`scripts/verify_image.sh` **PASS**（describe sdk 1.0.4、
+  fake-host A 一轮、离线 A 两轮 workspace_report metric 0.7345546845546845）。
+- 镜像 ENV 增加 `RSI_V2_NATIVE_TOOLS=1`、`RSI_V2_KERNEL_THINKING=off`、
+  `RSI_V2_MAX_OUTPUT=256`；`RSI_V2_CAPACITY_ARM=ls10`、`RSI_V2_CONTROLLER=auto` 不变。

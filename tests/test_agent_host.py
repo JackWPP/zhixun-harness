@@ -269,3 +269,93 @@ def test_gateway_runtime_max_output_reads_env(monkeypatch):
     runtime = GatewayRuntime(Rnd(), max_turns=2, token_cap=0)
     runtime.model([{"role": "user", "content": "state"}])
     assert captured == [1536]
+
+
+def _native_receipt(action: dict, call_id: str) -> FakeReceipt:
+    message = FakeMessage(content="", tool_calls=[{
+        "id": "call-%s" % call_id,
+        "type": "function",
+        "function": {"name": action["tool"], "arguments": json.dumps(action["args"])},
+    }])
+    receipt = FakeReceipt("", call_id)
+    receipt.response = SimpleNamespace(choices=[SimpleNamespace(message=message)],
+                                      usage={"prompt_tokens": 100, "completion_tokens": 20})
+    return receipt
+
+
+class NativeScriptedRnd(ScriptedRnd):
+    """Host double whose gateway returns native tool_calls (thinking may eat content)."""
+
+    def __init__(self, actions, *, reject_thinking=False):
+        super().__init__(actions)
+        self.reject_thinking = reject_thinking
+        self.options_seen = []
+
+    def model(self, messages, **options):
+        self.options_seen.append(dict(options))
+        if self.reject_thinking and "enable_thinking" in options:
+            raise RuntimeError("unsupported option: enable_thinking")
+        action = self.actions[min(self.calls, len(self.actions) - 1)]
+        self.calls += 1
+        if options.get("tools"):
+            return _native_receipt(action, "native-%d" % self.calls)
+        return FakeReceipt(json.dumps(action, ensure_ascii=False), "receipt-%d" % self.calls)
+
+
+def test_gateway_native_tool_calls_survive_empty_content():
+    """Platform 0.13.0: PyTRiO thinking consumed the 256-token budget and content
+    was empty, but native tool_calls still arrive; the kernel must use them."""
+    from rsi.platform.agent_host import AgentState, run_kernel_round
+    from rsi.model import ExtendedModel
+    from rsi.platform.plans import PlanContext
+
+    model = ExtendedModel.from_checkpoint(TASK_A / "checkpoint.npz")
+    train = read_rows(TASK_A / "public" / "train.jsonl", 300)
+    validation = read_rows(TASK_A / "public" / "validation.jsonl", 200)
+    ctx = PlanContext.from_rows("A", model, train, validation, metric="macro_f1",
+                                direction="higher", margin=0.004,
+                                classes=list(model.meta.get("classes") or []))
+    brief = {"task": {"key": "A"}, "round_index": 1, "rounds_total": 10,
+             "history": [], "catalog": ""}
+    actions = [
+        {"tool": "get_run_state", "args": {}},
+        {"tool": "propose_experiment", "args": {
+            "strategy": "retain", "params_json": "{}",
+            "postprocess_json": "{\"type\": \"recenter\", \"mode\": \"batch_mean\", \"weight\": 0.4}",
+            "hypothesis": "recenter under drift"}},
+        {"tool": "run_experiment", "args": {"plan_id": "plan-01"}},
+        {"tool": "decide", "args": {"decision": "retain", "reason": "margin not met"}},
+        {"tool": "finish_round", "args": {"summary": "native", "lesson": "ok"}},
+    ]
+    rnd = NativeScriptedRnd(actions)
+    result = run_kernel_round(rnd, ctx, brief, AgentState(), run_id="A-r1",
+                              round_index=1, experiments_total=0, max_turns=6)
+    assert result.calls == 5
+    assert result.decision is not None
+    assert result.decision["decision"] == "retain"
+    assert result.host is not None and len(result.host.results) == 1
+    assert rnd.options_seen[0]["enable_thinking"] is False
+    assert rnd.options_seen[0]["tools"], "native tool specs must be offered"
+
+
+def test_gateway_downgrades_when_host_rejects_options():
+    from rsi.platform.agent_host import GatewayRuntime
+
+    class StrictRnd:
+        def __init__(self):
+            self.calls = 0
+            self.seen = []
+
+        def model(self, messages, **options):
+            self.calls += 1
+            self.seen.append(dict(options))
+            if "enable_thinking" in options:
+                raise RuntimeError("MODEL_OPTION_UNSUPPORTED: enable_thinking")
+            return FakeReceipt("{}", "call-%d" % self.calls)
+
+    rnd = StrictRnd()
+    runtime = GatewayRuntime(rnd, max_turns=2)
+    receipt = runtime.model([{"role": "user", "content": "hi"}], max_tokens=8)
+    assert receipt.call_id == "call-2"
+    assert rnd.seen[0].get("enable_thinking") is False
+    assert "enable_thinking" not in rnd.seen[-1]

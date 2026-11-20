@@ -176,3 +176,32 @@ trial_kind=legacy，status=completed，training_complete=true，210,648 tokens�
     （模拟平台 0.13.0 的“只调 get_run_state、无 tool action”）。
   - 平台 trial 实测的 pair_history 行数增长证明 `/data/train` 按轮累积，
     pipeline 的累积标签续训在平台有真实数据可用。
+
+## 12. 空转根因与 0.14.2（native tool calling + thinking 协商）
+
+用户追问“为什么会出现空转、不是降级就好”。0.14.1 的降级只是把 kernel 的失败
+接住，**没有解释为什么 kernel 会失败**。直连 PyTRiO 网关做参数化探针后定位：
+
+- 平台 `max_output_tokens = 256`；`Qwen/Qwen3.8-27B` 在 PyTRiO 上**默认 thinking on**。
+  长 kernel prompt（3052 chars）下，max_tokens=256 时 reasoning 吃满 256 token，
+  `content=""`；max_tokens=768 时 content 才正常（usage 331/317）。
+- `enable_thinking: false` 时同一 prompt 0.8s 返回合法 JSON（20 tokens）。
+- 带 `tools` 时，即使 content 为空，响应仍带 `tool_calls` —— 原生工具调用不受
+  reasoning 吃满 content 的影响。
+- 因此根因是：**256 token 输出预算 + 默认 thinking + 文本 JSON 动作协议**三者叠加；
+  首轮偶发成功只是因为当时 reasoning 较短。
+
+**0.14.2 修复（从根因而不是从结果）**，`rsi/platform/agent_host.py`：
+
+1. `GatewayRuntime` 新增 native tool calling：每轮把 `tools=[_tool_spec(...)]` +
+   `tool_choice="auto"` 传给 `rnd.model(...)`；优先解析 `message.tool_calls`，
+   解析不到才回退文本 JSON。这样即使 content 被 reasoning 挤空也能驱动内核。
+2. thinking 协商：默认 `enable_thinking=False`（`RSI_V2_KERNEL_THINKING` 可调）；
+   宿主若拒绝该选项则逐级降级（先去 thinking，再去 native tools），不失败整轮。
+3. 0.14.1 的 `kernel->pipeline` 降级保留为最后兜底；`model_call_ids` 仍保留真实调用。
+4. 回归测试：`test_gateway_native_tool_calls_survive_empty_content`
+   （content="" 但 native tool_calls 可驱动 5 步并决策）、
+   `test_gateway_downgrades_when_host_rejects_options`。
+
+默认镜像 ENV：`RSI_V2_NATIVE_TOOLS=1`、`RSI_V2_KERNEL_THINKING=off`、
+`RSI_V2_MAX_OUTPUT=256`（平台硬上限）、`RSI_V2_CONTROLLER=auto`。

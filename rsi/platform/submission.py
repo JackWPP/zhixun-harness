@@ -997,7 +997,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.1",
+        "version": "0.14.2",
         "task_key": task_key,
         "task": task,
         "metric": metric,

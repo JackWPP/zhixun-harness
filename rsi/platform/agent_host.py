@@ -180,6 +180,18 @@ class GatewayRuntime:
         self.call_ids: list[str] = []
         self.tool_calls = 0
         self._last_usage: dict = {}
+        # The platform host advertises the OpenAI tool-calling options in the
+        # SDK whitelist; PyTRiO's Qwen3.8 gateway defaults to *thinking on*, and
+        # with the platform's 256-token output cap the reasoning trace can eat
+        # the whole budget (content=""), which breaks the text JSON protocol.
+        # Native tool_calls still arrive in that case, so prefer them and try to
+        # disable thinking explicitly; both degrade gracefully when unsupported.
+        flag = os.environ.get("RSI_V2_NATIVE_TOOLS", "1").strip().lower()
+        self.native_tools = flag not in {"0", "off", "false", "no"}
+        mode = os.environ.get("RSI_V2_KERNEL_THINKING", "off").strip().lower()
+        self.thinking = mode in {"on", "true", "1", "yes"}
+        self.thinking_supported = True
+        self.native_supported = self.native_tools
 
     # -- PI runtime surface ------------------------------------------------
     def available(self) -> bool:
@@ -237,17 +249,24 @@ class GatewayRuntime:
             value = 256
         return max(64, min(4096, value))
 
+    def _model_options(self, *, tools=None) -> dict:
+        options: dict = {"max_tokens": None, "temperature": 0}
+        if tools and self.native_supported:
+            options["tools"] = [_tool_spec(tool) for tool in tools]
+            options["tool_choice"] = "auto"
+        if self.thinking_supported:
+            options["enable_thinking"] = bool(self.thinking)
+        return options
+
     def model(self, messages, *, max_tokens: int | None = None, tools=None):
         if max_tokens is None:
             max_tokens = self._max_output()
         last: Exception | None = None
         for attempt in range(3):
+            options = self._model_options(tools=tools)
+            options["max_tokens"] = max_tokens
             try:
-                if tools:
-                    receipt = self.rnd.model(messages, tools=tools, tool_choice="auto",
-                                             max_tokens=max_tokens, temperature=0)
-                else:
-                    receipt = self.rnd.model(messages, max_tokens=max_tokens, temperature=0)
+                receipt = self.rnd.model(messages, **options)
                 self.calls += 1
                 call_id = str(getattr(receipt, "call_id", "") or "")
                 if call_id:
@@ -259,6 +278,14 @@ class GatewayRuntime:
                 return receipt
             except Exception as error:  # host RPC is occasionally transient
                 last = error
+                # Some hosts reject options they do not implement.  Downgrade
+                # capability one step at a time instead of failing the round.
+                if self.thinking_supported:
+                    self.thinking_supported = False
+                    continue
+                if self.native_supported:
+                    self.native_supported = False
+                    continue
                 time.sleep(0.5 * (attempt + 1))
         raise last if last is not None else RuntimeError("host model call failed")
 
@@ -275,7 +302,7 @@ class GatewayRuntime:
                 error = "token budget exhausted"
                 break
             try:
-                receipt = self.model(messages)
+                receipt = self.model(messages, tools=tools)
             except Exception as exc:
                 error = "%s: %s" % (type(exc).__name__, exc)
                 break

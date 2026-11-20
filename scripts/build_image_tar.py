@@ -132,6 +132,9 @@ def main(argv=None) -> int:
         "RSI_V2_CONTROLLER=auto",
         "RSI_V2_MAX_TURNS=6",
         "RSI_V2_CAPACITY_ARM=ls10",
+        "RSI_V2_NATIVE_TOOLS=1",
+        "RSI_V2_KERNEL_THINKING=off",
+        "RSI_V2_MAX_OUTPUT=256",
     ]
     config = {
         "architecture": "amd64",
