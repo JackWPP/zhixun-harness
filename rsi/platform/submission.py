@@ -840,12 +840,25 @@ def train(rnd):
                 type(exc).__name__, exc), file=sys.stderr, flush=True)
             kernel_round, kernel_ctx, kernel_state = None, None, None
 
+    kernel_effective = False
+    kernel_call_ids = []
+    kernel_inactive_note = ""
+    if kernel_round is not None and kernel_round.calls > 0 and kernel_ctx is not None:
+        kernel_call_ids = list(kernel_round.call_ids)
+        if kernel_round.decision:
+            kernel_effective = True
+        else:
+            kernel_inactive_note = "kernel produced no decision (%s)" % (
+                kernel_round.error or "no tool action")
+            print("train: kernel ineffective -> pipeline fallback: %s"
+                  % kernel_inactive_note, file=sys.stderr, flush=True)
+
     plans = None
     receipt = None
     plans = None
     llm_choice = None
     fallback_choice = None
-    if kernel_round is not None and kernel_round.calls > 0 and kernel_ctx is not None:
+    if kernel_effective:
         chosen = _choose_kernel_plan(kernel_round, kernel_ctx, direction)
         candidates = list(kernel_round.host.results) if kernel_round.host else []
         call_ids = list(kernel_round.call_ids)
@@ -921,12 +934,18 @@ def train(rnd):
             decision_note_gate = {}
         candidates = [{"kind": plan["kind"], "primary": float(plan["primary"])}
                       for plan in plans]
-        call_ids = [receipt.call_id]
+        # Kernel calls are real gateway calls and must stay in the ledger even
+        # when the kernel failed to act; the deterministic pipeline then owns the
+        # candidate decision (platform trial 0.13.0: every kernel round stopped
+        # after get_run_state -> experiments=0, so A never evaluated retrain arms).
+        call_ids = [receipt.call_id] + kernel_call_ids
         decision_note = {"decision": "retain" if chosen is plans[0] else "promote",
                          "source": "pipeline",
                          "reason": "paired block-bootstrap 门控 + 模型选择",
                          "gate": decision_note_gate}
-        controller_note = "pipeline"
+        if kernel_inactive_note:
+            decision_note["kernel_inactive"] = kernel_inactive_note
+        controller_note = "kernel->pipeline" if kernel_inactive_note else "pipeline"
         choice_note = "pipeline 选择 %s" % chosen["kind"]
 
     policy_note = ""
@@ -978,7 +997,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.0",
+        "version": "0.14.1",
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -1011,8 +1030,9 @@ def train(rnd):
                      ("decision", "experiment_id", "reason", "source", "delta")},
         "kernel": None if kernel_round is None else {
             "calls": kernel_round.calls,
-            "call_ids": call_ids[:8],
-            "experiments": len(candidates),
+            "call_ids": kernel_call_ids[:8],
+            "experiments": len(kernel_round.host.results) if kernel_round.host else 0,
+            "effective": kernel_effective,
             "error": kernel_round.error,
             "trace": kernel_round.trace[-12:],
         },

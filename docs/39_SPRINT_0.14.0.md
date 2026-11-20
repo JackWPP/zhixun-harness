@@ -150,3 +150,29 @@ RSI_V2_THINKING=off         # 实测无收益且 9–10× 慢
   `docs/38_BUDGET_AND_COMPAT.md`、`docs/36_HONEST_A_EVALUATION.md`
 - 代码：`rsi/platform/submission.py`、`rsi/platform/plans.py`、`rsi/eval/`、
   `rsi/capacity.py`、`rsi/inference.py`、`scripts/sim/`
+
+## 11. 平台 0.13.0 trial 诊断与 0.14.1 修复（2026-11-20）
+
+平台把 0.13.0 的 trial 重新排期后跑完了（run `a7bdfc755dadff8eea4e7fd8cc516268`，
+trial_kind=legacy，status=completed，training_complete=true，210,648 tokens，
+2727.5s）。结果与问题：
+
+- A：macro-F1 **0.4635**（acc .4920，pred 4886）；B：RMSE **735.07**；C：RMSE **56.45**；
+  eligible=false、score=null（trial 模式不给分）。
+- **问题 1（A 的主要问题）**：10 轮 kernel 每轮 3–4 次真实网关调用，但只执行了
+  `get_run_state`，随后报 `model did not emit a tool action`，`experiments=0`、
+  `decision=null`；候选决策全部落到 drift policy 的 `pair_history`（delta −4.0），
+  pipeline 的 retrain/容量臂/gate 从未参与评估 → A 停在 .46，与 0.14.0 离线
+  official-seq E8 的 .6048 差距正来自这里。
+- **问题 2（评估边界）**：本地 B/C 代理与平台不一致——E9 本地 283.52 vs 平台 735.07，
+  E10 本地 39.01 vs 平台 56.45。说明本地 hidden proxy 只能做**相对比较**，不能当
+  平台绝对分；B/C 的最终结论需要平台 trial 验证。
+- **修复（0.14.1）**：
+  - kernel 路由的“无决策”降级：`kernel_round.decision` 缺失时不再让 kernel 候选
+    接管，而是保留全部真实 kernel `call_id`，把候选选择交给确定性 pipeline
+    （gate + 累积标签 retrain + 容量臂），`controller` 记为 `kernel->pipeline`，
+    `configuration.kernel` 增加 `effective/experiments` 字段；
+  - 新增回归测试 `test_kernel_without_decision_falls_back_to_pipeline`
+    （模拟平台 0.13.0 的“只调 get_run_state、无 tool action”）。
+  - 平台 trial 实测的 pair_history 行数增长证明 `/data/train` 按轮累积，
+    pipeline 的累积标签续训在平台有真实数据可用。

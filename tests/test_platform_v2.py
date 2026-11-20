@@ -217,9 +217,10 @@ def _fake_round(task_contract):
 
         def model(self, messages, max_tokens=256, temperature=0.0):
             self.calls.append(messages)
+            call_id = "call-test-%d" % len(self.calls)
             return SimpleNamespace(
                 text='{"choice": 0, "hypothesis": "keep parent", "reason": "test"}',
-                call_id="call-test-1",
+                call_id=call_id,
             )
 
         def history(self):
@@ -339,3 +340,31 @@ def test_seed_reads_env(monkeypatch):
     assert sub._seed() == 20261117
     monkeypatch.setenv("RSI_V2_SEED", "7")
     assert sub._seed() == 7
+
+
+def test_kernel_without_decision_falls_back_to_pipeline(tmp_path, monkeypatch, capsys):
+    """Platform trial 0.13.0: the kernel burned real gateway calls but never
+    emitted a tool action (4 calls, only get_run_state, experiments=0), so the
+    drift policy silently owned every round and the pipeline's retrain arms were
+    never evaluated.  A decision-less kernel round must degrade to the
+    deterministic pipeline while keeping every real call_id in the ledger."""
+    from rsi.platform.submission import train
+
+    monkeypatch.setenv("CONTEST_WORK", str(tmp_path / "work"))
+    monkeypatch.setenv("RSI_V2_CONTROLLER", "kernel")
+    monkeypatch.setenv("RSI_V2_GATE", "off")
+    monkeypatch.setenv("RSI_V2_CAPACITY_ARM", "off")
+    rnd = _fake_round({"task": "classification", "metric": "macro_f1", "direction": "higher"})
+    train(rnd)
+
+    err = capsys.readouterr().err
+    assert "kernel ineffective -> pipeline fallback" in err
+    assert rnd.submitted is not None and rnd.finished is not None
+    call_ids = rnd.finished["model_call_ids"]
+    assert len(call_ids) >= 2, "kernel calls + pipeline call must both be reported"
+    assert len(set(call_ids)) == len(call_ids)
+    meta = json.loads((rnd.submitted["directory"] / "submission_meta.json").read_text())
+    assert meta["controller"] == "kernel->pipeline"
+    kernel_cfg = rnd.submitted["configuration"]["kernel"]
+    assert kernel_cfg["effective"] is False
+    assert kernel_cfg["experiments"] == 0

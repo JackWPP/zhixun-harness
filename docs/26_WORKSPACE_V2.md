@@ -300,3 +300,18 @@ SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块�
 - 全量测试 **200 passed, 3 deselected**；P2+P3 累计 96 个已完成 campaign run，
   E7–E12 矩阵 22 run / 152 次真实网关调用 / 0 failure（`docs/39_SPRINT_0.14.0.md`）。
 - **尚未上传平台、未创建新 submission、未跑 trial**（0.13.0 的新的 trial 仍 queued）。
+
+## 7.11 0.14.1 镜像（平台 trial 0.13.0 诊断修复）
+
+- 背景：0.13.0 trial（run `a7bdfc755dadff8eea4e7fd8cc516268`）跑完但 A kernel
+  每轮只执行 `get_run_state` 后无 tool action（calls 3–4、experiments=0、decision=null），
+  候选全部落到 pair_history；A macro-F1 0.4635、B RMSE 735.07、C RMSE 56.45。
+- 修复：kernel 无决策时降级 pipeline（保留真实 kernel call_ids，controller
+  `kernel->pipeline`，configuration.kernel 增加 effective/experiments）；新增回归测试。
+- 镜像：`.scratch/image/harness.tar` **380,631,040 B**，sha256
+  **`05fdfd0b1e72ad309cfd9ae488ef5131d80bc486f640f22cee2ef0918816e7a3`**，
+  config `97c8cc33ffe438be5b079c2854135157d88a9986d9cf8514427bdbc1c7eb27f6.json`，
+  tags `0.14.1/latest`。
+- `scripts/verify_image.sh` **PASS**：describe sdk 1.0.4、fake-host A 一轮、
+  离线 A 两轮 workspace_report metric 0.7345546845546845；全量测试
+  **201 passed, 3 deselected**（72.62s）。
