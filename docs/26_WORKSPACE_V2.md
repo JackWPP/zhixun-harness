@@ -394,3 +394,19 @@ SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块�
 - `scripts/verify_image.sh` **PASS**：describe sdk 1.0.4、fake-host A 一轮 PASS
   （日志含 `train: fit boundary rows=445 validation_rows=1244 (validation_used_for_fit=False)`）、
   离线 A 两轮 workspace_report metric 0.7345546845546845。
+
+
+## 7.17 0.14.7：B 任务基线探针（retain-only）
+
+0.14.5/0.14.6 的试运行里 B 始终选中静态 `shrink(α=0.3, center=954.15)`（公开
+validation RMSE 681.16 → 497.87），但平台隐藏 RMSE 稳定为 735.07（MAE 726.04），
+比公开验证差 47.6%（同期 C 只差 9.9%）。本地对同一 checkpoint/数据的分析显示：
+静态 shrink 在早期高 RUL 段有效（third0 946→628，third1 620→200），但在晚期
+低 RUL 段反而变差（third2 337→556）——固定 train 均值在漂移下会把预测推向错误
+方向。
+
+因此 0.14.7 增加 `RSI_V2_B_RETAIN=1`（镜像默认开启）：B 只评估父模型（retain），
+关闭 shrink/damage/continue 候选与 safety-net 回归臂，用一次 trial 测量 B 的真实
+基线隐藏 RMSE。A/C 路径不变。若实测 retain 优于 735.07，则保留该默认；否则回退
+到 0.14.6 行为。B 候选列表与 safety-net 均受该开关控制，回归测试覆盖
+`_b_retain_mode()` 与 only-retain 候选。

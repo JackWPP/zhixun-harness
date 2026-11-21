@@ -417,3 +417,43 @@ def test_candidate_plans_fit_only_on_training_projection(monkeypatch):
     assert "continue_train" in kinds
     assert captured["rows"] == len(train), (captured, len(train), len(validation))
     assert captured["features"] == 128
+
+
+def test_b_retain_mode_env_flag(monkeypatch):
+    from rsi.platform import submission
+
+    monkeypatch.delenv("RSI_V2_B_RETAIN", raising=False)
+    assert submission._b_retain_mode() is False
+    for value in ("1", "true", "YES", "on"):
+        monkeypatch.setenv("RSI_V2_B_RETAIN", value)
+        assert submission._b_retain_mode() is True
+    monkeypatch.setenv("RSI_V2_B_RETAIN", "0")
+    assert submission._b_retain_mode() is False
+
+
+def test_b_retain_mode_keeps_only_parent_candidate(monkeypatch):
+    """B baseline probe: no static shrink, no damage arm, no retrain arm."""
+    from rsi.model import ExtendedModel
+    from rsi.platform import submission
+
+    package = REPO / "datasets" / "cpu-b-rul-20261110-v1"
+    model = ExtendedModel.from_checkpoint(package / "checkpoint.npz")
+    model.meta["_source_path"] = str(package / "checkpoint.npz")
+    train, validation = [], []
+    with (package / "public" / "train.jsonl").open(encoding="utf-8") as handle:
+        for index, line in enumerate(handle):
+            if index >= 80:
+                break
+            train.append(json.loads(line))
+    with (package / "public" / "validation.jsonl").open(encoding="utf-8") as handle:
+        for index, line in enumerate(handle):
+            if index >= 40:
+                break
+            validation.append(json.loads(line))
+
+    monkeypatch.setenv("RSI_V2_B_RETAIN", "1")
+    monkeypatch.setenv("RSI_V2_ADAPT_ARM", "auto")
+    plans = submission._candidate_plans(
+        "B", model, train, validation, metric="rmse", direction="lower",
+        margin=5.0)
+    assert [plan["kind"] for plan in plans] == ["retain"]

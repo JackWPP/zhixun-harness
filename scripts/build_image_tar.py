@@ -135,6 +135,7 @@ def main(argv=None) -> int:
         "RSI_V2_NATIVE_TOOLS=1",
         "RSI_V2_KERNEL_THINKING=off",
         "RSI_V2_MAX_OUTPUT=256",
+        "RSI_V2_B_RETAIN=1",
     ]
     config = {
         "architecture": "amd64",

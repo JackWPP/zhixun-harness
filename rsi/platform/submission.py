@@ -253,6 +253,10 @@ def _safety_net_plans(ctx) -> list[dict]:
     the evidence is positive.
     """
     plans = [_plans.retain_plan(ctx)]
+    if ctx.task == "regression" and ctx.task_key == "B" and _b_retain_mode():
+        print("train: B retain mode: safety-net regression arms disabled",
+              file=sys.stderr, flush=True)
+        return plans
     modes = _adapt_arm_mode()
     if modes != "off":
         try:
@@ -369,6 +373,18 @@ def _adapt_arms_enabled() -> bool:
     return _adapt_arm_mode() != "off"
 
 
+def _b_retain_mode() -> bool:
+    """B regression robustness probe.
+
+    The static train-centre shrink is selected on the stale public validation
+    split; on drifted low-RUL streams it can move predictions the wrong way.
+    When enabled, B evaluates only the parent checkpoint (retain), which lets
+    the platform trial measure the true baseline hidden RMSE.
+    """
+    value = os.environ.get("RSI_V2_B_RETAIN", "0").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                      metric: str = "macro_f1", direction: str = "higher",
                      margin: float = 0.0) -> list[dict]:
@@ -436,13 +452,17 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                     "epochs": 20,
                 })
     else:
-        candidates.append({
-            "kind": "shrink",
-            "label": "train 目标均值收缩校准（α=0.3），不改权重",
-            "postprocess": {"type": "shrink", "alpha": 0.3, "center": target_mean},
-            "checkpoint": None,
-        })
-        if task_key == "B":
+        if task_key == "B" and _b_retain_mode():
+            print("train: B retain mode: shrink/damage/continue arms disabled "
+                  "(baseline measurement)", file=sys.stderr, flush=True)
+        else:
+            candidates.append({
+                "kind": "shrink",
+                "label": "train 目标均值收缩校准（α=0.3），不改权重",
+                "postprocess": {"type": "shrink", "alpha": 0.3, "center": target_mean},
+                "checkpoint": None,
+            })
+        if task_key == "B" and not _b_retain_mode():
             candidates.append({
                 "kind": "damage_shrink",
                 "label": "damage_shrink 因果分段校准（train 标签拟合）",
@@ -1278,7 +1298,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.6",
+        "version": "0.14.7",
         "task_key": task_key,
         "task": task,
         "metric": metric,
