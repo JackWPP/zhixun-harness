@@ -375,3 +375,22 @@ SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块�
 - `scripts/verify_image.sh` **PASS**（describe sdk 1.0.4、fake-host A 一轮、离线 A 两轮 metric
   0.7345546845546845）。
 - `pair_threshold` 只接受固定历史 delta；A official-seq smoke 均值 .7203，与修复前持平。
+
+## 7.16 0.14.6 镜像（数据边界显式化 + gate 方向归一化）
+
+- 版本 0.14.6；处理平台第二次复核的两条判定（详见 docs/41 §6）：
+  1. `_candidate_plans` 的 fit 输入显式断言为 **public/train.jsonl**：
+     `_rows_fingerprint` + `_assert_training_only`（训练/验证 id 交集即报错），
+     拟合前打印 `train: fit boundary rows=N validation_rows=M (validation_used_for_fit=False)`；
+     candidate 产物新增 `data_boundary.json` 并加入 `code_paths`，`submission_meta.json`
+     同步记录 `fit_projection/fit_id_sha256/validation_id_sha256/validation_used_for_fit=false`。
+  2. `_gate_choose` 先把指标统一归一化为“候选−父（分类）/父−候选（回归）”的 improvement，
+     再以 `direction="higher"` 调用 `evaluate_evidence`，消除 lower-is-better 的符号歧义；
+     新增回归测试 `test_gate_lower_direction_rejects_worse_rmse`。
+- 测试：**210 passed, 3 deselected**（93.02s），新增 3 项边界/符号回归测试。
+- 镜像 `.scratch/image/harness.tar` **380,876,800 B**，sha256
+  **`b6bc8a27598514224db289778c1fa712ef56a870a21ce9b7a4d5404f4d3d39ef`**，
+  tags 0.14.6/latest。
+- `scripts/verify_image.sh` **PASS**：describe sdk 1.0.4、fake-host A 一轮 PASS
+  （日志含 `train: fit boundary rows=445 validation_rows=1244 (validation_used_for_fit=False)`）、
+  离线 A 两轮 workspace_report metric 0.7345546845546845。

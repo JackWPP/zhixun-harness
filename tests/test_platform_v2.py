@@ -368,3 +368,52 @@ def test_kernel_without_decision_falls_back_to_pipeline(tmp_path, monkeypatch, c
     kernel_cfg = rnd.submitted["configuration"]["kernel"]
     assert kernel_cfg["effective"] is False
     assert kernel_cfg["experiments"] == 0
+
+
+def test_assert_training_only_rejects_overlapping_projections():
+    from rsi.platform.submission import _assert_training_only
+
+    train = [{"id": "1"}, {"id": "2"}]
+    validation = [{"id": "2"}, {"id": "3"}]
+    with pytest.raises(ValueError, match="data boundary violation"):
+        _assert_training_only(train, validation)
+
+
+def test_candidate_plans_fit_only_on_training_projection(monkeypatch):
+    """The fit input must be exactly the public training projection rows."""
+    from rsi.model import ExtendedModel
+    from rsi.platform import submission
+
+    package = REPO / "datasets" / "cpu-a-guide-20261110-v1"
+    model = ExtendedModel.from_checkpoint(package / "checkpoint.npz")
+    model.meta["_source_path"] = str(package / "checkpoint.npz")
+    train, validation = [], []
+    with (package / "public" / "train.jsonl").open(encoding="utf-8") as handle:
+        for index, line in enumerate(handle):
+            if index >= 80:
+                break
+            train.append(json.loads(line))
+    with (package / "public" / "validation.jsonl").open(encoding="utf-8") as handle:
+        for index, line in enumerate(handle):
+            if index >= 40:
+                break
+            validation.append(json.loads(line))
+
+    captured = {}
+    original = ExtendedModel.fit
+
+    def tracked_fit(self, x, y, epochs=1, **kwargs):
+        captured["rows"] = len(x)
+        captured["features"] = x.shape[1]
+        return original(self, x, y, epochs=1, **kwargs)
+
+    monkeypatch.setattr(ExtendedModel, "fit", tracked_fit)
+    monkeypatch.setenv("RSI_V2_ADAPT_ARM", "auto")
+    monkeypatch.delenv("RSI_V2_CAPACITY_ARM", raising=False)
+    plans = submission._candidate_plans(
+        "A", model, train, validation, metric="macro_f1", direction="higher",
+        margin=0.004)
+    kinds = {plan["kind"] for plan in plans}
+    assert "continue_train" in kinds
+    assert captured["rows"] == len(train), (captured, len(train), len(validation))
+    assert captured["features"] == 128

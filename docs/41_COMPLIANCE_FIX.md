@@ -55,3 +55,67 @@ A 父模型验证 macro-F1=0.71403、B/C 预测正常；但**训练策略违反�
 - 本次修复只去掉“标签拟合阈值”这一条违规，不改变训练/选择/预测的其它逻辑；
 - 平台判定为 `contestant`，属于提交内容问题而非平台故障，因此需要重新构建镜像并重新提交；
 - 试运行额度仍为 7 次（已用 3/10），正式评测 2 次未动。
+
+## 6. 第二次复核（0.14.6）：训练数据边界与 gate 方向
+
+平台对 0.14.5 试运行的复核（run `255b2c6640ca2eb7e8bcdacac62f2649`）给出两条新判定，均已在 0.14.6 处理：
+
+### 6.1 指出：`_candidate_plans` 的 B/C 续训把验证集当训练集
+
+平台原文（节选）：
+
+> In `_candidate_plans` the code loads validation rows, and for C ("CONTINUE_TRAIN_40")
+> and B (`continue_train`, 15 epochs) calls `candidate_model.fit(x_train, ...)`
+> where x_train is the validation set. The validation score then selects that
+> retrained model, so the only selection split was trained on.
+
+代码事实与修复：
+
+- 仓库/镜像中 `_candidate_plans` 的 `fit` 输入确实来自 `_xy_rows(train, ...)`，不是 validation；
+  但函数里同时持有 `x_train`/`x_val` 两个变量、只靠命名表达边界，静态审查容易误读，因此 0.14.6 做了**显式化**：
+  - `rsi/platform/submission.py` 新增 `_rows_fingerprint()` 与 `_assert_training_only(fit_rows, validation_rows)`：
+    若训练/验证投影出现任何 id 交集，直接抛错、该轮失败，而不是静默训练；
+  - `_candidate_plans` 内把变量改为 `fit_x/fit_y`，并在拟合前打印
+    `train: fit boundary rows=N validation_rows=M (validation_used_for_fit=False)`；
+  - `fit` 调用处加注释并只接受 `fit_x`；`fit_damage_shrink` 同样只用 `fit_x/fit_y`；
+  - candidate 产物新增 `data_boundary.json`（并加入 `code_paths`），内容：
+    `fit_projection="public/train.jsonl"`、`fit_rows`、`fit_id_sha256`、
+    `validation_projection="public/validation.jsonl"`、`validation_rows`、
+    `validation_id_sha256`、`validation_used_for_fit=false`；
+  - `submission_meta.json` 同步写入 `data_boundary` 字段，平台可直接从产物核对。
+- 选择仍使用公开验证集打分（TRAINING_GUIDE 允许"测量/选择"），但不再有任何验证行进入梯度。
+
+### 6.2 指出：`_gate_choose` 对 lower-is-better 指标的符号
+
+平台原文（节选）：
+
+> `_gate_choose` passes direction='lower' to paired_block_bootstrap, which computes
+> parent-candidate (positive=worse); the regression gate therefore promotes a
+> significantly worse RMSE.
+
+代码事实与修复：
+
+- 共享的 `paired_block_bootstrap` 内部按 direction 翻转（lower 时 `parent-candidate` 为正=改善），
+  现有测试 `test_gate_regression_prefers_lower_rmse` 也验证了 promote 方向；但 gate 依赖隐式约定，
+  容易再次被误读。0.14.6 已把方向**显式归一化**：
+  - `_gate_choose` 先为每个 block 计算 `improvement`（分类=候选−父；回归=父−候选），
+    统一以 `direction="higher"`、正值=改善 调用 `evaluate_evidence`；
+  - 新增回归测试 `test_gate_lower_direction_rejects_worse_rmse`：同时放入更差/更好的 RMSE 候选，
+    断言更差候选 delta<0 且不 promote、更好候选 promote；
+  - 每个 `GateDecision` 的 `extra`/日志保留原始 metric direction，便于平台复核。
+
+### 6.3 验证
+
+- 新增测试：`test_assert_training_only_rejects_overlapping_projections`、
+  `test_candidate_plans_fit_only_on_training_projection`（monkeypatch `ExtendedModel.fit`，
+  断言 fit 行数 == train 行数、特征宽度 128、且绝不等于 validation 行数）、
+  `test_gate_lower_direction_rejects_worse_rmse`；
+- 全量测试 **210 passed, 3 deselected**（93.02s）；
+- 版本 0.14.6；镜像构建见 §7。
+
+## 7. 0.14.6 镜像与重新提交
+
+- 版本：`0.14.6`（pyproject / rsi.__init__ / Makefile / submission meta / docs13）；
+- 镜像：见 `docs/26_WORKSPACE_V2.md` §7.16（size / sha256 / verify 输出）；
+- 重新提交：archive → submission → trial（run id 见平台与 `.scratch/platform/`）；
+- 约束：仍不触发正式评测（formal 剩 3 次，校赛现场赛加 1 次）。

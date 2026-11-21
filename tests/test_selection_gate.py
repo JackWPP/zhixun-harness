@@ -81,3 +81,25 @@ def test_block_scores_cover_all_rows():
     scores = _block_scores("classification", labels, labels, ["a", "b"], block_size=50)
     assert len(scores) == 4
     assert all(score > 0 for score in scores)
+
+
+def test_gate_lower_direction_rejects_worse_rmse():
+    """Regression gate must never promote a candidate with worse RMSE.
+
+    Improvement is normalised to ``parent - candidate`` before the bootstrap;
+    a worse candidate therefore yields a negative delta and must stay retained
+    even when its point estimate is accidentally close.
+    """
+    rng = np.random.default_rng(11)
+    labels = rng.normal(500.0, 80.0, size=512)
+    parent = labels + rng.normal(0, 10, size=512)
+    worse = labels + rng.normal(0, 60, size=512)
+    better = labels + rng.normal(0, 2, size=512)
+    plans = _plans(parent, [worse, better])
+    position, decisions = _gate_choose(
+        plans, "regression", "lower", 0.0, labels, [])
+    assert position == 2, decisions
+    assert decisions[1].decision in {"retain", "abstain", "rollback"}
+    assert decisions[1].delta < 0
+    assert decisions[2].decision == "promote"
+    assert decisions[2].delta > 0

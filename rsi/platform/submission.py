@@ -65,6 +65,7 @@ TASK_KEYS = "ABC"
 PREDICT_ARGV = ["python3", "/app/harness.py", "predict"]
 META_NAME = "submission_meta.json"
 CHECKPOINT_NAME = "checkpoint.npz"
+BOUNDARY_NAME = "data_boundary.json"
 
 
 def _seed() -> int:
@@ -209,6 +210,17 @@ def _gate_choose(plans: list[dict], task: str, direction: str, margin: float,
     block_size = max(16, n // 8) if n else 64
     parent_scores = _block_scores(task, plans[0].get("predicted"), labels, classes, block_size)
     blocks = list(range(len(parent_scores)))
+    lower_is_better = str(direction).strip().lower() == "lower"
+
+    def _improvement(series: list[float]) -> list[float]:
+        # Normalise every metric to "larger = better improvement" *before* the
+        # gate.  For RMSE/MAE style metrics improvement is parent - candidate;
+        # the gate itself then always operates in the "higher" convention.  This
+        # removes any ambiguity around direction handling in the shared stats
+        # helpers (compliance review flagged the previous implicit coupling).
+        return [-float(value) for value in series] if lower_is_better else list(series)
+
+    parent_improvement = _improvement(parent_scores)
     decisions: list = [None]
     for plan in plans[1:]:
         predicted = plan.get("predicted")
@@ -217,14 +229,14 @@ def _gate_choose(plans: list[dict], task: str, direction: str, margin: float,
             continue
         scores = _block_scores(task, predicted, labels, classes, block_size)
         decisions.append(evaluate_evidence(
-            parent_scores, scores, blocks, margin=float(margin), direction=direction,
-            arm=str(plan.get("kind") or ""), family="pipeline", reps=1000, min_blocks=3))
+            parent_improvement, _improvement(scores), blocks,
+            margin=float(margin), direction="higher",
+            arm=str(plan.get("kind") or ""), family="pipeline",
+            reps=1000, min_blocks=3))
     promotable = [(position, decision) for position, decision in enumerate(decisions)
                   if decision is not None and decision.decision == "promote"]
     if not promotable:
         return 0, decisions
-    # ``paired_block_bootstrap`` always reports improvement as
-    # ``parent - candidate`` for lower-is-better metrics, so bigger = better.
     position, _ = max(promotable, key=lambda item: (item[1].delta, -item[0]))
     return position, decisions
 
@@ -364,8 +376,15 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
     task = model.meta.get("task")
     classes = list(model.meta.get("classes") or [])
     target_mean = float(model.meta.get("target_mean") or 0.0)
-    x_train, y_train, _ = _xy_rows(train, model, classes)
+    # COMPLIANCE: ``fit_x``/``fit_y`` are built exclusively from the public
+    # training projection.  Validation rows are only ever used for scoring and
+    # selection below; they must never enter a gradient update.
+    _assert_training_only(list(train), list(validation))
+    fit_x, fit_y, _ = _xy_rows(train, model, classes)
     x_val, y_val, _ = _xy_rows(validation, model, classes)
+    print("train: fit boundary rows=%d validation_rows=%d "
+          "(validation_used_for_fit=False)" % (
+              len(fit_x), len(x_val)), file=sys.stderr, flush=True)
     parent_values, parent_primary, parent_predicted = _evaluate(
         model, x_val, y_val, task, classes, None)
     plans: list[dict] = [{
@@ -480,16 +499,17 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                     candidate_model.meta["seed"] = _seed()
                     candidate_model.set_learning_rate(1e-3)
                     epochs = int(plan.get("epochs", 40 if checkpoint_kind == "CONTINUE_TRAIN_40" else 20))
-                    y_fit = (np.asarray(y_train, dtype=np.int64) if task == "classification"
-                             else np.asarray(y_train, dtype=np.float64))
-                    candidate_model.fit(x_train, y_fit, epochs=epochs)
+                    y_fit = (np.asarray(fit_y, dtype=np.int64) if task == "classification"
+                             else np.asarray(fit_y, dtype=np.float64))
+                    # COMPLIANCE: fit_x == public training projection only.
+                    candidate_model.fit(fit_x, y_fit, epochs=epochs)
                 except Exception:
                     candidate_model = model
         else:
             candidate_model = plan.get("model") or model
         if postprocess == "FIT_DAMAGE":
             from rsi.inference import fit_damage_shrink
-            dataset = _as_dataset(x_train, y_train, classes, task)
+            dataset = _as_dataset(fit_x, fit_y, classes, task)
             postprocess = fit_damage_shrink(dataset)
         values, primary, predicted = _evaluate(
             candidate_model, x_val, y_val, task, classes, postprocess)
@@ -500,7 +520,7 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
             "primary": primary,
             "predicted": predicted,
             "model": candidate_model,
-            "y_train": y_train,
+            "y_train": fit_y,
         })
     return plans
 
@@ -549,6 +569,34 @@ def _dedupe_rows(rows: list[dict]) -> tuple[list[dict], int]:
             seen[row_id] = len(ordered)
         ordered.append(row)
     return ordered, duplicates
+
+
+def _rows_fingerprint(rows: list[dict]) -> str:
+    """Stable fingerprint of the row ids making up a public projection."""
+    import hashlib
+
+    hasher = hashlib.sha256()
+    for row in rows:
+        hasher.update(str(row.get("id") or "").encode("utf-8"))
+        hasher.update(b"\n")
+    return hasher.hexdigest()[:16]
+
+
+def _assert_training_only(fit_rows: list[dict], validation_rows: list[dict]) -> None:
+    """Fail the round rather than silently train on the validation projection.
+
+    TRAINING_GUIDE freezes the data boundary: gradients may only use
+    ``public/train.jsonl``; ``public/validation.jsonl`` is measurement/selection
+    only.  The fit call in ``_candidate_plans`` is therefore asserted to receive
+    exactly the training projection, with no id overlap with validation.
+    """
+    train_ids = {str(row.get("id") or "") for row in fit_rows}
+    validation_ids = {str(row.get("id") or "") for row in validation_rows}
+    overlap = train_ids & validation_ids
+    if overlap:
+        raise ValueError(
+            "data boundary violation: %d row ids appear in both training and "
+            "validation projections" % len(overlap))
 
 
 def _data_probe(train_rows: list[dict], validation_rows: list[dict],
@@ -1230,7 +1278,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.5",
+        "version": "0.14.6",
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -1241,8 +1289,19 @@ def train(rnd):
         "chosen": chosen.get("kind"),
         "controller": controller_note,
         "policy": policy_note[:200],
+        "data_boundary": {
+            "fit_projection": "public/train.jsonl",
+            "fit_rows": int(probe.get("train_rows") or 0),
+            "fit_id_sha256": probe.get("train_id_sha256"),
+            "validation_projection": "public/validation.jsonl",
+            "validation_rows": int(probe.get("validation_rows") or 0),
+            "validation_id_sha256": probe.get("validation_id_sha256"),
+            "validation_used_for_fit": False,
+        },
     }
     (candidate_dir / META_NAME).write_text(json.dumps(meta, sort_keys=True), encoding="utf-8")
+    (candidate_dir / BOUNDARY_NAME).write_text(
+        json.dumps(meta["data_boundary"], sort_keys=True), encoding="utf-8")
     state = _state_payload(rnd, candidates, chosen,
                            (decision_note.get("reason") or choice_note or "")[:1200],
                            probe=probe)
@@ -1285,7 +1344,7 @@ def train(rnd):
         configuration=configuration,
         seed=_seed(),
         checkpoint_paths=[CHECKPOINT_NAME],
-        code_paths=[META_NAME],
+        code_paths=[META_NAME, BOUNDARY_NAME],
         predict_argv=PREDICT_ARGV,
     )
     rnd.save_state(state_dir)
