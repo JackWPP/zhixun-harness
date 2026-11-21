@@ -365,3 +365,13 @@ SDK 自带测试 `Ran 18 tests OK`，emulator A/B/C 各 2 轮 PASS（含分块�
   kernel guidance；测试 **207 passed, 3 deselected**。
 - 实验：A 11 seeds 均值 **.7192**（sd .0121）；B kernel=pipeline 283.52；C kernel 38.30 vs pipeline 38.92。
 - 详见 docs/40 §6。
+
+## 7.15 0.14.5 合规修复镜像
+
+- 版本 0.14.5；修复平台判定的“训练内拟合 pair 阈值”违规（详见 docs/41）。
+- 镜像 `.scratch/image/harness.tar` **380,866,560 B**，sha256
+  **`cd25ca2cde30b878b718b37270c30eda568662e1c56d0a66b7e8b4d3ef716a10`**，config
+  `f5e6997c18c96edadc48396ea1196faba036dceffffa1332be693942265cf984.json`，tags 0.14.5/latest。
+- `scripts/verify_image.sh` **PASS**（describe sdk 1.0.4、fake-host A 一轮、离线 A 两轮 metric
+  0.7345546845546845）。
+- `pair_threshold` 只接受固定历史 delta；A official-seq smoke 均值 .7203，与修复前持平。

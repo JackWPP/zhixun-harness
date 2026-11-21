@@ -387,12 +387,9 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                 "checkpoint": None,
             })
         if task_key == "A":
-            candidates.append({
-                "kind": "pair_threshold",
-                "label": "延迟标签阈值校准（Ethanol vs Acetaldehyde，历史标签拟合）",
-                "postprocess": "FIT_PAIR",
-                "checkpoint": None,
-            })
+            # NOTE(compliance): the pair delta is a *fixed historical* prior.
+            # It must never be fitted from labels inside the training run, and
+            # the fitted value must never be persisted into predict artifacts.
             mode = _adapt_arm_mode()
             if _adapt_arms_enabled() and mode in {"auto", "pair"}:
                 candidates.append({
@@ -494,12 +491,6 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
             from rsi.inference import fit_damage_shrink
             dataset = _as_dataset(x_train, y_train, classes, task)
             postprocess = fit_damage_shrink(dataset)
-        if postprocess == "FIT_PAIR":
-            from rsi.inference import fit_pair_threshold
-            fitted = fit_pair_threshold(x_train, y_train, model, pair=(0, 3))
-            postprocess = ({"type": "pair_threshold", "pair": [0, 3],
-                            **{k: v for k, v in fitted.items() if k != "type"}}
-                           if fitted else {"type": "none"})
         values, primary, predicted = _evaluate(
             candidate_model, x_val, y_val, task, classes, postprocess)
         plans.append({
@@ -1239,7 +1230,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.4",
+        "version": "0.14.5",
         "task_key": task_key,
         "task": task,
         "metric": metric,

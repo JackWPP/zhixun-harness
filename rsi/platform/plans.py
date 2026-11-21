@@ -26,7 +26,6 @@ from rsi.inference import (
     POSTPROCESS_KINDS,
     apply_postprocess,
     fit_damage_shrink,
-    fit_pair_threshold,
     resolve_postprocess,
 )
 from rsi.metrics import from_predictions, primary as primary_metric
@@ -276,7 +275,11 @@ def pair_history_plan(ctx: PlanContext) -> dict:
 
 
 def _resolve_postprocess(ctx: PlanContext, model: ExtendedModel, spec) -> dict:
-    """Fit data-dependent postprocess specs with *training* labels only."""
+    """Resolve postprocess specs.
+
+    Compliance: shrink/damage may use training labels; pair_threshold must carry
+    a fixed pre-declared delta and is never fitted from labels at train time.
+    """
     if not isinstance(spec, dict):
         return {"type": "none"}
     kind = str(spec.get("type", "none"))
@@ -284,12 +287,10 @@ def _resolve_postprocess(ctx: PlanContext, model: ExtendedModel, spec) -> dict:
         return {"type": "none"}
     if kind == "pair_threshold":
         pair = spec.get("pair", (0, 3))
+        # Compliance: never fit the decision threshold from labels at train
+        # time.  Only a fixed, pre-declared historical delta is allowed.
         if spec.get("delta") is None:
-            fitted = fit_pair_threshold(ctx.x_train, ctx.y_train, model, pair=(int(pair[0]), int(pair[1])))
-            if fitted is None:
-                return {"type": "none"}
-            return {"type": "pair_threshold", "pair": [int(pair[0]), int(pair[1])],
-                    **{k: v for k, v in fitted.items() if k != "type"}}
+            return {"type": "none"}
         return {"type": "pair_threshold", "pair": [int(pair[0]), int(pair[1])],
                 "delta": float(spec["delta"])}
     if kind == "damage_shrink":
@@ -383,10 +384,6 @@ def build_plans(ctx: PlanContext) -> list[dict]:
                                {}, {"type": "recenter", "mode": mode, "weight": weight},
                                f"推理期 recenter（{mode}, w={weight}），不改权重"))
         if ctx.task_key == "A":
-            candidates.append(("pair_threshold", "retain", "",
-                               {}, {"type": "pair_threshold", "pair": [0, 3],
-                                    "delta": None},
-                               "延迟标签阈值校准（Ethanol vs Acetaldehyde，历史标签拟合）"))
             candidates.append(("pair_history", "retain", "",
                                {}, {"type": "pair_threshold", "pair": [0, 3],
                                     "delta": PAIR_HISTORY_DELTA},

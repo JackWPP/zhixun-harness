@@ -39,7 +39,8 @@ def test_full_batches_do_not_leak_current_batch_labels():
         assert batch.answers.keys() == current
 
 
-def test_v2_adapter_has_pair_candidate_for_task_a():
+def test_v2_adapter_has_pair_history_candidate_for_task_a():
+    from rsi.platform.plans import PAIR_HISTORY_DELTA
     from rsi.platform.submission import _candidate_plans
 
     config = resolve_tasks(["A"])[0]
@@ -50,7 +51,13 @@ def test_v2_adapter_has_pair_candidate_for_task_a():
     validation = rows[80:]
     plans = _candidate_plans("A", model, train, validation)
     kinds = {plan["kind"] for plan in plans}
-    assert "pair_threshold" in kinds
+    # Compliance: the pair delta is a fixed historical prior, never fitted from
+    # labels inside the training run.
+    assert "pair_history" in kinds
+    assert "pair_threshold" not in kinds
+    arm = next(plan for plan in plans if plan["kind"] == "pair_history")
+    assert arm["postprocess"]["type"] == "pair_threshold"
+    assert float(arm["postprocess"]["delta"]) == float(PAIR_HISTORY_DELTA)
     assert {"retain", "recenter"} <= kinds
 
 
