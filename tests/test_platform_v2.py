@@ -457,3 +457,61 @@ def test_b_retain_mode_keeps_only_parent_candidate(monkeypatch):
         "B", model, train, validation, metric="rmse", direction="lower",
         margin=5.0)
     assert [plan["kind"] for plan in plans] == ["retain"]
+
+
+def _load_regression_rows(package, split, limit):
+    rows = []
+    with (package / "public" / f"{split}.jsonl").open(encoding="utf-8") as handle:
+        for index, line in enumerate(handle):
+            if index >= limit:
+                break
+            rows.append(json.loads(line))
+    return rows
+
+
+def test_b_scratch_arm_offered_static_arms_disabled(monkeypatch):
+    """B uses a from-scratch official-format retrain; static arms stay off."""
+    from rsi.model import ExtendedModel
+    from rsi.platform import submission
+
+    package = REPO / "datasets" / "cpu-b-rul-20261110-v1"
+    model = ExtendedModel.from_checkpoint(package / "checkpoint.npz")
+    model.meta["_source_path"] = str(package / "checkpoint.npz")
+    train = _load_regression_rows(package, "train", 120)
+    validation = _load_regression_rows(package, "validation", 60)
+
+    monkeypatch.delenv("RSI_V2_B_RETAIN", raising=False)
+    monkeypatch.delenv("RSI_V2_B_STATIC", raising=False)
+    monkeypatch.setenv("RSI_V2_ADAPT_ARM", "auto")
+    monkeypatch.setenv("RSI_V2_SCRATCH_ARM", "on")
+    plans = submission._candidate_plans(
+        "B", model, train, validation, metric="rmse", direction="lower",
+        margin=5.0)
+    kinds = [plan["kind"] for plan in plans]
+    assert "scratch_retrain" in kinds
+    assert "shrink" not in kinds
+    assert "damage_shrink" not in kinds
+    scratch = [plan for plan in plans if plan["kind"] == "scratch_retrain"][0]
+    assert scratch["checkpoint"] == "SCRATCH"
+    assert scratch["model"].meta["format"] == "contest.cpu-mlp.v1"
+    assert scratch["model"].meta["hidden"] == 48
+    assert scratch["predicted"] is not None and scratch["primary"] > 0
+
+
+def test_c_scratch_arm_uses_small_hidden_layer(monkeypatch):
+    from rsi.model import ExtendedModel
+    from rsi.platform import submission
+
+    package = REPO / "datasets" / "cpu-c-guide-20261110-v1"
+    model = ExtendedModel.from_checkpoint(package / "checkpoint.npz")
+    model.meta["_source_path"] = str(package / "checkpoint.npz")
+    train = _load_regression_rows(package, "train", 120)
+    validation = _load_regression_rows(package, "validation", 60)
+
+    monkeypatch.setenv("RSI_V2_ADAPT_ARM", "auto")
+    monkeypatch.setenv("RSI_V2_SCRATCH_ARM", "on")
+    plans = submission._candidate_plans(
+        "C", model, train, validation, metric="rmse", direction="lower",
+        margin=0.3)
+    scratch = [plan for plan in plans if plan["kind"] == "scratch_retrain"]
+    assert scratch and scratch[0]["model"].meta["hidden"] == 32

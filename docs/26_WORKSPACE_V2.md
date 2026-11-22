@@ -410,3 +410,23 @@ validation RMSE 681.16 → 497.87），但平台隐藏 RMSE 稳定为 735.07（M
 基线隐藏 RMSE。A/C 路径不变。若实测 retain 优于 735.07，则保留该默认；否则回退
 到 0.14.6 行为。B 候选列表与 safety-net 均受该开关控制，回归测试覆盖
 `_b_retain_mode()` 与 only-retain 候选。
+
+## 7.18 0.14.8：B/C 回归 scratch_retrain 臂
+
+- 本地深挖（docs/42）：B 的静态 shrink/damage 只拟合大轴承，隐藏尾部反而变差；从零重训
+  h48 e600（仅 public train）在公开验证 473.08（逐轴承 327/145/489，均不劣于父模型
+  681.16），为 B 的稳健候选。C 从零重训 h32 e300 公开验证 51.01/36.67（父模型
+  52.87/38.90），与 h64 持平但快 3 倍。
+- 实现：`plans.py` 新增 `RSI_V2_SCRATCH_ARM`、`_SCRATCH_CONFIG`（B h48 e600；C h32 e300）、
+  `_model_to_official()`（单隐层 tanh → 官方 `contest.cpu-mlp.v1` 字节结构）、`scratch_plans()`；
+  `submission._candidate_plans` 回归分支注入 scratch 候选（`checkpoint="SCRATCH"`），
+  保存官方 checkpoint。B 的静态 shrink/damage 改由 `RSI_V2_B_STATIC`（默认 0）控制，
+  `RSI_V2_B_RETAIN=1` 仍可复测父模型基线。
+- 训练边界不变：只对 `public/train.jsonl` 求梯度；`public/validation.jsonl` 只做打分/选择
+  （`_assert_training_only` 与 `data_boundary.json` 继续生效）。结构始终为官方支持的单隐层 tanh。
+- 测试：**214 passed, 3 deselected**（108.14s），新增 B/C scratch 候选测试。
+- 镜像 `.scratch/image/harness.tar` **381,071,360 B**，sha256
+  **`66c296372163b1d9c777c3d3ebd0fb1e2d90ab4f8f15238392a0e9101cacad0f`**，config
+  `210dc7a2b24a56be75c52ef02970be306a54129db386467d9279026a01075ae7.json`，tags 0.14.8/latest。
+- `scripts/verify_image.sh` **PASS**：describe sdk 1.0.4、fake-host A 一轮 PASS、离线 A 两轮
+  workspace_report metric 0.7345546845546845。

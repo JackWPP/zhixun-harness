@@ -452,23 +452,29 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                     "epochs": 20,
                 })
     else:
-        if task_key == "B" and _b_retain_mode():
-            print("train: B retain mode: shrink/damage/continue arms disabled "
+        b_retain = task_key == "B" and _b_retain_mode()
+        if b_retain:
+            print("train: B retain mode: static/retrain arms disabled "
                   "(baseline measurement)", file=sys.stderr, flush=True)
-        else:
+        # B: static shrink/damage over-fit the dominant validation bearing and
+        # collapsed on its hidden tail (0.14.5 trial: hidden RMSE 735 vs 720 for
+        # retain).  Keep them behind RSI_V2_B_STATIC; the robust B arm is the
+        # from-scratch retrain below.
+        if not b_retain and (task_key != "B" or _plans.b_static_mode()):
             candidates.append({
                 "kind": "shrink",
                 "label": "train 目标均值收缩校准（α=0.3），不改权重",
                 "postprocess": {"type": "shrink", "alpha": 0.3, "center": target_mean},
                 "checkpoint": None,
             })
-        if task_key == "B" and not _b_retain_mode():
-            candidates.append({
-                "kind": "damage_shrink",
-                "label": "damage_shrink 因果分段校准（train 标签拟合）",
-                "postprocess": "FIT_DAMAGE",
-                "checkpoint": None,
-            })
+        if task_key == "B" and not b_retain:
+            if _plans.b_static_mode():
+                candidates.append({
+                    "kind": "damage_shrink",
+                    "label": "damage_shrink 因果分段校准（train 标签拟合）",
+                    "postprocess": "FIT_DAMAGE",
+                    "checkpoint": None,
+                })
             if _adapt_arms_enabled():
                 candidates.append({
                     "kind": "continue_train",
@@ -477,13 +483,34 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                     "checkpoint": "CONTINUE_TRAIN",
                     "epochs": 15,
                 })
-        if task_key == "C":
+        if task_key == "C" and not b_retain:
             candidates.append({
                 "kind": "continue_train",
                 "label": "官方 train 续训 40 epoch（lr=1e-3，checkpoint 兼容）",
                 "postprocess": {"type": "none"},
                 "checkpoint": "CONTINUE_TRAIN_40",
             })
+    if task == "regression" and not (task_key == "B" and _b_retain_mode()):
+        try:
+            ctx = _plans.PlanContext.from_rows(
+                task_key, model, list(train), list(validation), metric=metric,
+                direction=direction, margin=float(margin), classes=[])
+            for plan in _plans.scratch_plans(ctx):
+                if not plan.get("ok"):
+                    continue
+                candidates.append({
+                    "kind": plan["kind"],
+                    "label": plan["label"],
+                    "postprocess": plan["postprocess"],
+                    "checkpoint": "SCRATCH",
+                    "model": plan["model"],
+                    "primary": plan["primary"],
+                    "values": plan["values"],
+                    "hypothesis": plan.get("hypothesis") or plan["label"],
+                })
+        except Exception as error:
+            print("train: scratch arm unavailable: %s: %s" % (type(error).__name__, error),
+                  file=sys.stderr, flush=True)
     if task == "classification" and _plans.capacity_arm_mode() not in ("", "off", "none", "0", "false"):
         try:
             ctx = _plans.PlanContext.from_rows(
@@ -566,6 +593,8 @@ def _change_summary(chosen: dict) -> str:
         return "保留父模型，不改权重与推理期后处理"
     if kind == "continue_train":
         return "基于官方 train 的短续训，父谱系与结构兼容"
+    if kind == "scratch_retrain":
+        return "从零重训官方 v1 单隐层 tanh（仅公开 train，validation 只用于选择）"
     return "仅推理期后处理（%s），未改 checkpoint" % kind
 
 
@@ -1298,7 +1327,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.7",
+        "version": "0.14.8",
         "task_key": task_key,
         "task": task,
         "metric": metric,

@@ -398,13 +398,20 @@ def build_plans(ctx: PlanContext) -> list[dict]:
                                 "delta": PAIR_HISTORY_DELTA},
                                "累积标签续训 + 历史校准 pair 阈值"))
     else:
-        candidates.append(("shrink", "retain", "",
-                           {}, {"type": "shrink", "alpha": 0.3, "center": ctx.target_mean},
-                           "train 目标均值收缩校准（α=0.3），不改权重"))
+        # B: the static shrink/damage arms over-fit the dominant validation
+        # bearing and collapsed on its hidden tail (platform trial 0.14.5:
+        # hidden RMSE 735 vs 720 for retain).  They stay behind an explicit
+        # switch so the arm catalogue matches the platform candidate list.
+        static_b = ctx.task_key != "B" or b_static_mode()
+        if static_b:
+            candidates.append(("shrink", "retain", "",
+                               {}, {"type": "shrink", "alpha": 0.3, "center": ctx.target_mean},
+                               "train 目标均值收缩校准（α=0.3），不改权重"))
         if ctx.task_key == "B":
-            candidates.append(("damage_shrink", "retain", "",
-                               {}, {"type": "damage_shrink", "a": 0.5, "w": 0.6, "fit": "train"},
-                               "damage_shrink 因果分段校准（train 标签拟合）"))
+            if b_static_mode():
+                candidates.append(("damage_shrink", "retain", "",
+                                   {}, {"type": "damage_shrink", "a": 0.5, "w": 0.6, "fit": "train"},
+                                   "damage_shrink 因果分段校准（train 标签拟合）"))
             candidates.append(("continue_train", "continue_train", "",
                                {"learning_rate": 1e-3, "epochs": 15},
                                {"type": "none"},
@@ -422,6 +429,8 @@ def build_plans(ctx: PlanContext) -> list[dict]:
         plans.append(plan)
     if ctx.task == "classification":
         plans.extend(capacity_plans(ctx))
+    elif ctx.task == "regression":
+        plans.extend(scratch_plans(ctx))
     return plans
 
 
@@ -522,3 +531,121 @@ def catalog_text(include_strategies: bool = True) -> str:
                  "weight∈[0,1]；pair_threshold 用 pair=[0,3] 并只从 train 标签拟合 delta；"
                  "shrink alpha∈[0,1] 仅回归；damage_shrink a,w∈[0,1] 仅回归。")
     return "\n".join(lines)
+
+
+B_STATIC_ENV = "RSI_V2_B_STATIC"
+
+
+def b_static_mode() -> bool:
+    """Whether B keeps the legacy static shrink/damage arms (default: off)."""
+    value = (os.environ.get(B_STATIC_ENV, "0") or "0").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+# ---------------------------------------------------------------------------
+# from-scratch retrain arm (B/C regression, public train labels only)
+# ---------------------------------------------------------------------------
+SCRATCH_ARM_ENV = "RSI_V2_SCRATCH_ARM"
+_SCRATCH_CONFIG: dict[str, dict] = {
+    # Chosen from local validation sweeps: B needs the widest single hidden
+    # layer; C saturates at 32 units, so keep it cheap for the 2-core sandbox.
+    "B": {"hidden": 48, "epochs": 600, "learning_rate": 1e-3, "seed": 17},
+    "C": {"hidden": 32, "epochs": 300, "learning_rate": 1e-3, "seed": 17},
+}
+
+
+def scratch_arm_mode() -> str:
+    """``on`` (default), ``off`` or a comma list of task keys (e.g. ``B,C``)."""
+    return (os.environ.get(SCRATCH_ARM_ENV, "on") or "on").strip().lower()
+
+
+def _scratch_enabled(task_key: str) -> bool:
+    mode = scratch_arm_mode()
+    if mode in {"off", "0", "false", "no", "none"}:
+        return False
+    if mode in {"on", "1", "true", "yes", "all", "auto"}:
+        return task_key in _SCRATCH_CONFIG
+    return task_key in {part.strip() for part in mode.split(",") if part.strip()}
+
+
+def _model_to_official(model) -> "ExtendedModel":
+    """Wrap a freshly trained ``Model`` into the official v1 checkpoint format."""
+    from rsi.model import FORMAT, ExtendedModel
+
+    task = str(model.meta.get("task"))
+    hidden = int(model.meta.get("hidden") or 32)
+    classes = list(model.meta.get("classes") or [])
+    params = {
+        name: np.array(model.params[name], dtype=np.float64, copy=True)
+        for name in ("w1", "b1", "w2", "b2")
+    }
+    count = int(sum(int(value.size) for value in params.values()))
+    meta = {
+        "format": FORMAT,
+        "device": "cpu",
+        "task": task,
+        "paths": list(model.meta.get("paths") or []),
+        "classes": classes,
+        "hidden": hidden,
+        "seed": int(model.meta.get("seed", 42)),
+        "epochs": int(model.meta.get("epochs", 0)),
+        "steps": int(model.meta.get("steps", 0)),
+        "learning_rate": float(model.meta.get("learning_rate", 3e-3)),
+        "batch_size": int(model.meta.get("batch_size", 128)),
+        "parameter_count": count,
+        "target_mean": float(model.meta.get("target_mean", 0.0)),
+        "target_scale": float(model.meta.get("target_scale", 1.0)),
+    }
+    official = ExtendedModel.__new__(ExtendedModel)
+    official.params = params
+    official.first = {name: np.zeros_like(value) for name, value in params.items()}
+    official.second = {name: np.zeros_like(value) for name, value in params.items()}
+    official.mean = np.array(model.mean, dtype=np.float64, copy=True)
+    official.scale = np.array(model.scale, dtype=np.float64, copy=True)
+    official.meta = meta
+    official.validate()
+    return official
+
+
+def scratch_plans(ctx: PlanContext) -> list[dict]:
+    """Train a fresh official-format model on the public training projection.
+
+    Selection still happens on the public validation split; no validation row
+    ever enters a gradient update.  The arm is only offered for regression
+    tasks whose checkpoint is a single-hidden-layer tanh MLP.
+    """
+    if ctx.task != "regression" or not _scratch_enabled(ctx.task_key):
+        return []
+    config = _SCRATCH_CONFIG.get(ctx.task_key)
+    if not config:
+        return []
+    try:
+        from rsi.model import Model
+
+        x_train = np.asarray(ctx.x_train, dtype=np.float64)
+        y_train = np.asarray(ctx.y_train, dtype=np.float64)
+        model = Model(
+            "regression", list(ctx.model.meta.get("paths") or []), [],
+            x_train, y_train, hidden=int(config["hidden"]),
+            seed=int(config["seed"]), learning_rate=float(config["learning_rate"]),
+        )
+        model.fit(x_train, y_train, epochs=int(config["epochs"]))
+        official = _model_to_official(model)
+        plan = _make_plan(
+            ctx, kind="scratch_retrain",
+            label="从零重训 h%d %dep（仅公开 train 标签，官方 v1 checkpoint）"
+                  % (int(config["hidden"]), int(config["epochs"])),
+            strategy="continue_train",
+            params={"hidden": int(config["hidden"]),
+                    "epochs": int(config["epochs"]), "from_scratch": True},
+            postprocess={"type": "none"}, model=official,
+            hypothesis="父模型在公开 train 上欠拟合；从零重训单隐层 tanh 可提升跨轴承/机组泛化",
+            checkpoint_changed=True,
+        )
+        plan["seed_plan"] = True
+        return [plan]
+    except Exception as error:  # a broken arm must never kill the round
+        return [{"ok": False, "kind": "scratch_retrain", "strategy": "continue_train",
+                 "primary": None, "values": {}, "metrics": {},
+                 "error": "%s: %s" % (type(error).__name__, error),
+                 "checkpoint_changed": False}]
