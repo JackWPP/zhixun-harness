@@ -75,6 +75,48 @@ def _seed() -> int:
         return 20261117
 
 
+def _warmup_rounds() -> int:
+    """Rounds that must keep the official parent artifact.
+
+    Formal stage-0 is scored against the platform's static baseline; replacing
+    it before any cumulative labels exist can make an early stage lose to that
+    baseline even when later stages improve.  Keeping the parent for the first
+    ``RSI_V2_WARMUP_ROUNDS`` rounds is score-neutral when only the final
+    artifact is scored and removes that regression risk when stages are scored.
+    """
+    try:
+        value = int(os.environ.get("RSI_V2_WARMUP_ROUNDS", "2"))
+    except ValueError:
+        return 2
+    return max(0, min(5, value))
+
+
+def _file_sha256(path) -> str:
+    import hashlib
+    hasher = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _receipt_usage(receipt) -> dict:
+    """Token usage of a single gateway receipt (best effort, never fails a round)."""
+    try:
+        usage = getattr(receipt, "usage", None)
+        if usage is None:
+            return {}
+        if isinstance(usage, dict):
+            data = usage
+        else:
+            data = {name: getattr(usage, name, 0) for name in
+                    ("prompt_tokens", "completion_tokens", "total_tokens")}
+        return {key: int(data.get(key) or 0) for key in
+                ("prompt_tokens", "completion_tokens", "total_tokens")}
+    except Exception:
+        return {}
+
+
 def _work_dir() -> Path:
     configured = os.environ.get("CONTEST_WORK")
     if configured:
@@ -1311,6 +1353,29 @@ def train(rnd):
             chosen = plans[0]
             policy_note = "gate_veto:%s->retain" % (veto.arm or "candidate")
 
+    # Stage-0 safety: keep the official parent artifact for the first rounds so
+    # no early scored stage can regress below the platform's static baseline.
+    warmup_rounds = _warmup_rounds()
+    warmup_applied = False
+    if warmup_rounds and int(rnd.round_index) <= warmup_rounds \
+            and str(chosen.get("kind") or "") != "retain":
+        try:
+            retain = _plans.retain_plan(policy_ctx)
+            decision_note["warmup"] = {
+                "round_index": int(rnd.round_index),
+                "warmup_rounds": warmup_rounds,
+                "kept": retain.get("kind"),
+                "replaced": chosen.get("kind"),
+            }
+            chosen = retain
+            policy_note = (policy_note + "+" if policy_note else "") + "warmup_parent"
+            warmup_applied = True
+            print("train: warmup round %d/%d -> keep parent artifact"
+                  % (int(rnd.round_index), warmup_rounds), file=sys.stderr, flush=True)
+        except Exception as exc:
+            print("train: warmup unavailable: %s: %s" % (type(exc).__name__, exc),
+                  file=sys.stderr, flush=True)
+
     work = _work_dir()
     candidate_dir = Path(tempfile.mkdtemp(prefix="candidate-", dir=work))
     if kernel_state is not None and kernel_state.dir:
@@ -1327,7 +1392,7 @@ def train(rnd):
         postprocess = {"type": "none"}
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.8",
+        "version": "0.14.9",
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -1338,6 +1403,9 @@ def train(rnd):
         "chosen": chosen.get("kind"),
         "controller": controller_note,
         "policy": policy_note[:200],
+        "warmup_applied": warmup_applied,
+        "warmup_rounds": warmup_rounds,
+        "candidate_checkpoint_sha256": None,  # filled after the file is written
         "data_boundary": {
             "fit_projection": "public/train.jsonl",
             "fit_rows": int(probe.get("train_rows") or 0),
@@ -1348,6 +1416,7 @@ def train(rnd):
             "validation_used_for_fit": False,
         },
     }
+    meta["candidate_checkpoint_sha256"] = _file_sha256(candidate_dir / CHECKPOINT_NAME)
     (candidate_dir / META_NAME).write_text(json.dumps(meta, sort_keys=True), encoding="utf-8")
     (candidate_dir / BOUNDARY_NAME).write_text(
         json.dumps(meta["data_boundary"], sort_keys=True), encoding="utf-8")
@@ -1361,8 +1430,24 @@ def train(rnd):
         (state_dir / "kernel_round.json").write_text(
             json.dumps(_trim_config(kernel_round.to_dict()), ensure_ascii=False, default=str),
             encoding="utf-8")
+    model_usage = {"calls": len(call_ids), "call_ids": list(call_ids[:16])}
+    if receipt is not None:
+        model_usage.update(_receipt_usage(receipt))
+    if kernel_round is not None and isinstance(kernel_round.usage, dict):
+        usage = kernel_round.usage
+        model_usage["kernel"] = {
+            "calls": int(usage.get("calls") or kernel_round.calls or 0),
+            "prompt_tokens": int(usage.get("prompt_tokens") or usage.get("used_input") or 0),
+            "completion_tokens": int(usage.get("completion_tokens")
+                                     or usage.get("used_output") or 0),
+        }
     configuration = _trim_config({
         "controller": controller_note,
+        "model_usage": model_usage,
+        "code_changes": ["rsi/platform/submission.py", "rsi/platform/plans.py"],
+        "candidate_checkpoint_sha256": meta["candidate_checkpoint_sha256"],
+        "parent_checkpoint_sha256": rnd.parent.checkpoint_sha256,
+        "warmup": {"applied": warmup_applied, "rounds": warmup_rounds},
         "candidates": candidates[:8],
         "chosen": chosen.get("kind"),
         "postprocess": postprocess,

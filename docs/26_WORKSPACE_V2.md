@@ -430,3 +430,18 @@ validation RMSE 681.16 → 497.87），但平台隐藏 RMSE 稳定为 735.07（M
   `210dc7a2b24a56be75c52ef02970be306a54129db386467d9279026a01075ae7.json`，tags 0.14.8/latest。
 - `scripts/verify_image.sh` **PASS**：describe sdk 1.0.4、fake-host A 一轮 PASS、离线 A 两轮
   workspace_report metric 0.7345546845546845。
+
+### 7.19 v0.14.9：阶段安全（warmup）、用量/代码变更记录与提交材料
+
+- `RSI_V2_WARMUP_ROUNDS`（默认 2）：前两轮强制保留官方父检查点，避免正式
+  评测的早期阶段低于静态基线（对应 `not_below_static_baseline` gate）。
+- `configuration` 每轮新增 `model_usage`（calls/call_ids/prompt/completion/
+  kernel usage）、`code_changes`、`parent_checkpoint_sha256`、
+  `candidate_checkpoint_sha256`、`warmup`；候选目录与 `submission_meta.json`
+  记录 `candidate_checkpoint_sha256`（对应“实验记录完整性”材料核验）。
+- 镜像 ENV 默认 `RSI_V2_KERNEL_TOOLS=core`（较 full 省约 31% prompt tokens）
+  与 `RSI_V2_WARMUP_ROUNDS=2`；镜像 tar sha256
+  `4d69e1e108d5150fecb245422851255384f8cccec87c8c874858c495c31e3d86`
+  （381,081,600 B），`scripts/verify_image.sh` PASS。
+- 提交材料：`docs/43_SUBMISSION_MATERIALS.md`（镜像/仓库/实验记录/复现/
+  数据边界/已知边界）。pytest 215 passed。

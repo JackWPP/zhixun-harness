@@ -515,3 +515,14 @@ def test_c_scratch_arm_uses_small_hidden_layer(monkeypatch):
         margin=0.3)
     scratch = [plan for plan in plans if plan["kind"] == "scratch_retrain"]
     assert scratch and scratch[0]["model"].meta["hidden"] == 32
+
+
+def test_warmup_rounds_env(monkeypatch):
+    from rsi.platform import submission as sub
+
+    monkeypatch.setenv("RSI_V2_WARMUP_ROUNDS", "3")
+    assert sub._warmup_rounds() == 3
+    monkeypatch.setenv("RSI_V2_WARMUP_ROUNDS", "0")
+    assert sub._warmup_rounds() == 0
+    monkeypatch.setenv("RSI_V2_WARMUP_ROUNDS", "not-a-number")
+    assert sub._warmup_rounds() == 2
