@@ -89,6 +89,8 @@ def main(argv=None) -> int:
     parser.add_argument("--output", required=True, help="target harness.tar")
     parser.add_argument("--tag", default="zhixun-rsi-harness:0.3.0")
     parser.add_argument("--workdir", default="/opt/zhixun/app")
+    parser.add_argument("--extra-env", action="append", default=[],
+                        help="extra ENV KEY=VALUE pairs written into the image config")
     args = parser.parse_args(argv)
 
     rootfs = Path(args.rootfs).resolve()
@@ -136,11 +138,13 @@ def main(argv=None) -> int:
         "RSI_V2_KERNEL_THINKING=off",
         "RSI_V2_MAX_OUTPUT=256",
         "RSI_V2_KERNEL_TOOLS=core",
-        "RSI_V2_WARMUP_ROUNDS=2",
+        "RSI_V2_WARMUP_ROUNDS=0",
         "RSI_V2_B_RETAIN=0",
         "RSI_V2_B_STATIC=0",
         "RSI_V2_SCRATCH_ARM=on",
+        "RSI_V2_PROBE_RETAIN=",
     ]
+    env.extend(args.extra_env)
     config = {
         "architecture": "amd64",
         "os": "linux",

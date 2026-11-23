@@ -7,7 +7,7 @@
 
 ```bash
 docker load -i harness.tar
-# 期望：Loaded image: zhixun-rsi-harness:0.14.9
+# 期望：Loaded image: zhixun-rsi-harness:0.14.11
 docker images | grep zhixun-rsi-harness
 docker inspect --format '{{.Architecture}} {{.Os}} {{.Config.Entrypoint}}' zhixun-rsi-harness:0.14.5
 # 期望：amd64 linux [/opt/zhixun/bin/entrypoint.sh]

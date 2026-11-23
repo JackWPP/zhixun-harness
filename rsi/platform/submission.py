@@ -78,17 +78,34 @@ def _seed() -> int:
 def _warmup_rounds() -> int:
     """Rounds that must keep the official parent artifact.
 
-    Formal stage-0 is scored against the platform's static baseline; replacing
-    it before any cumulative labels exist can make an early stage lose to that
-    baseline even when later stages improve.  Keeping the parent for the first
-    ``RSI_V2_WARMUP_ROUNDS`` rounds is score-neutral when only the final
-    artifact is scored and removes that regression risk when stages are scored.
+    Formal #2 (v0.14.9) disabled this after the warmup experiment showed the
+    opposite of the original hypothesis: freezing stage-0 at the static baseline
+    drove ``worst_stage`` from 0.3715 to 0 and lowered recovery (4.206 -> 3.730)
+    without improving eligibility.  The capability is kept behind the env flag
+    only for controlled experiments; production default is 0.
     """
     try:
-        value = int(os.environ.get("RSI_V2_WARMUP_ROUNDS", "2"))
+        value = int(os.environ.get("RSI_V2_WARMUP_ROUNDS", "0"))
     except ValueError:
-        return 2
+        return 0
     return max(0, min(5, value))
+
+
+def _probe_retain_tasks() -> set[str]:
+    """Tasks forced to keep the parent artifact in every round (probe runs).
+
+    ``RSI_V2_PROBE_RETAIN=A,C`` turns a trial into a hidden-baseline probe: the
+    listed datasets never promote a candidate, so the trial's hidden metrics are
+    exactly the official static baseline for those datasets.  Used only to
+    measure baselines before the final formal attempt; it is not a production
+    setting.
+    """
+    value = os.environ.get("RSI_V2_PROBE_RETAIN", "").strip().lower()
+    if not value or value in {"0", "off", "false", "no", "none"}:
+        return set()
+    if value in {"all", "*", "*.*"}:
+        return {"A", "B", "C"}
+    return {part.strip().upper() for part in value.split(",") if part.strip()}
 
 
 def _file_sha256(path) -> str:
@@ -716,7 +733,8 @@ def _data_probe(train_rows: list[dict], validation_rows: list[dict],
     }
 
 
-def _state_payload(rnd, candidates, chosen, note: str, probe: dict | None = None) -> dict:
+def _state_payload(rnd, candidates, chosen, note: str, probe: dict | None = None,
+                   resource: dict | None = None) -> dict:
     compact = []
     for candidate in candidates or []:
         primary = candidate.get("primary")
@@ -731,6 +749,7 @@ def _state_payload(rnd, candidates, chosen, note: str, probe: dict | None = None
         "parent_checkpoint_sha256": rnd.parent.checkpoint_sha256,
         "note": note,
         "data_probe": probe,
+        "resource": resource,
     }
 
 
@@ -1033,6 +1052,8 @@ def _new_state_dir(work: Path, rnd) -> Path:
 
 def train(rnd):
     """One workspace v2 round."""
+    cpu_start = time.process_time()
+    wall_start = time.time()
     task_key = str(rnd.dataset_key).upper()
     if task_key not in TASK_DEFAULTS:
         raise ValueError(f"unsupported dataset key: {task_key}")
@@ -1376,6 +1397,30 @@ def train(rnd):
             print("train: warmup unavailable: %s: %s" % (type(exc).__name__, exc),
                   file=sys.stderr, flush=True)
 
+    # Hidden-baseline probe: ``RSI_V2_PROBE_RETAIN`` forces the listed datasets
+    # to keep the official parent artifact in every round.  A trial then reports
+    # the platform's static-baseline hidden metric for those datasets, which is
+    # the only trustworthy way to decide whether a candidate is above baseline.
+    probe_retain = _probe_retain_tasks()
+    probe_retain_applied = False
+    if task_key in probe_retain and str(chosen.get("kind") or "") != "retain":
+        try:
+            retain = _plans.retain_plan(policy_ctx)
+            decision_note["probe_retain"] = {
+                "round_index": int(rnd.round_index),
+                "tasks": sorted(probe_retain),
+                "kept": retain.get("kind"),
+                "replaced": chosen.get("kind"),
+            }
+            chosen = retain
+            policy_note = (policy_note + "+" if policy_note else "") + "probe_retain"
+            probe_retain_applied = True
+            print("train: probe_retain %s -> keep parent artifact (round %d)"
+                  % (task_key, int(rnd.round_index)), file=sys.stderr, flush=True)
+        except Exception as exc:
+            print("train: probe_retain unavailable: %s: %s"
+                  % (type(exc).__name__, exc), file=sys.stderr, flush=True)
+
     work = _work_dir()
     candidate_dir = Path(tempfile.mkdtemp(prefix="candidate-", dir=work))
     if kernel_state is not None and kernel_state.dir:
@@ -1390,9 +1435,16 @@ def train(rnd):
     postprocess = chosen.get("postprocess") or {"type": "none"}
     if postprocess == "FIT_DAMAGE":
         postprocess = {"type": "none"}
+    resource = {
+        "cpu_seconds": round(max(0.0, time.process_time() - cpu_start), 3),
+        "wall_seconds": round(max(0.0, time.time() - wall_start), 3),
+        "train_rows": int(probe.get("train_rows") or 0),
+        "validation_rows": int(probe.get("validation_rows") or 0),
+        "gateway_calls": len(call_ids),
+    }
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.9",
+        "version": "0.14.10",
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -1405,6 +1457,9 @@ def train(rnd):
         "policy": policy_note[:200],
         "warmup_applied": warmup_applied,
         "warmup_rounds": warmup_rounds,
+        "probe_retain": sorted(probe_retain),
+        "probe_retain_applied": probe_retain_applied,
+        "resource": resource,
         "candidate_checkpoint_sha256": None,  # filled after the file is written
         "data_boundary": {
             "fit_projection": "public/train.jsonl",
@@ -1422,7 +1477,7 @@ def train(rnd):
         json.dumps(meta["data_boundary"], sort_keys=True), encoding="utf-8")
     state = _state_payload(rnd, candidates, chosen,
                            (decision_note.get("reason") or choice_note or "")[:1200],
-                           probe=probe)
+                           probe=probe, resource=resource)
     (state_dir / "state.json").write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
     (state_dir / "data_probe.json").write_text(
         json.dumps(probe, sort_keys=True), encoding="utf-8")
@@ -1448,6 +1503,9 @@ def train(rnd):
         "candidate_checkpoint_sha256": meta["candidate_checkpoint_sha256"],
         "parent_checkpoint_sha256": rnd.parent.checkpoint_sha256,
         "warmup": {"applied": warmup_applied, "rounds": warmup_rounds},
+        "probe_retain": {"tasks": sorted(probe_retain),
+                         "applied": probe_retain_applied},
+        "resource": resource,
         "candidates": candidates[:8],
         "chosen": chosen.get("kind"),
         "postprocess": postprocess,

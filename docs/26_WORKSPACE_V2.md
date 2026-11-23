@@ -445,3 +445,31 @@ validation RMSE 681.16 → 497.87），但平台隐藏 RMSE 稳定为 735.07（M
   （381,081,600 B），`scripts/verify_image.sh` PASS。
 - 提交材料：`docs/43_SUBMISSION_MATERIALS.md`（镜像/仓库/实验记录/复现/
   数据边界/已知边界）。pytest 215 passed。
+
+### 7.20 v0.14.10：warmup 撤销、隐藏基线探针与资源计量
+
+- `RSI_V2_WARMUP_ROUNDS` 默认 2 → **0**：两次 formal 对比证明冻结 stage-0 会让
+  `worst_stage` 0.3715→0、recovery 4.206→3.730，总分 45.74→45.18，故生产默认关闭。
+- 新增 `RSI_V2_PROBE_RETAIN`（如 `C` 或 `A,C`）：指定数据集每轮强制保留父 artifact，
+  用一次 trial 读出官方静态基线的隐藏指标。仅探针镜像使用，正式提交为空。
+- `train()` 每轮记录 `resource`（`cpu_seconds/wall_seconds/train_rows/validation_rows/
+  gateway_calls`）写入 `state.json` 与 `configuration`；meta 记录
+  `probe_retain/probe_retain_applied/resource`。
+- 探针实测（run `d401a95a39780ac734b5343fe3548232`，completed 无违规）：
+  A 0.894721、B 175.8134/113.3157、**C retain 基线 RMSE 56.2259**（MAE 41.2866）；
+  对照 C scratch 隐藏 55.8915（仅好 0.6%），说明 C 是 `worst_stage` 的短板来源。
+- 测试 **217 passed, 3 deselected**；镜像 0.14.10-probe 381,091,840 B，
+  sha256 `f3b03f3d5dc2466879eddddd88856c760b9ce3dbd4a1b92c259ceebdc59f22e6`，verify PASS。
+
+### 7.21 v0.14.11：B scratch 加宽与最终材料
+
+- `_SCRATCH_CONFIG["B"]` 由 h48 e600 调整为 **h80 e600 lr1e-3 seed 17**：
+  生产口径验证 RMSE 636.08 → **474.37**（MAE 501.88 → 368.06），相对基线 681.16
+  的验证增益从 6.6% 提升到 **30.4%**；C 保持 h32 e300（验证 51.198）。
+- 修正 docs/42 中错误的 h48=473.08 记录（旧离线脚本口径；生产复算 636.08，与
+  formal `training_records` 一致）。
+- `docs/43_SUBMISSION_MATERIALS.md` 重写为 v0.14.11 最终材料（提交物清单、
+  最终逐数据集配置、隐藏基线探针、两次 formal 复盘、合规修复时间线、实验记录索引、
+  复现命令、已知边界）。
+- 镜像 0.14.11：`.scratch/image/harness.tar`（约 381 MB），`scripts/verify_image.sh`
+  通过；`docs/42`、`docs/43`、本文件同步更新。

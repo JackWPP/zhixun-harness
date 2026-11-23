@@ -1,4 +1,4 @@
-# 43 · 提交材料与可复现性（v0.14.9）
+# 43 · 提交材料与可复现性（v0.14.11）
 
 本文件是正式评测提交的**材料与可复现性说明**，与镜像、文档、SwanLab
 实验记录、GitHub 仓库一起构成完整提交材料。内容只使用可公开核验的事实。
@@ -7,17 +7,17 @@
 
 | 项目 | 值 |
 |---|---|
-| 镜像 | `zhixun-rsi-harness:0.14.9`，`docker save` 未压缩单 tar |
-| 镜像 tar sha256 | `4d69e1e108d5150fecb245422851255384f8cccec87c8c874858c495c31e3d86` |
-| 镜像大小 | 381,081,600 B |
+| 镜像 | `zhixun-rsi-harness:0.14.11`，`docker save` 未压缩单 tar |
+| 镜像 tar sha256 | `c57077ed88d819e505b082190dc9c62433683a83ab7856ba32288dee39655e0f` |
+| 镜像大小 | 381,091,840 B |
 | SDK | `contest-harness-sdk 1.0.4`（workspace v2 协议，chunked-v1 上传） |
 | 仓库 | <https://github.com/JackWPP/zhixun-harness> |
-| 代码版本 | tag `v0.14.9`（`git describe --tags --always` 应返回 `v0.14.9`） |
+| 代码版本 | tag `v0.14.11`（`git describe --tags --always`） |
 | 实验记录 | <https://swanlab.cn/@wppjkwbuct/zhixun-rsi> |
-| 训练环境 | CPU-only，2 核 4 GiB 容器（平台沙箱）；本地构建为 6C/12T |
+| 训练环境 | CPU-only；平台沙箱 2 核 4 GiB（本地构建 6C/12T） |
 
 镜像内 `/app/harness.py` 是 v2 原生入口：`describe` / `train` / `predict`
-三个子命令直接交给 `contest_harness.cli`，选手模块
+三个子命令直接交给 `contest_harness.cli`；选手模块
 `rsi/platform/submission.py` 只通过宿主提供的 `round.data / round.model /
 round.submit_candidate / round.save_state / round.finish` 与平台交互。
 
@@ -29,112 +29,133 @@ python3 /app/harness.py train      # stdin 读 start 帧，逐轮训练并提交
 python3 /app/harness.py predict    # stdin 逐行 {"task","inputs"}，逐行输出 JSON
 ```
 
-关键默认环境变量（镜像 ENV，可在评测时覆盖）：
+最终默认环境变量（镜像 ENV）：
 
 ```text
-RSI_V2_CONTROLLER=auto        # classification -> kernel, regression -> pipeline
+RSI_V2_CONTROLLER=auto         # classification -> kernel, regression -> pipeline
 RSI_V2_MAX_TURNS=10
 RSI_V2_MAX_OUTPUT=256
-RSI_V2_KERNEL_TOOLS=core      # 精简工具集，降低 token 消耗
-RSI_V2_KERNEL_THINKING=off    # 平台 256 输出预算下避免 reasoning 挤占
-RSI_V2_CAPACITY_ARM=ls10      # 分类任务额外的 label-smoothing 容量臂
-RSI_V2_SCRATCH_ARM=on         # 回归任务从零重训候选（B h48/600ep，C h32/300ep）
-RSI_V2_WARMUP_ROUNDS=2        # 前两轮保留官方父检查点，避免早期阶段回退
-RSI_V2_B_RETAIN=0             # B 静态 shrink 默认关闭（隐藏流尾部会反向）
-RSI_V2_B_STATIC=0
+RSI_V2_KERNEL_TOOLS=core       # 精简工具集，降低 token 消耗
+RSI_V2_KERNEL_THINKING=off     # 平台 256 输出预算下避免 reasoning 挤占
+RSI_V2_CAPACITY_ARM=ls10       # 分类任务额外的 label-smoothing 容量臂
+RSI_V2_SCRATCH_ARM=on          # 回归任务从零重训（B h80 e600，C h32 e300）
+RSI_V2_WARMUP_ROUNDS=0         # 不再冻结 stage-0（两次 formal 反证）
+RSI_V2_PROBE_RETAIN=           # 空；仅探针镜像使用，正式提交关闭
 ```
 
-## 3. 数据边界与合规
+## 3. 最终算法配置（逐数据集）
 
-- **梯度训练只使用 `/data/train` 投影**（即平台当前阶段公开的
-  `public/train.jsonl` 与逐轮揭示的训练批）。代码中显式断言：
-  `_assert_training_only(fit_rows, validation_rows)`，训练/验证行 id 有交集
-  直接报错；候选目录写出 `data_boundary.json` 记录 `fit_id_sha256`、
-  `validation_id_sha256`、`validation_used_for_fit=false`。
-- **验证投影只用于测量与选择**：每轮记录 `validation_metrics`；选择器使用
-  配对 block bootstrap + 预注册门限（`margin_eff=max(margin,1.5·SE)`），
-  没有把验证行并入梯度。
-- **推理期不重新拟合标签统计**：`pair_threshold` 只使用历史校准常量
-  `-4.0`（A 类别方向的延迟标签经验），不再在提交时对标签做网格搜索。
-- **续训兼容性**：所有候选 checkpoint 均为官方 `contest.cpu-mlp.v1`
-  单隐层 tanh 格式（`hidden ≤ 128`、参数 < 100 000），由官方 loader 直接加载；
-  `scratch_retrain` 也是同格式从零训练，不依赖自定义 loader。
-- **预测鲁棒性**：分类输出 label 唯一、score∈[0,1]、最高分唯一；回归输出
-  非负有限值；逐行 flush；单行异常回退到合法分布，不中断隐藏流。
-
-## 4. 方法概要
-
-三层结构：
-
-1. **确定性候选生成**（每任务 3–5 个，全部只依赖公开训练数据）：
-   - A：`retain` / `recenter(batch_mean/std)` / `pair_history`（固定 delta）/
-     `continue_train`（累积标签 20 epoch）/ `continue_train_pair` /
-     `capacity_ls10`；
-   - B/C：`retain` / `scratch_retrain`（B: h48, 600 epoch；C: h32, 300 epoch）/
-     `continue_train`（10–20 epoch）。
-2. **可信选择**：分类走 `kernel`（PI-agent 通过宿主网关做诊断、提案、比较、
-   决策，每轮真实调用 4–6 次），回归走确定性 pipeline；两条路径都经过
-   配对 block bootstrap 门控，只有显著优于父模型才替换，否则保留父产物。
-3. **安全网**：前两轮保留父检查点（`RSI_V2_WARMUP_ROUNDS=2`）；分类高漂移
-   时允许固定 `pair_history` 覆盖；回归静态 shrink 默认关闭（本地与平台
-   trial 均显示其在漂移尾部反向变差）。
-
-## 5. 本地实验记录
-
-协议：官方同构（start 帧、候选上传、状态续接、finish 记录），真实网关
-PyTRiO `Qwen/Qwen3.8-27B`（本地核对时也用 tokenplus `qwen/qwen-3.8-27b`），
-数据边界与平台一致。SwanLab 项目公开可查，`E*` 系列 run 对应本表。
-
-| 实验 | 任务 | 设置 | 结果 |
+| 数据集 | 主候选 | 后备/约束 | 隐藏证据 |
 |---|---|---|---|
-| E1 容量 | A | official-seq 8 轮 × 6 seeds | off .4906±.0899；ls10 .5828±.1095；h64 .4483 |
-| E2 自适应 | A | 8–10 轮 × 4 seeds | off .3806；retrain .5214±.0983；pair .3936 |
-| K3c 安全网 | A | 10 轮 × 6 seeds | .6278 均值（修复前） |
-| recent holdout | A | 10 轮 × 11 seeds | **.7192** 均值（sd .0121，min .7053） |
-| BC multi | B/C | 10 轮 × 3 seeds | B 283.52；C 38.72（本地代理） |
-| 0.14.8 trial | A/B/C | 平台试运行 | A **.894721**；B RMSE **175.81**/MAE 113.32；C RMSE **55.89**/MAE 39.71 |
+| A（分类，macro-F1） | kernel 自主决策：recenter / pair_history / continue_train / continue_train_pair / capacity_ls10；gate 只在显著优于父模型时 promote | drift policy 高漂移 + 分类时优先验证集非劣的历史校准 pair 臂 | trial 0.894721（0.14.5–0.14.10 稳定复现） |
+| B（回归，RMSE 分钟） | `scratch_retrain`：仅 public train 从零重训官方 v1 单隐层 tanh **h80 e600 lr1e-3**，postprocess=none；每轮在累积 train 上重训并由验证集选择 | 不套 shrink/damage（静态后处理在晚期低 RUL 段反向，隐藏 735→720） | 隐藏 175.81（h48，0.14.8/0.14.10）；探针基线 retain=720.07 |
+| C（回归，RMSE cycles） | `scratch_retrain`：官方 v1 **h32 e300 lr1e-3**；每轮重训 + 验证选择 | 其余轮次 retain；不 clip 预测（clip 使验证 51.2→56.8） | 隐藏 55.8915（0.14.8/0.14.10）；探针基线 retain=**56.2259** |
 
-正式评测（run `1b0e780323861d1714d1b01893f69b02`）总分 **45.74**，客观分
-12.314/35：mean_gain 2.736/15、worst_stage 0.372/5、recovery 4.206/5、
-retention 5/5、resource_efficiency 0/5；三个 gate 未过：实验记录完整性、
-材料与可复现性（均为管理员核验字段）、不低于静态基线。
+关键约束：
 
-## 6. 复现命令
+- 梯度更新**只使用 `public/train.jsonl`**；`validation.jsonl` 只用于测量/选择。
+  每轮候选目录写 `data_boundary.json`（fit/validation 的 id 指纹与行数，
+  `validation_used_for_fit=false`），训练前用重叠检查强制拒绝泄漏。
+- 不发布用标签拟合的推理期统计（0.14.5 起移除 FIT_PAIR；`pair_threshold`
+  只使用固定历史校准 delta，或由内核按历史标签拟合后**随候选 checkpoint 一起**验证）。
+- 每轮 `state.json` / `configuration` 记录 `cpu_seconds / wall_seconds /
+  train_rows / validation_rows / gateway_calls`，以及父/候选 checkpoint sha256、
+  hypothesis、change_summary、decision、history_ids、model_call_ids。
+
+## 4. 隐藏基线探针（一次 trial 实测）
+
+0.14.10 探针镜像（`RSI_V2_PROBE_RETAIN=C`，trial run
+`d401a95a39780ac734b5343fe3548232`，completed、无违规）：
+
+| 数据集 | 本次配置 | 隐藏指标 | 说明 |
+|---|---|---|---|
+| A | 自适应（不变） | Macro-F1 **0.894721** / Acc 0.900123 | 与既有 trial 一致 |
+| B | scratch h48（不变） | RMSE **175.8134** / MAE 113.3157 | 与既有 trial 一致 |
+| C | retain（父模型） | RMSE **56.2259** / MAE 41.2866 / NASA 4.26e10 | **官方静态基线读数** |
+
+对照：C 的 scratch 隐藏 55.8915，比父模型基线好 0.33（−0.6%）；B 的 scratch
+相对 retain 基线（探针/0.14.7 读数 720.07）为 −75.6%。A 的自适应相对
+0.13 时代父模型后处理（隐藏 0.4635）为 +0.43。
+
+## 5. 两次正式评测复盘
+
+| 项目 | formal #1 | formal #2 |
+|---|---|---|
+| run | `1b0e780323861d1714d1b01893f69b02` | `ee8cb5c7223aef53c5961ef498256414` |
+| submission | `14c0d9ab…`（0.14.8） | `42862b06…`（0.14.9） |
+| score | 45.74 | 45.18 |
+| objective | 12.314 / 35 | 11.508 / 35 |
+| mean_gain | 2.736 / 15 | 2.778 / 15 |
+| worst_stage | 0.3715 / 5 | **0 / 5** |
+| recovery | 4.206 / 5 | 3.730 / 5 |
+| retention | 5 / 5 | 5 / 5 |
+| resource_efficiency | 0 / 5 | 0 / 5 |
+| gates | records/materials/baseline false | 同 |
+
+诊断结论：
+
+1. **warmup 有害**：formal#2 前两轮冻结父模型，A/B/C 的 stage-01 无提升，
+   `worst_stage` 0.3715→0、recovery −0.476、总分 −0.56。0.14.10 起默认关闭。
+2. **worst_stage 主要由 C 贡献**：C 的最差阶段验证增益约 3%，按
+   `5×gain/0.40` 折算正好 0.3715；C 隐藏相对基线余量仅 0.6%，是最大风险点。
+3. **mean_gain 受 C 拖累**：A≈37%、B≈16%、C≈3% 的平均相对提升 ≈2.8/15；
+   B 改用 h80 e600 后本地验证增益 30.4%（474 vs 基线 681），可抬高该分项。
+4. **materials/records 是管理员人工审核字段**：submission 上
+   `materials_complete/records_complete=null`、`compliance_status=unreviewed`；
+   需要 organizer 在后台核验，代码无法翻转。
+5. **resource_efficiency=0**：此前报告中没有 CPU 计量字段；0.14.10 起在
+   state/configuration 写 `resource`，供审核读取。
+
+## 6. 合规修复时间线（0.14.5 → 0.14.11）
+
+| 版本 | 修复 |
+|---|---|
+| 0.14.5 | 移除 FIT_PAIR（标签拟合推理期统计）；pair 只用固定历史 delta |
+| 0.14.6 | `data_boundary.json` + 训练/验证投影重叠断言；gate 方向归一化（regression 不再 promote 更差 RMSE） |
+| 0.14.7 | B retain 探针（发现静态 shrink 方向错误） |
+| 0.14.8 | B/C scratch_retrain（官方 v1 格式，仅 public train） |
+| 0.14.9 | warmup、model_usage、code_changes、父/候选 sha 记录 |
+| 0.14.10 | warmup 默认关闭、隐藏基线探针、resource 计量 |
+| 0.14.11 | B scratch 加宽 h80 e600（验证 474 vs 636）；材料与复盘更新 |
+
+## 7. 实验记录索引
+
+- SwanLab 公共项目：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi>
+  - 基线/策略对比 run：`q6803l60`、`emdfnxxo`、`ue3wrmap`、`0phkv73l`、`nvl19xzu`、
+    `run-20261119_003110-7leeoeqb`（auto 10 轮全量）。
+- 本地可复算证据：
+  - `.scratch/sim/lab/analysis.{csv,md}`（E1–E12 矩阵）
+  - `.scratch/sim/cert/capacity.{json,md}`（loss/结构消融）
+  - `.scratch/sim/campaign-manifest.jsonl`（96+ 同构 run 的 manifest）
+- 平台 trial/formal 记录：见 `docs/34`、`docs/39`、`docs/40`、`docs/42` 与本文件。
+
+## 8. 复现命令
 
 ```bash
-# 代码
-git clone https://github.com/JackWPP/zhixun-harness && cd zhixun-harness
-git checkout v0.14.9
-uv venv .venv && .venv/bin/pip install -e ".[dev]"
+# 1) 载入镜像
+docker load -i zhixun-rsi-harness-0.14.11.tar
 
-# 测试（215 passed, 3 deselected）
-.venv/bin/python -m pytest -q -m "not integration"
+# 2) 协议自检
+docker run --rm zhixun-rsi-harness:0.14.11 python3 /app/harness.py describe
 
-# 本地 v2 同构模拟（三个任务各 10 轮）
+# 3) 本地 v2 宿主回放（A/B/C 各 10 轮）
 .venv/bin/python scripts/emulate_workspace_v2.py --task A --rounds 10
 .venv/bin/python scripts/emulate_workspace_v2.py --task B --rounds 10
 .venv/bin/python scripts/emulate_workspace_v2.py --task C --rounds 10
 
-# 全真批次流（真实网关，读取 .scratch/llm.env）
-.venv/bin/python scripts/sim/full_env.py --scenario official-seq --tasks A \
-  --rounds 10 --provider real --controller kernel
+# 4) 同构全真模拟（真实 provider，SwanLab 自动记录）
+.venv/bin/python scripts/sim/full_env.py --scenario official --tasks A,B,C \
+  --rounds 10 --provider real --controller auto --swanlab auto
 
-# 镜像构建与自检
-bash scripts/stage_image.sh
-.venv/bin/python scripts/build_image_tar.py --tag zhixun-rsi-harness:0.14.9
+# 5) 测试与镜像校验
+.venv/bin/python -m pytest -q -m "not integration"
 bash scripts/verify_image.sh
 ```
 
-## 7. 已知边界（诚实声明）
+## 9. 已知边界
 
-1. 本地 `official-seq` 的隐藏代理来自公开验证留出段，与平台隐藏流不同；
-   B/C 的本地代理与平台 RMSE 不可直接换算（例如 B 本地 283.52 vs 平台
-   175.81/720.07），只能用于相对比较。
-2. `retention=5/5` 说明没有遗忘公开旧批；`mean_gain=2.74/15` 说明正式隐藏
-   流上的提升远小于试运行口径，原因尚未能从团队接口获得 per-stage 明细。
-3. `resource_efficiency=0/5` 与 A 任务 kernel 每轮真实调用、C 任务 scratch
-   训练耗时相关；0.14.9 已把 kernel 工具集降为 `core`、前两轮跳过重训，
-   但尚未在正式评测中验证。
-4. 平台的材料/记录 gate 是管理员人工核验字段（提交接口
-   `materials_complete/records_complete` 为 null、`compliance_status=unreviewed`），
-   本文件与 `docs/26`、`docs/34`–`docs/42`、SwanLab 记录共同作为核验材料。
+- 本地 hidden proxy 只用于相对比较，不能当作平台隐藏绝对分；平台 hidden
+  与 public validation 分布不同（B 的验证 474–636，隐藏 175.8；C 验证 51.2，隐藏 55.9）。
+- A 的漂移是数据集病理（Acetaldehyde↔Ethanol 局部概念漂移），不宣称通用漂移结论。
+- 平台仍可因人工审核未完成而 `eligible=false`；材料/记录需 organizer 核验。
+- 本提交不触发正式评测的额外次数；元数据中的镜像 sha 以最终构建为准。

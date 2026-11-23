@@ -1,4 +1,4 @@
-# 42 · B/C 回归任务的本地深挖与 scratch_retrain 策略（v0.14.8）
+# 42 · B/C 回归任务的本地深挖与 scratch_retrain 策略（v0.14.11）
 
 ## 1. 背景
 
@@ -23,9 +23,12 @@ B 的 `shrink` 后处理在公开验证集上更优（497.87 vs retain 681.16）
 | retain（父 checkpoint） | 681.16 | 563.11 | 242 / 391 / 711 |
 | shrink α=0.3 | 497.87 | 437.86 | 678 / 754 / 471 |
 | damage_shrink（train 分组拟合） | 418.72 | 340.91 | 569 / 371 / 405 |
-| **scratch h48 e600（仅 public train）** | **473.08** | **—（balanced 349.67，逐轴承 327/145/489）** | 327 / 145 / 489 |
+| scratch h48 e600（仅 public train） | 636.08 | 501.88 | 275 / 448 / 661 |
+| **scratch h80 e600（仅 public train，当前默认）** | **474.37** | **368.06** | 361 / 446 / 483 |
 
-shrink/damage 只帮助大轴承 3_4，重创小轴承；晚期 last-200 段（≈隐藏尾部）shrink 从 339 变 708、damage 405。scratch h48 在全部轴承上都不劣于 checkpoint，且平衡指标最好，作为默认 B 候选。
+> **更正（v0.14.11）**：本文 v0.14.8 初稿里的 scratch h48 = 473.08 是当时离线脚本口径错误（与实际生产 `plans.scratch_plans` 不一致）。用生产代码复算：h48 = 636.08（与 formal `training_records` 的 636.08 完全一致）。在此基础上继续加宽到 **h80 e600 = 474.37**，作为 B 的最终 scratch 配置。
+
+shrink/damage 只帮助大轴承 3_4，重创小轴承；晚期 last-200 段（≈隐藏尾部）shrink 从 339 变 708、damage 405。scratch 在全部轴承上都不劣于 checkpoint，且 h80 平衡指标最好，作为默认 B 候选。
 
 ## 3. C 数据与候选
 
@@ -37,7 +40,7 @@ shrink/damage 只帮助大轴承 3_4，重创小轴承；晚期 last-200 段（�
 | retain | 52.87 | 38.90 |
 | continue_train 40ep（lr=1e-3，train-only） | 51.32 | — |
 | continue_train 80ep | 51.15 | — |
-| **scratch h32 e300（仅 public train）** | **51.01** | **36.67** |
+| **scratch h32 e300（仅 public train，当前默认）** | **51.1980** | **36.3773** |
 | scratch h64 e300 | 50.98 | 36.66 |
 | scratch h64 e300 + sqrt target | 50.89 | 35.26 |
 

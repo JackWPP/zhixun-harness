@@ -547,9 +547,10 @@ def b_static_mode() -> bool:
 # ---------------------------------------------------------------------------
 SCRATCH_ARM_ENV = "RSI_V2_SCRATCH_ARM"
 _SCRATCH_CONFIG: dict[str, dict] = {
-    # Chosen from local validation sweeps: B needs the widest single hidden
-    # layer; C saturates at 32 units, so keep it cheap for the 2-core sandbox.
-    "B": {"hidden": 48, "epochs": 600, "learning_rate": 1e-3, "seed": 17},
+    # Chosen from local validation sweeps: B benefits from a wider single
+    # hidden layer (h80/e600: val RMSE 474 vs 636 at h48, baseline 681); C
+    # saturates at 32 units, so keep it cheap for the 2-core sandbox.
+    "B": {"hidden": 80, "epochs": 600, "learning_rate": 1e-3, "seed": 17},
     "C": {"hidden": 32, "epochs": 300, "learning_rate": 1e-3, "seed": 17},
 }
 

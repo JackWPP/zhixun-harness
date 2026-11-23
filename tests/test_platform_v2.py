@@ -494,7 +494,7 @@ def test_b_scratch_arm_offered_static_arms_disabled(monkeypatch):
     scratch = [plan for plan in plans if plan["kind"] == "scratch_retrain"][0]
     assert scratch["checkpoint"] == "SCRATCH"
     assert scratch["model"].meta["format"] == "contest.cpu-mlp.v1"
-    assert scratch["model"].meta["hidden"] == 48
+    assert scratch["model"].meta["hidden"] == 80
     assert scratch["predicted"] is not None and scratch["primary"] > 0
 
 
@@ -525,4 +525,38 @@ def test_warmup_rounds_env(monkeypatch):
     monkeypatch.setenv("RSI_V2_WARMUP_ROUNDS", "0")
     assert sub._warmup_rounds() == 0
     monkeypatch.setenv("RSI_V2_WARMUP_ROUNDS", "not-a-number")
-    assert sub._warmup_rounds() == 2
+    assert sub._warmup_rounds() == 0
+    monkeypatch.delenv("RSI_V2_WARMUP_ROUNDS", raising=False)
+    assert sub._warmup_rounds() == 0
+
+
+def test_probe_retain_tasks_env(monkeypatch):
+    from rsi.platform import submission as sub
+
+    monkeypatch.delenv("RSI_V2_PROBE_RETAIN", raising=False)
+    assert sub._probe_retain_tasks() == set()
+    monkeypatch.setenv("RSI_V2_PROBE_RETAIN", "a,c")
+    assert sub._probe_retain_tasks() == {"A", "C"}
+    monkeypatch.setenv("RSI_V2_PROBE_RETAIN", "all")
+    assert sub._probe_retain_tasks() == {"A", "B", "C"}
+    monkeypatch.setenv("RSI_V2_PROBE_RETAIN", "off")
+    assert sub._probe_retain_tasks() == set()
+
+
+def test_state_payload_includes_resource():
+    from rsi.platform import submission as sub
+
+    class _Parent:
+        checkpoint_sha256 = "0" * 64
+
+    class _Rnd:
+        round_index = 3
+        dataset_key = "B"
+        parent = _Parent()
+
+    payload = sub._state_payload(
+        _Rnd(), [], {"kind": "retain", "postprocess": {"type": "none"}}, "note",
+        probe={"train_rows": 7032}, resource={"cpu_seconds": 1.5, "wall_seconds": 2.0})
+    assert payload["resource"]["cpu_seconds"] == 1.5
+    assert payload["resource"]["wall_seconds"] == 2.0
+    assert payload["data_probe"]["train_rows"] == 7032
