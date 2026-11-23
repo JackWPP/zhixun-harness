@@ -115,7 +115,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["平台逐行输入<br/>{\"task\":..., \"inputs\":{...}}"] --> B["predict 逐行处理"]
+    A["平台逐行输入<br/>（task + inputs）"] --> B["predict 逐行处理"]
     B --> C{"有没有 checkpoint?"}
     C -- 有 --> D["加载官方 checkpoint（v1 单隐层 MLP）"]
     C -- 没有 --> E["退化预测（保守兜底）"]
@@ -281,7 +281,7 @@ python3 /app/harness.py predict    # 平台逐行发送样本，我们逐行返�
 flowchart LR
     T["public/train.jsonl<br/>（唯一可训练数据）"] --> F["梯度更新 / 参数拟合"]
     V["public/validation.jsonl<br/>（只能测量与选择）"] --> S["选择候选、计算指标"]
-    V -.禁止.-> F
+    V -.->|禁止| F
     P["隐藏测试流<br/>（平台持有）"] --> J["平台评分"]
     T --> P2["我们的模型"]
     S --> P2
