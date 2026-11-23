@@ -6,14 +6,15 @@
 ## 事实清单（可直接复制）
 
 - 队伍：yxc200506（北京化工大学）
-- 平台 submission：`304427233e4ce497ff6ac536f824d285`（最终候选，0.14.11）
-- 镜像 archive：`ce8232a438c860e925b6efd82ebe9a8d`（381,091,840 B，ready）
-- 材料文档：`6363516651f9866567987f843de27fa6`（`zhixun-rsi-harness-v0.14.11-materials.md`）
-- 仓库：<https://github.com/JackWPP/zhixun-harness>，tag `v0.14.11`
+- 平台 submission：`e9779a1bdf48ea3cb94df5a44af80374`（最终候选，0.14.12，valid）
+- 镜像 archive：`1eae63b3990429855fd80fe4b38626e7`（381,050,880 B，ready）
+- 材料文档：`fe7e87f6289b5cb0f969509466fcafa9`（`zhixun-rsi-harness-v0.14.12-materials.md`）
+- 仓库：<https://github.com/JackWPP/zhixun-harness>，tag `v0.14.12`
 - SwanLab：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi>
 - 两次正式评测 run：`1b0e7803…`（45.74）、`ee8cb5c7…`（45.18）
 - 隐藏基线探针 trial：`d401a95a…`（completed，无违规）
-- 最终配置 trial：`05a5d838…`（0.14.11，见后续报告）
+- 最终配置 trial：`05a5d838…`（0.14.11，A 0.894721 / B 155.17 / C 55.89）
+- 最终候选 0.14.12：C 改为 retain（隐藏基线 56.2259/NASA 4.26e10，与静态基线持平），A/B 不变
 
 ## 请求内容
 
