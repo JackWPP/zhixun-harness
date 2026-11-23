@@ -66,7 +66,7 @@ NASA 与 hidden NASA 对近似模型不可迁移**。重采样/加权会抬高�
   `not_below_static_baseline` 应变为「持平」而非「低于」。
 - 代价：C 的 mean_gain 贡献≈0、worst_stage 可能归零，预计客观分约 −0.3~0.4；
   换来 eligible/gate 不再被 C 拖累。
-- 若未来还有 trial 额度，值得验证的 C 候选优先级：h64/h96 e600（RMSE 收益稳定）
+- 若未来还有 trial 额度，值得验证的 C 候选优先级：h128 e15（val RMSE 51.99 / MAE 38.34 / NASA 3.52e9，三项全优于基线，训练仅 6s；若只赌 val 口径这是性价比最高的候选）→ h64/h96 e600（RMSE 收益稳定）
   → Huber80（val NASA 最好但 hidden 未知）→ 集成（成本 2×）。在拿到 hidden 读数前
   不进入正式提交。
 
