@@ -473,3 +473,17 @@ validation RMSE 681.16 → 497.87），但平台隐藏 RMSE 稳定为 735.07（M
   复现命令、已知边界）。
 - 镜像 0.14.11：`.scratch/image/harness.tar`（约 381 MB），`scripts/verify_image.sh`
   通过；`docs/42`、`docs/43`、本文件同步更新。
+
+### 7.22 v0.14.12：最终 trial 后定稿（C 改 retain，baseline-safe）
+
+- 最终 trial（run `05a5d838af1568475fc5708ce698f7ba`，completed、无违规）：
+  A 0.894721 / B RMSE 155.1724（h80）/ C RMSE 55.8915、NASA 9.24e10；
+  B h80 相对 h48 的 RMSE −20.64（−11.7%），验证了加宽收益。
+- C 决策：scratch 的隐藏 RMSE 收益仅 −0.33（−0.6%），但 NASA score 从父基线
+  4.26e10 劣化到 9.24e10；两次 formal 的 `not_below_static_baseline` 都失败，
+  C 的复核口径是最可能嫌疑人。v0.14.12 因此把 C 配置改为 **retain 父模型**
+  （`RSI_V2_PROBE_RETAIN=C`，全程不改权重、不后处理），A/B 配置不变。
+- 版本 0.14.12；镜像 tar 381,050,880 B，sha256
+  `f8ff0417c937eea6957dde33518a672c0c9405a8cc386f78a60401dff9b90a89`，
+  `scripts/verify_image.sh` PASS（describe sdk 1.0.4、fake-host 一轮、
+  离线 A 两轮 workspace_report metric=0.7345546845546845）。

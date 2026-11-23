@@ -142,7 +142,7 @@ def main(argv=None) -> int:
         "RSI_V2_B_RETAIN=0",
         "RSI_V2_B_STATIC=0",
         "RSI_V2_SCRATCH_ARM=on",
-        "RSI_V2_PROBE_RETAIN=",
+        "RSI_V2_PROBE_RETAIN=C",
     ]
     env.extend(args.extra_env)
     config = {

@@ -1,4 +1,4 @@
-# 43 · 提交材料与可复现性（v0.14.11）
+# 43 · 提交材料与可复现性（v0.14.12）
 
 本文件是正式评测提交的**材料与可复现性说明**，与镜像、文档、SwanLab
 实验记录、GitHub 仓库一起构成完整提交材料。内容只使用可公开核验的事实。
@@ -7,12 +7,12 @@
 
 | 项目 | 值 |
 |---|---|
-| 镜像 | `zhixun-rsi-harness:0.14.11`，`docker save` 未压缩单 tar |
-| 镜像 tar sha256 | `c57077ed88d819e505b082190dc9c62433683a83ab7856ba32288dee39655e0f` |
-| 镜像大小 | 381,091,840 B |
+| 镜像 | `zhixun-rsi-harness:0.14.12`，`docker save` 未压缩单 tar |
+| 镜像 tar sha256 | `f8ff0417c937eea6957dde33518a672c0c9405a8cc386f78a60401dff9b90a89` |
+| 镜像大小 | 381,050,880 B |
 | SDK | `contest-harness-sdk 1.0.4`（workspace v2 协议，chunked-v1 上传） |
 | 仓库 | <https://github.com/JackWPP/zhixun-harness> |
-| 代码版本 | tag `v0.14.11`（`git describe --tags --always`） |
+| 代码版本 | tag `v0.14.12`（`git describe --tags --always`） |
 | 实验记录 | <https://swanlab.cn/@wppjkwbuct/zhixun-rsi> |
 | 训练环境 | CPU-only；平台沙箱 2 核 4 GiB（本地构建 6C/12T） |
 
@@ -49,7 +49,7 @@ RSI_V2_PROBE_RETAIN=           # 空；仅探针镜像使用，正式提交关�
 |---|---|---|---|
 | A（分类，macro-F1） | kernel 自主决策：recenter / pair_history / continue_train / continue_train_pair / capacity_ls10；gate 只在显著优于父模型时 promote | drift policy 高漂移 + 分类时优先验证集非劣的历史校准 pair 臂 | trial 0.894721（0.14.5–0.14.10 稳定复现） |
 | B（回归，RMSE 分钟） | `scratch_retrain`：仅 public train 从零重训官方 v1 单隐层 tanh **h80 e600 lr1e-3**，postprocess=none；每轮在累积 train 上重训并由验证集选择 | 不套 shrink/damage（静态后处理在晚期低 RUL 段反向，隐藏 735→720） | 隐藏 175.81（h48，0.14.8/0.14.10）；探针基线 retain=720.07 |
-| C（回归，RMSE cycles） | `scratch_retrain`：官方 v1 **h32 e300 lr1e-3**；每轮重训 + 验证选择 | 其余轮次 retain；不 clip 预测（clip 使验证 51.2→56.8） | 隐藏 55.8915（0.14.8/0.14.10）；探针基线 retain=**56.2259** |
+| C（回归，RMSE cycles） | **retain（父模型，baseline-safe）**：v0.14.12 起 C 全程保留官方父检查点，不做重训/后处理 | 理由：C scratch 隐藏 RMSE 55.8915 仅比父基线 56.2259 好 0.33（−0.6%），但 NASA score 9.24e10 vs 父基线 4.26e10（变差 2.17×）；两次 formal 的 `not_below_static_baseline` 均为 false，C 的复核口径（含 NASA）是最可能嫌疑人，故最后一次 formal 优先保资格 gate | C 隐藏基线 **RMSE 56.2259 / MAE 41.2866 / NASA 4.26e10**（0.14.10 探针） |
 
 关键约束：
 
@@ -76,6 +76,20 @@ RSI_V2_PROBE_RETAIN=           # 空；仅探针镜像使用，正式提交关�
 对照：C 的 scratch 隐藏 55.8915，比父模型基线好 0.33（−0.6%）；B 的 scratch
 相对 retain 基线（探针/0.14.7 读数 720.07）为 −75.6%。A 的自适应相对
 0.13 时代父模型后处理（隐藏 0.4635）为 +0.43。
+
+## 4.1 最终 trial（v0.14.11 全配置，run `05a5d838af1568475fc5708ce698f7ba`）
+
+trial_kind=legacy，completed、无违规；trial 额度已用尽（10/10）。
+
+| 数据集 | 配置 | 隐藏指标 | cpu / wall |
+|---|---|---|---|
+| A | 自适应（kernel + gate + capacity ls10） | Acc **0.900123** / Macro-F1 **0.894721** | 1457.1s / 1561.7s |
+| B | scratch h80 e600（每轮重训 + 验证选择） | RMSE **155.1724** / MAE 117.3265 | 5348.8s / 1853.1s |
+| C | scratch h32 e300（r1 选中后 retain） | RMSE **55.8915** / MAE 39.7085 / NASA 9.24e10 | 4373.7s / 4024.9s |
+
+total tokens 365,875（prompt 355,013 / completion 10,862），training_seconds 5,672.5。
+对比 0.14.10（B h48）：B RMSE 175.8134 → 155.1724（−20.64，−11.7%），MAE 113.3157 → 117.3265（+4.01）。
+结论：B h80 的 RMSE 收益明确；C scratch 的 RMSE 收益极小且 NASA 变差，触发本文件 §3 的 C→retain 最终决策。
 
 ## 5. 两次正式评测复盘
 
@@ -117,6 +131,7 @@ RSI_V2_PROBE_RETAIN=           # 空；仅探针镜像使用，正式提交关�
 | 0.14.9 | warmup、model_usage、code_changes、父/候选 sha 记录 |
 | 0.14.10 | warmup 默认关闭、隐藏基线探针、resource 计量 |
 | 0.14.11 | B scratch 加宽 h80 e600（验证 474 vs 636）；材料与复盘更新 |
+| 0.14.12 | 最后 trial 后定稿：C 改 retain（baseline-safe，规避 NASA/复核口径风险）；A/B 不变 |
 
 ## 7. 实验记录索引
 
@@ -133,10 +148,10 @@ RSI_V2_PROBE_RETAIN=           # 空；仅探针镜像使用，正式提交关�
 
 ```bash
 # 1) 载入镜像
-docker load -i zhixun-rsi-harness-0.14.11.tar
+docker load -i zhixun-rsi-harness-0.14.12.tar
 
 # 2) 协议自检
-docker run --rm zhixun-rsi-harness:0.14.11 python3 /app/harness.py describe
+docker run --rm zhixun-rsi-harness:0.14.12 python3 /app/harness.py describe
 
 # 3) 本地 v2 宿主回放（A/B/C 各 10 轮）
 .venv/bin/python scripts/emulate_workspace_v2.py --task A --rounds 10

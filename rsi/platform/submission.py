@@ -1444,7 +1444,7 @@ def train(rnd):
     }
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.10",
+        "version": "0.14.12",
         "task_key": task_key,
         "task": task,
         "metric": metric,
