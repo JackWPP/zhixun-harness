@@ -249,3 +249,21 @@ docker load -i harness-0.14.12.tar
 # 关键版本
 git describe --tags --always   # v0.14.12
 ```
+
+---
+
+## 12. 最终结果记录（2026-11-23）
+
+| 项 | 内容 |
+|---|---|
+| 最终提交 | submission `2560f93aec8b5ba4e099ce86e96b4429`（v15，0.14.12，valid、已选为正式版本） |
+| 最终镜像 | `zhixun-rsi-harness:0.14.12`，381,050,880 B，sha256 `f8ff0417c937eea6957dde33518a672c0c9405a8cc386f78a60401dff9b90a89` |
+| 材料文档 | `6758ff3df369f201a1dfb05dbbed02e4`（`zhixun-rsi-harness-v0.14.12-final-materials.md`） |
+| 最终正式评测 | run `1d679070f34badfdf0dd9a77086cdb96`（formal，attempt 3，completed） |
+| 总分 | **56.65** |
+| 客观分 | 12.09 / 35（mean_gain 3.35、recovery 3.37、retention 5、worst_stage 0.37、resource 0） |
+| Gates | autonomous_completion_on_time=true；three_traceable_decision_cycles=true；**not_below_static_baseline=true**（C retain 翻正）；experiment_records_complete=false、complete_materials_and_reproducibility=false（两项为管理员人工核验字段） |
+| 隐藏指标（最近一次 trial） | A macro-F1 0.8947；B RMSE 155.17；C RMSE 56.23（retain，与静态基线一致） |
+| 额度 | trial 10/10 已用尽；formal 3/3 已用尽 |
+
+说明：两次早期 formal（45.74 / 45.18）失败在 `not_below_static_baseline`（C scratch 的 NASA 口径拖累）；最后一次改为 C retain 后该 gate 通过，总分提升至 56.65。剩余两个 gate 为平台管理员人工审核项，队伍侧无接口可修改，需组委会核验。
