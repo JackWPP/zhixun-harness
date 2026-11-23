@@ -6,9 +6,10 @@
 ## 事实清单（可直接复制）
 
 - 队伍：yxc200506（北京化工大学）
-- 平台 submission：`e9779a1bdf48ea3cb94df5a44af80374`（最终候选，0.14.12，valid）
+- 平台 submission：`2560f93aec8b5ba4e099ce86e96b4429`（v15，最终候选，0.14.12，valid，已选为正式版本）
 - 镜像 archive：`1eae63b3990429855fd80fe4b38626e7`（381,050,880 B，ready）
-- 材料文档：`fe7e87f6289b5cb0f969509466fcafa9`（`zhixun-rsi-harness-v0.14.12-materials.md`）
+- 材料文档：`6758ff3df369f201a1dfb05dbbed02e4`（`zhixun-rsi-harness-v0.14.12-final-materials.md`，含两次 formal 复盘、C retain 决策、记录字段说明）
+- 最终正式评测 run：`1d679070f34badfdf0dd9a77086cdb96`（2026-11-23T07:02:29Z 创建，attempt 3）
 - 仓库：<https://github.com/JackWPP/zhixun-harness>，tag `v0.14.12`
 - SwanLab：<https://swanlab.cn/@wppjkwbuct/zhixun-rsi>
 - 两次正式评测 run：`1b0e7803…`（45.74）、`ee8cb5c7…`（45.18）

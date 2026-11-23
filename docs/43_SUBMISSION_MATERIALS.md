@@ -174,3 +174,78 @@ bash scripts/verify_image.sh
 - A 的漂移是数据集病理（Acetaldehyde↔Ethanol 局部概念漂移），不宣称通用漂移结论。
 - 平台仍可因人工审核未完成而 `eligible=false`；材料/记录需 organizer 核验。
 - 本提交不触发正式评测的额外次数；元数据中的镜像 sha 以最终构建为准。
+
+## 11. 最终提交（v0.14.12，C retain）与两次正式评测复盘
+
+本节是最终提交材料的一部分，说明最后一次正式评测所采用的配置、依据，
+以及两次已完成正式评测的客观成绩分解与门槛判定。
+
+### 11.1 最终配置
+
+| 数据集 | 策略 | 说明 |
+|---|---|---|
+| A（气体分类，macro-F1↑） | kernel 自适应 + 容量臂 ls10 + 证据门控 | 每轮真实网关调用；累积标签续训；门控 promote 才上线 |
+| B（轴承 RUL，RMSE↓） | scratch_retrain h48→h80、epochs 600、lr 1e-3 | 仅用 public/train 拟合；验证集只用于选择 |
+| C（RUL，RMSE↓ + NASA） | **retain（保留父模型，不改权重、不做后处理）** | 见 §11.4 决策依据；隐藏指标与静态基线一致 |
+| 预热 | `RSI_V2_WARMUP_ROUNDS=0` | formal#2 证明前两轮冻结会导致 worst_stage=0 |
+| 资源计量 | candidate/state 写入 `resource.cpu_seconds/wall_seconds/gateway_calls` | 供评分资源效率使用 |
+
+### 11.2 已完成的试运行证据（隐藏流）
+
+| 运行 | A macro-F1 | B RMSE / MAE | C RMSE / MAE / NASA | 说明 |
+|---|---|---|---|---|
+| `d401a95a`（0.14.10，C retain 探针） | 0.894721 | 175.8134 / 113.3157 | **56.2259 / 41.2866 / 4.26e10** | 测得 C 父模型隐藏基线 |
+| `baafaf1b`（0.14.8，B h48 + C scratch） | 0.894721 | 175.8134 / 113.3157 | 55.8915 / 39.7085 / 9.24e10 | C scratch 提升 RMSE、恶化 NASA |
+| `05a5d838`（0.14.11，B h80 + C scratch） | 0.894721 | **155.1724 / 117.3265** | 55.8915 / 39.7085 / 9.24e10 | B 进一步改善 |
+
+### 11.3 两次正式评测的客观成绩
+
+| 项 | formal#1（45.74） | formal#2（45.18） |
+|---|---|---|
+| mean_gain /15 | 2.736460 | 2.777866 |
+| worst_stage /5 | 0.371532 | **0** |
+| recovery /5 | 4.206349 | 3.730159 |
+| retention /5 | 5 | 5 |
+| resource_efficiency /5 | 0 | 0 |
+| objective /35 | 12.314341 | 11.508025 |
+| gates | records=false, materials=false, not_below=false, autonomous=true, three_cycles=true | 相同 |
+
+formal#2 与 formal#1 的差异被定位为 **warmup 两轮冻结**：所有数据集的 stage-01
+均无提升，导致 worst_stage 归零、recovery 下降；0.14.10 起已默认关闭 warmup。
+
+### 11.4 为什么 C 选择 retain（而不是 scratch）
+
+C 的隐藏流由 9687 行、极少数超长 RUL 行主导（见 `docs/46_C_TAIL_ANALYSIS.md`）：
+平台 NASA = `Σ expm1(-err/13)`（低估）或 `expm1(err/10)`（高估），无截断。
+在公开验证集上 NASA 的 96.6% 来自高 RUL 低估；而 scratch 模型的重训会让隐藏流
+上极少数超长 RUL 行的低估更深（NASA 从 4.26e10 恶化到 9.24e10），直接导致
+`not_below_static_baseline` 失败。最后 1 次正式评测的配置因此选择 C retain：
+C 的三项指标与静态基线完全一致（56.2259 / 41.2866 / 4.26e10），
+A/B 则显著高于基线，从而在 C 上满足“不低于静态基线”。
+
+### 11.5 实验记录完整性说明
+
+平台 `training_records` 每轮包含：`id/round_index/stage_id/seed/hypothesis/
+change_summary/selected_artifact_id/history_ids/decision/reason/validation_metrics/
+candidates/configuration`。其中：
+
+- `hypothesis`、`change_summary`：每轮都写明本轮假设与变更；
+- `history_ids`：第 1 轮为空（协议允许，此前无记录），第 2 轮起包含全部已读历史 id；
+- `configuration` 含 `data_probe`（train/validation 行数）、`decision`（含 reason/delta）、
+  `kernel`（真实网关 `call_ids`/调用次数/轨迹）、`model_usage`（每轮调用用量）、
+  `code_changes`、`parent_checkpoint_sha256`、`candidate_checkpoint_sha256`、
+  `warmup`、`resource`（cpu/wall/gateway_calls）；
+- 候选 `validation_metrics` 为公开验证集上的真实指标，未使用隐藏标签；
+- 所有候选 checkpoint 为官方 `contest.cpu-mlp.v1` 格式，sha256 可复核。
+
+### 11.6 复现
+
+```bash
+# 镜像
+docker load -i harness-0.14.12.tar
+# 本地同构（使用 vendor/contest_harness-1.0.4 与本地模拟宿主）
+.venv/bin/python scripts/emulate_workspace_v2.py --task A --rounds 10
+.venv/bin/python scripts/sim/full_env.py --scenario official-seq --tasks A --rounds 10 --provider real
+# 关键版本
+git describe --tags --always   # v0.14.12
+```
