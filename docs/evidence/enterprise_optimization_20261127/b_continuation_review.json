@@ -1,0 +1,666 @@
+{
+  "author": "Arthur",
+  "generated_at_utc": "2026-11-26T16:53:30.022796+00:00",
+  "scope": "one actual-parent B continuation on complete official public train/validation",
+  "configuration": {
+    "epochs": 15,
+    "learning_rate": 0.001
+  },
+  "runtime": {
+    "python": "3.12.14",
+    "numpy": "1.26.4",
+    "system": "Darwin",
+    "machine": "arm64",
+    "configured_threads": 1,
+    "source_sha256": "e86da064ed1a0e3cf39557db892b2d70ef12b3706f8781c1d523a54c3917907b"
+  },
+  "inputs": {
+    "package": "datasets/cpu-b-rul-20261110-v1",
+    "train_rows": 7032,
+    "validation_rows": 1679,
+    "train_file_sha256": "71b2663fffd3d7ef6dca8a7b3feb31c3feb96c57f385335d03041a5fa431054a",
+    "validation_file_sha256": "23673a66bc22a166bf2f47b18f9c9d594f7e66a9aad88ddbccbcaea2310d9eb3",
+    "parent_checkpoint_sha256": "c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4"
+  },
+  "data_boundary": {
+    "train_bearings": [
+      "Bearing1_1",
+      "Bearing1_2",
+      "Bearing1_3",
+      "Bearing2_1",
+      "Bearing2_2",
+      "Bearing2_3",
+      "Bearing3_1",
+      "Bearing3_2",
+      "Bearing3_3"
+    ],
+    "validation_bearings": [
+      "Bearing1_4",
+      "Bearing2_4",
+      "Bearing3_4"
+    ],
+    "overlapping_bearings": [],
+    "overlapping_row_ids": [],
+    "fit_source": "public/train.jsonl",
+    "validation_used_for_fit": false,
+    "bearing_and_snapshot_not_model_inputs": true
+  },
+  "parent_lineage": {
+    "checks": {
+      "parameter_shapes_preserved": true,
+      "input_mean_preserved": true,
+      "input_scale_preserved": true,
+      "target_mean_preserved": true,
+      "target_scale_preserved": true,
+      "hidden_width_preserved": true,
+      "feature_paths_preserved": true,
+      "seed_preserved": true,
+      "epoch_history_continued": true,
+      "optimizer_steps_continued": true,
+      "parent_file_unchanged": true
+    },
+    "parent_hidden": 24,
+    "candidate_hidden": 24,
+    "parent_epochs": 15,
+    "candidate_epochs": 30,
+    "parent_steps": 825,
+    "candidate_steps": 1650,
+    "seed": 42,
+    "candidate_checkpoint_sha256": "06f5be8005150b6cb07e41e67bca711d8cead3d8bceb6f7e0bfa9edf7a6ff27b"
+  },
+  "aggregate": {
+    "parent": {
+      "rows": 1679,
+      "rmse": 681.1598326043113,
+      "mae": 563.1058414514887,
+      "bias": -365.38394916105057
+    },
+    "candidate": {
+      "rows": 1679,
+      "rmse": 663.6360593953132,
+      "mae": 559.4318172453917,
+      "bias": -322.7836249332114
+    },
+    "candidate_minus_parent": {
+      "rmse": -17.523773208998136,
+      "mae": -3.6740242060969877
+    },
+    "relative_change_percent": {
+      "rmse": -2.572637488326146,
+      "mae": -0.6524571289522848
+    },
+    "rmse_and_mae_noninferior": true
+  },
+  "by_validation_bearing": {
+    "Bearing1_4": {
+      "parent": {
+        "rows": 122,
+        "rmse": 241.98079883050283,
+        "mae": 175.58693393738477,
+        "bias": 166.54097851074988
+      },
+      "candidate": {
+        "rows": 122,
+        "rmse": 290.010084898141,
+        "mae": 235.15155449006633,
+        "bias": 232.64587451071142
+      },
+      "candidate_minus_parent": {
+        "rmse": 48.02928606763814,
+        "mae": 59.56462055268156
+      },
+      "relative_change_percent": {
+        "rmse": 19.848387268644647,
+        "mae": 33.9231508956826
+      },
+      "rmse_and_mae_noninferior": false
+    },
+    "Bearing2_4": {
+      "parent": {
+        "rows": 42,
+        "rmse": 390.81504161336534,
+        "mae": 328.14713559610186,
+        "bias": 326.266107840995
+      },
+      "candidate": {
+        "rows": 42,
+        "rmse": 381.69046966234913,
+        "mae": 314.3045018750412,
+        "bias": 314.3045018750412
+      },
+      "candidate_minus_parent": {
+        "rmse": -9.124571951016208,
+        "mae": -13.842633721060679
+      },
+      "relative_change_percent": {
+        "rmse": -2.3347545461270087,
+        "mae": -4.218422841300925
+      },
+      "rmse_and_mae_noninferior": true
+    },
+    "Bearing3_4": {
+      "parent": {
+        "rows": 1515,
+        "rmse": 710.8130722393482,
+        "mae": 600.82569119581,
+        "bias": -427.3932848508497
+      },
+      "candidate": {
+        "rows": 1515,
+        "rmse": 690.85173920167,
+        "mae": 592.3410841112031,
+        "bias": -385.17313005407294
+      },
+      "candidate_minus_parent": {
+        "rmse": -19.961333037678287,
+        "mae": -8.484607084606864
+      },
+      "relative_change_percent": {
+        "rmse": -2.8082394397717008,
+        "mae": -1.4121578369460432
+      },
+      "rmse_and_mae_noninferior": true
+    }
+  },
+  "current_gate": {
+    "rmse_gain_must_exceed": 5.0,
+    "deterministic_choice": "continue_train",
+    "aggregate_rmse_mae_guard_passed": true,
+    "aggregate_pass": true,
+    "bearing_guard_pass": false,
+    "passes_current_default_selection": false,
+    "final_choice": "retain",
+    "all_bearings_noninferior": false,
+    "bearing_guard_required": true,
+    "bearing_guard": {
+      "passed": false,
+      "status": "bearing_regression",
+      "minimum_rows": 10,
+      "global": {
+        "parent": {
+          "rmse": 681.1598326043113,
+          "mae": 563.1058414514887
+        },
+        "candidate": {
+          "rmse": 663.6360593953132,
+          "mae": 559.4318172453917
+        },
+        "passed": true,
+        "failed_metrics": [],
+        "status": "noninferior"
+      },
+      "groups": {
+        "Bearing1_4": {
+          "rows": 122,
+          "unique_snapshots": 122,
+          "passed": false,
+          "status": "regression",
+          "parent": {
+            "rmse": 241.98079883050283,
+            "mae": 175.58693393738477
+          },
+          "candidate": {
+            "rmse": 290.010084898141,
+            "mae": 235.15155449006633
+          },
+          "failed_metrics": [
+            "rmse",
+            "mae"
+          ]
+        },
+        "Bearing2_4": {
+          "rows": 42,
+          "unique_snapshots": 42,
+          "passed": true,
+          "status": "noninferior",
+          "parent": {
+            "rmse": 390.81504161336534,
+            "mae": 328.14713559610186
+          },
+          "candidate": {
+            "rmse": 381.69046966234913,
+            "mae": 314.3045018750412
+          },
+          "failed_metrics": []
+        },
+        "Bearing3_4": {
+          "rows": 1515,
+          "unique_snapshots": 1515,
+          "passed": true,
+          "status": "noninferior",
+          "parent": {
+            "rmse": 710.8130722393482,
+            "mae": 600.82569119581
+          },
+          "candidate": {
+            "rmse": 690.85173920167,
+            "mae": 592.3410841112031
+          },
+          "failed_metrics": []
+        }
+      },
+      "insufficient": [],
+      "unknown_rows": 0,
+      "coverage": {
+        "total_rows": 1679,
+        "recognized_rows": 1679,
+        "supported_rows": 1679,
+        "supported_groups": [
+          "Bearing1_4",
+          "Bearing2_4",
+          "Bearing3_4"
+        ],
+        "complete": true
+      },
+      "limitation": "Public bearing point estimates do not establish hidden-stage or unseen-bearing safety."
+    }
+  },
+  "fixed_interpolation_exploration": {
+    "purpose": "Two predeclared diagnostic points, no validation-fitted alpha or automatic adoption",
+    "alphas": [
+      0.25,
+      0.5
+    ],
+    "results": [
+      {
+        "alpha": 0.25,
+        "aggregate": {
+          "parent": {
+            "rows": 1679,
+            "rmse": 681.1598326043113,
+            "mae": 563.1058414514887,
+            "bias": -365.38394916105057
+          },
+          "candidate": {
+            "rows": 1679,
+            "rmse": 678.0563292204205,
+            "mae": 563.201963473163,
+            "bias": -357.311148359146
+          },
+          "candidate_minus_parent": {
+            "rmse": -3.103503383890825,
+            "mae": 0.0961220216743186
+          },
+          "relative_change_percent": {
+            "rmse": -0.45562043375708905,
+            "mae": 0.01706997416800896
+          },
+          "rmse_and_mae_noninferior": false
+        },
+        "by_validation_bearing": {
+          "Bearing1_4": {
+            "parent": {
+              "rows": 122,
+              "rmse": 241.98079883050283,
+              "mae": 175.58693393738477,
+              "bias": 166.54097851074988
+            },
+            "candidate": {
+              "rows": 122,
+              "rmse": 247.8087145393837,
+              "mae": 184.153192871198,
+              "bias": 176.62764826399936
+            },
+            "candidate_minus_parent": {
+              "rmse": 5.827915708880852,
+              "mae": 8.56625893381323
+            },
+            "relative_change_percent": {
+              "rmse": 2.4084207247216574,
+              "mae": 4.878642585596946
+            },
+            "rmse_and_mae_noninferior": false
+          },
+          "Bearing2_4": {
+            "parent": {
+              "rows": 42,
+              "rmse": 390.81504161336534,
+              "mae": 328.14713559610186,
+              "bias": 326.266107840995
+            },
+            "candidate": {
+              "rows": 42,
+              "rmse": 379.3983281864478,
+              "mae": 316.6335429053032,
+              "bias": 315.1900454735677
+            },
+            "candidate_minus_parent": {
+              "rmse": -11.41671342691751,
+              "mae": -11.513592690798646
+            },
+            "relative_change_percent": {
+              "rmse": -2.921257426476462,
+              "mae": -3.5086677413421308
+            },
+            "rmse_and_mae_noninferior": true
+          },
+          "Bearing3_4": {
+            "parent": {
+              "rows": 1515,
+              "rmse": 710.8130722393482,
+              "mae": 600.82569119581,
+              "bias": -427.3932848508497
+            },
+            "candidate": {
+              "rows": 1515,
+              "rmse": 707.5267946399274,
+              "mae": 600.5615830621332,
+              "bias": -418.95179742119075
+            },
+            "candidate_minus_parent": {
+              "rmse": -3.2862775994208278,
+              "mae": -0.26410813367681385
+            },
+            "relative_change_percent": {
+              "rmse": -0.46232655641345005,
+              "mae": -0.0439575300369006
+            },
+            "rmse_and_mae_noninferior": true
+          }
+        },
+        "aggregate_pass": false,
+        "bearing_guard_pass": false,
+        "would_pass_combined_guard": false,
+        "bearing_guard": {
+          "passed": false,
+          "status": "global_regression",
+          "minimum_rows": 10,
+          "global": {
+            "parent": {
+              "rmse": 681.1598326043113,
+              "mae": 563.1058414514887
+            },
+            "candidate": {
+              "rmse": 678.0563292204205,
+              "mae": 563.201963473163
+            },
+            "passed": false,
+            "failed_metrics": [
+              "mae"
+            ],
+            "status": "regression"
+          },
+          "groups": {
+            "Bearing1_4": {
+              "rows": 122,
+              "unique_snapshots": 122,
+              "passed": false,
+              "status": "regression",
+              "parent": {
+                "rmse": 241.98079883050283,
+                "mae": 175.58693393738477
+              },
+              "candidate": {
+                "rmse": 247.8087145393837,
+                "mae": 184.153192871198
+              },
+              "failed_metrics": [
+                "rmse",
+                "mae"
+              ]
+            },
+            "Bearing2_4": {
+              "rows": 42,
+              "unique_snapshots": 42,
+              "passed": true,
+              "status": "noninferior",
+              "parent": {
+                "rmse": 390.81504161336534,
+                "mae": 328.14713559610186
+              },
+              "candidate": {
+                "rmse": 379.3983281864478,
+                "mae": 316.6335429053032
+              },
+              "failed_metrics": []
+            },
+            "Bearing3_4": {
+              "rows": 1515,
+              "unique_snapshots": 1515,
+              "passed": true,
+              "status": "noninferior",
+              "parent": {
+                "rmse": 710.8130722393482,
+                "mae": 600.82569119581
+              },
+              "candidate": {
+                "rmse": 707.5267946399274,
+                "mae": 600.5615830621332
+              },
+              "failed_metrics": []
+            }
+          },
+          "insufficient": [],
+          "unknown_rows": 0,
+          "coverage": {
+            "total_rows": 1679,
+            "recognized_rows": 1679,
+            "supported_rows": 1679,
+            "supported_groups": [
+              "Bearing1_4",
+              "Bearing2_4",
+              "Bearing3_4"
+            ],
+            "complete": true
+          },
+          "limitation": "Public bearing point estimates do not establish hidden-stage or unseen-bearing safety."
+        },
+        "additional_fit_calls": 0,
+        "adopted": false
+      },
+      {
+        "alpha": 0.5,
+        "aggregate": {
+          "parent": {
+            "rows": 1679,
+            "rmse": 681.1598326043113,
+            "mae": 563.1058414514887,
+            "bias": -365.38394916105057
+          },
+          "candidate": {
+            "rows": 1679,
+            "rmse": 674.009312863584,
+            "mae": 562.5500533311617,
+            "bias": -347.4743531067246
+          },
+          "candidate_minus_parent": {
+            "rmse": -7.1505197407273045,
+            "mae": -0.5557881203269517
+          },
+          "relative_change_percent": {
+            "rmse": -1.0497565179949582,
+            "mae": -0.09870047145920659
+          },
+          "rmse_and_mae_noninferior": true
+        },
+        "by_validation_bearing": {
+          "Bearing1_4": {
+            "parent": {
+              "rows": 122,
+              "rmse": 241.98079883050283,
+              "mae": 175.58693393738477,
+              "bias": 166.54097851074988
+            },
+            "candidate": {
+              "rows": 122,
+              "rmse": 257.26012311811076,
+              "mae": 196.0110027905808,
+              "bias": 191.29081369300206
+            },
+            "candidate_minus_parent": {
+              "rmse": 15.27932428760792,
+              "mae": 20.42406885319602
+            },
+            "relative_change_percent": {
+              "rmse": 6.314271364278961,
+              "mae": 11.631884215530153
+            },
+            "rmse_and_mae_noninferior": false
+          },
+          "Bearing2_4": {
+            "parent": {
+              "rows": 42,
+              "rmse": 390.81504161336534,
+              "mae": 328.14713559610186,
+              "bias": 326.266107840995
+            },
+            "candidate": {
+              "rows": 42,
+              "rmse": 374.3480997720235,
+              "mae": 310.68328978009436,
+              "bias": 309.53147925832286
+            },
+            "candidate_minus_parent": {
+              "rmse": -16.46694184134185,
+              "mae": -17.463845816007506
+            },
+            "relative_change_percent": {
+              "rmse": -4.213487222334869,
+              "mae": -5.321955891610399
+            },
+            "rmse_and_mae_noninferior": true
+          },
+          "Bearing3_4": {
+            "parent": {
+              "rows": 1515,
+              "rmse": 710.8130722393482,
+              "mae": 600.82569119581,
+              "bias": -427.3932848508497
+            },
+            "candidate": {
+              "rows": 1515,
+              "rmse": 703.029958578418,
+              "mae": 599.0491742784196,
+              "bias": -409.0740859838854
+            },
+            "candidate_minus_parent": {
+              "rmse": -7.783113660930212,
+              "mae": -1.7765169173903814
+            },
+            "relative_change_percent": {
+              "rmse": -1.0949592747936192,
+              "mae": -0.295679253304668
+            },
+            "rmse_and_mae_noninferior": true
+          }
+        },
+        "aggregate_pass": true,
+        "bearing_guard_pass": false,
+        "would_pass_combined_guard": false,
+        "bearing_guard": {
+          "passed": false,
+          "status": "bearing_regression",
+          "minimum_rows": 10,
+          "global": {
+            "parent": {
+              "rmse": 681.1598326043113,
+              "mae": 563.1058414514887
+            },
+            "candidate": {
+              "rmse": 674.009312863584,
+              "mae": 562.5500533311617
+            },
+            "passed": true,
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "groups": {
+            "Bearing1_4": {
+              "rows": 122,
+              "unique_snapshots": 122,
+              "passed": false,
+              "status": "regression",
+              "parent": {
+                "rmse": 241.98079883050283,
+                "mae": 175.58693393738477
+              },
+              "candidate": {
+                "rmse": 257.26012311811076,
+                "mae": 196.0110027905808
+              },
+              "failed_metrics": [
+                "rmse",
+                "mae"
+              ]
+            },
+            "Bearing2_4": {
+              "rows": 42,
+              "unique_snapshots": 42,
+              "passed": true,
+              "status": "noninferior",
+              "parent": {
+                "rmse": 390.81504161336534,
+                "mae": 328.14713559610186
+              },
+              "candidate": {
+                "rmse": 374.3480997720235,
+                "mae": 310.68328978009436
+              },
+              "failed_metrics": []
+            },
+            "Bearing3_4": {
+              "rows": 1515,
+              "unique_snapshots": 1515,
+              "passed": true,
+              "status": "noninferior",
+              "parent": {
+                "rmse": 710.8130722393482,
+                "mae": 600.82569119581
+              },
+              "candidate": {
+                "rmse": 703.029958578418,
+                "mae": 599.0491742784196
+              },
+              "failed_metrics": []
+            }
+          },
+          "insufficient": [],
+          "unknown_rows": 0,
+          "coverage": {
+            "total_rows": 1679,
+            "recognized_rows": 1679,
+            "supported_rows": 1679,
+            "supported_groups": [
+              "Bearing1_4",
+              "Bearing2_4",
+              "Bearing3_4"
+            ],
+            "complete": true
+          },
+          "limitation": "Public bearing point estimates do not establish hidden-stage or unseen-bearing safety."
+        },
+        "additional_fit_calls": 0,
+        "adopted": false
+      }
+    ],
+    "fit_calls_within_this_run": 1,
+    "additional_fit_calls_for_interpolations": 0,
+    "reproduction_note": "The initial review persisted JSON only. This review reran the same 15-epoch continuation once to recover the model, then shared it across both interpolation points."
+  },
+  "experiment_cache": {
+    "cache_hit": false,
+    "cache_key": "9e4086876a70506638d25cd7e845da3c5f7812b64dab8f8dba37241b5d25c444",
+    "parent_sha256": "c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+    "train_sha256": "39590d7d4f541624a2173bb2538c48e6e7b69bad284bded0e4226945fa9bc9fd",
+    "code_sha256": "e86da064ed1a0e3cf39557db892b2d70ef12b3706f8781c1d523a54c3917907b",
+    "cache_enabled": false,
+    "cache_source": "fit",
+    "disk_budget": {
+      "entries": 8,
+      "bytes": 16777216
+    }
+  },
+  "local_timing_diagnostic": {
+    "candidate_and_validation_cpu_seconds": 0.10259099999999999,
+    "candidate_and_validation_wall_seconds": 0.11183266599982744,
+    "performance_benchmark": false,
+    "note": "Single local run; not a platform resource-efficiency benchmark."
+  },
+  "limitations": [
+    "Uses only the official public validation bearings; no hidden labels or platform score were accessed.",
+    "This does not demonstrate preservation of the previous scratch model's hidden RMSE 155.172446.",
+    "No legacy 600-epoch scratch training, multi-seed search, real gateway call or platform submission was run.",
+    "Fixed interpolation points are exploratory validation measurements and are not enabled as the default B policy.",
+    "The runtime context is local macOS, not the official 2-core/4GiB formal container."
+  ]
+}

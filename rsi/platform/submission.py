@@ -53,6 +53,10 @@ from rsi.metrics import from_predictions, primary as primary_metric
 from rsi.model import ExtendedModel
 from rsi.platform import agent_host as _agent_host
 from rsi.platform import plans as _plans
+from rsi.platform.c_safety import conservative_candidates, group_guard
+from rsi.platform.b_safety import bearing_guard
+from rsi.platform.experiment_cache import ExperimentCache
+from rsi import __version__
 
 TASKS = ("classification", "regression")
 
@@ -96,9 +100,9 @@ def _probe_retain_tasks() -> set[str]:
 
     ``RSI_V2_PROBE_RETAIN=A,C`` turns a trial into a hidden-baseline probe: the
     listed datasets never promote a candidate, so the trial's hidden metrics are
-    exactly the official static baseline for those datasets.  Used only to
-    measure baselines before the final formal attempt; it is not a production
-    setting.
+    those of the selected parent for those datasets.  The final v0.14.12 image
+    also enables this for C to preserve its baseline.  A retained round still
+    evaluates the parent and requests a real gateway diagnosis.
     """
     value = os.environ.get("RSI_V2_PROBE_RETAIN", "").strip().lower()
     if not value or value in {"0", "off", "false", "no", "none"}:
@@ -193,22 +197,81 @@ def _xy_rows(rows: list[dict], model: ExtendedModel, classes: list[str]) -> tupl
 
 
 def _evaluate(model: ExtendedModel, features: np.ndarray, labels: np.ndarray, task: str,
-              classes: list[str], postprocess: dict | None) -> tuple[dict, float, np.ndarray]:
+              classes: list[str], postprocess: dict | None,
+              profile: str | None = None) -> tuple[dict, float, np.ndarray]:
     predicted = apply_postprocess(postprocess or {"type": "none"}, model, features)
-    values = from_predictions(task, predicted, labels, classes)
+    values = from_predictions(task, predicted, labels, classes, profile=profile)
     primary = values.get("primary")
     if primary is None:
         primary = primary_metric(task, values)
     return values, float(primary), np.asarray(predicted)
 
 
-def _choose(rows: list[dict], direction: str, margin: float) -> int:
+def _c_candidate_acceptable(candidate: dict, parent: dict, margin: float) -> bool:
+    """Require a real RMSE gain and no MAE/NASA regression on the same rows."""
+    if candidate.get("group_guard", {}).get("passed") is False:
+        return False
+    values, baseline = candidate.get("values", {}), parent.get("values", {})
+    for metric in ("rmse", "mae", "nasa_score"):
+        new, old = values.get(metric), baseline.get(metric)
+        if new is None or old is None or not np.isfinite(new) or not np.isfinite(old):
+            return False
+        if new > old:
+            return False
+    return values["rmse"] < baseline["rmse"] - margin
+
+
+def _classification_guard(ctx, chosen: dict) -> dict:
+    """Final, route-independent public non-inferiority check (not a CI claim)."""
+    values, primary, predicted = _plans.evaluate(ctx, chosen.get("model") or ctx.model,
+                                                chosen.get("postprocess"))
+    chosen.update(values=values, primary=primary, predicted=predicted)
+    baseline = ctx.parent_values
+    support = np.bincount(np.asarray(ctx.y_val, dtype=int), minlength=len(ctx.classes))
+    threshold = max(10, int(np.ceil(len(ctx.y_val) * 0.05)))
+    supported = [str(i) for i, count in enumerate(support) if count >= threshold]
+    old_f1 = baseline.get("per_class_f1", {})
+    new_f1 = values.get("per_class_f1", {})
+    deltas = {key: float(new_f1.get(key, 0.0) - old_f1.get(key, 0.0))
+              for key in supported}
+    overall = float(values.get("macro_f1", float("nan"))) - float(baseline["macro_f1"])
+    class_mean = float(np.mean(list(deltas.values()))) if deltas else float("nan")
+    passed = bool(np.isfinite(overall) and np.isfinite(class_mean)
+                  and overall >= -ctx.margin and class_mean >= -ctx.margin
+                  and min(deltas.values(), default=-float("inf")) >= -2 * ctx.margin)
+    return {"passed": passed, "overall_delta": overall if np.isfinite(overall) else None,
+            "supported_class_mean_delta": class_mean if np.isfinite(class_mean) else None,
+            "per_class_delta": deltas, "minimum_class_support": threshold,
+            "margin": ctx.margin, "scope": "public point-estimate guard, not hidden-stage evidence"}
+
+
+def _build_identity() -> dict:
+    """Only publish the manifest's bounded, non-sensitive identity fields."""
+    path = Path(os.environ.get("RSI_BUILD_MANIFEST", "/opt/zhixun/app/build-manifest.json"))
+    try:
+        if path.stat().st_size > 65536:
+            return {"status": "oversized"}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(data.get("sdk", {}), dict):
+            return {"status": "invalid_manifest", "version": __version__}
+        identity = {key: data[key] for key in ("version", "git_commit", "git_dirty", "source_sha256")
+                    if key in data}
+        sdk = data.get("sdk") or {}
+        identity.update(sdk_version=sdk.get("version"), sdk_archive_sha256=sdk.get("archive_sha256"))
+        return identity
+    except (OSError, ValueError, TypeError):
+        return {"status": "not_available", "version": __version__}
+
+
+def _choose(rows: list[dict], direction: str, margin: float, *, task_key=None) -> int:
     """Deterministic fallback: best candidate that beats the parent margin."""
     parent = next((row for row in rows if row["kind"] == "retain"), rows[0])
     best_position = 0
     best_value = float(parent["primary"])
     for position, row in enumerate(rows):
         if position == 0:
+            continue
+        if task_key == "C" and not _c_candidate_acceptable(row, parent, margin):
             continue
         value = float(row["primary"])
         better = (value < best_value) if direction == "lower" else (value > best_value)
@@ -446,7 +509,7 @@ def _b_retain_mode() -> bool:
 
 def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                      metric: str = "macro_f1", direction: str = "higher",
-                     margin: float = 0.0) -> list[dict]:
+                     margin: float = 0.0, ctx=None) -> list[dict]:
     """Build candidate plan descriptors sorted by expected value (cheap first)."""
     task = model.meta.get("task")
     classes = list(model.meta.get("classes") or [])
@@ -455,22 +518,16 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
     # training projection.  Validation rows are only ever used for scoring and
     # selection below; they must never enter a gradient update.
     _assert_training_only(list(train), list(validation))
-    fit_x, fit_y, _ = _xy_rows(train, model, classes)
-    x_val, y_val, _ = _xy_rows(validation, model, classes)
+    ctx = ctx or _plans.PlanContext.from_rows(
+        task_key, model, list(train), list(validation), metric=metric,
+        direction=direction, margin=float(margin), classes=classes)
+    fit_x, fit_y, x_val, y_val = ctx.x_train, ctx.y_train, ctx.x_val, ctx.y_val
     print("train: fit boundary rows=%d validation_rows=%d "
-          "(validation_used_for_fit=False)" % (
-              len(fit_x), len(x_val)), file=sys.stderr, flush=True)
-    parent_values, parent_primary, parent_predicted = _evaluate(
-        model, x_val, y_val, task, classes, None)
-    plans: list[dict] = [{
-        "kind": "retain",
-        "label": "保留父模型（不做任何改动）",
-        "postprocess": {"type": "none"},
-        "values": parent_values,
-        "primary": parent_primary,
-        "predicted": parent_predicted,
-        "checkpoint": None,
-    }]
+          "(validation_used_for_fit=False)" % (len(fit_x), len(x_val)),
+          file=sys.stderr, flush=True)
+    plans: list[dict] = [_plans.retain_plan(ctx)]
+    parent_predicted = plans[0]["predicted"]
+    efficient_c = task_key == "C" and os.environ.get("RSI_V2_C_EFFICIENT", "1") == "1"
     candidates = []
     if task == "classification":
         for weight, mode in ((0.4, "batch_mean"), (0.2, "batch_std")):
@@ -517,9 +574,9 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                   "(baseline measurement)", file=sys.stderr, flush=True)
         # B: static shrink/damage over-fit the dominant validation bearing and
         # collapsed on its hidden tail (0.14.5 trial: hidden RMSE 735 vs 720 for
-        # retain).  Keep them behind RSI_V2_B_STATIC; the robust B arm is the
-        # from-scratch retrain below.
-        if not b_retain and (task_key != "B" or _plans.b_static_mode()):
+        # retain). Keep them behind RSI_V2_B_STATIC; the default B arm continues
+        # the real parent and must pass the final per-bearing guard.
+        if not b_retain and not efficient_c and (task_key != "B" or _plans.b_static_mode()):
             candidates.append({
                 "kind": "shrink",
                 "label": "train 目标均值收缩校准（α=0.3），不改权重",
@@ -534,26 +591,23 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                     "postprocess": "FIT_DAMAGE",
                     "checkpoint": None,
                 })
-            if _adapt_arms_enabled():
-                candidates.append({
-                    "kind": "continue_train",
-                    "label": "累积标签续训 15 epoch（用当前 /data/train 全部已揭示行）",
-                    "postprocess": {"type": "none"},
-                    "checkpoint": "CONTINUE_TRAIN",
-                    "epochs": 15,
-                })
+            candidates.append({
+                "kind": "continue_train", "label": "从实际父检查点短程续训 B",
+                "postprocess": {"type": "none"}, "checkpoint": "CONTINUE_TRAIN",
+                **_plans.b_continuation_parameters(),
+            })
         if task_key == "C" and not b_retain:
             candidates.append({
                 "kind": "continue_train",
-                "label": "官方 train 续训 40 epoch（lr=1e-3，checkpoint 兼容）",
+                "label": ("官方 train 续训 10 epoch（lr=3e-4，RMSE/MAE/NASA 联合检查）"
+                          if efficient_c else "官方 train 续训 40 epoch（lr=1e-3，checkpoint 兼容）"),
                 "postprocess": {"type": "none"},
                 "checkpoint": "CONTINUE_TRAIN_40",
+                "epochs": 10 if efficient_c else 40,
+                "learning_rate": 3e-4 if efficient_c else 1e-3,
             })
-    if task == "regression" and not (task_key == "B" and _b_retain_mode()):
+    if task == "regression" and not efficient_c and not (task_key == "B" and _b_retain_mode()):
         try:
-            ctx = _plans.PlanContext.from_rows(
-                task_key, model, list(train), list(validation), metric=metric,
-                direction=direction, margin=float(margin), classes=[])
             for plan in _plans.scratch_plans(ctx):
                 if not plan.get("ok"):
                     continue
@@ -564,7 +618,7 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                     "checkpoint": "SCRATCH",
                     "model": plan["model"],
                     "primary": plan["primary"],
-                    "values": plan["values"],
+                    "values": plan["values"], "predicted": plan["predicted"],
                     "hypothesis": plan.get("hypothesis") or plan["label"],
                 })
         except Exception as error:
@@ -572,10 +626,6 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                   file=sys.stderr, flush=True)
     if task == "classification" and _plans.capacity_arm_mode() not in ("", "off", "none", "0", "false"):
         try:
-            ctx = _plans.PlanContext.from_rows(
-                task_key, model, train, validation, metric=metric,
-                direction=direction, margin=float(margin),
-                classes=list(model.meta.get("classes") or []))
             for plan in _plans.capacity_plans(ctx):
                 if not plan.get("ok"):
                     continue
@@ -586,7 +636,7 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
                     "checkpoint": "CAPACITY",
                     "model": plan["model"],
                     "primary": plan["primary"],
-                    "values": plan["values"],
+                    "values": plan["values"], "predicted": plan["predicted"],
                     "hypothesis": plan.get("hypothesis") or plan["label"],
                 })
         except Exception as error:
@@ -596,29 +646,60 @@ def _candidate_plans(task_key: str, model: ExtendedModel, train, validation, *,
         postprocess = plan["postprocess"]
         checkpoint_kind = plan.get("checkpoint")
         if checkpoint_kind in ("CONTINUE_TRAIN_40", "CONTINUE_TRAIN"):
-            source = Path(model.meta.get("_source_path") or "")
-            if not source.is_file():
-                candidate_model = model
-            else:
-                try:
-                    candidate_model = ExtendedModel.from_checkpoint(source)
-                    candidate_model.meta["seed"] = _seed()
-                    candidate_model.set_learning_rate(1e-3)
-                    epochs = int(plan.get("epochs", 40 if checkpoint_kind == "CONTINUE_TRAIN_40" else 20))
-                    y_fit = (np.asarray(fit_y, dtype=np.int64) if task == "classification"
-                             else np.asarray(fit_y, dtype=np.float64))
-                    # COMPLIANCE: fit_x == public training projection only.
-                    candidate_model.fit(fit_x, y_fit, epochs=epochs)
-                except Exception:
-                    candidate_model = model
+            params = {"epochs": int(plan.get("epochs", 20)),
+                      "learning_rate": float(plan.get("learning_rate", 1e-3))}
+            # B preserves the actual parent's seed; A/C retain the documented
+            # run seed. In all cases weights, scaling and Adam come from parent.
+            if task_key != "B":
+                params["seed"] = _seed()
+            try:
+                candidate_model, cache_note = _plans.cached_continuation(ctx, params)
+                plan["experiment_cache"] = cache_note
+            except Exception as exc:
+                print("train: continuation rejected: %s: %s" %
+                      (type(exc).__name__, exc), file=sys.stderr, flush=True)
+                continue
         else:
             candidate_model = plan.get("model") or model
+        if efficient_c and checkpoint_kind == "CONTINUE_TRAIN_40":
+            try:
+                max_alpha = float(os.environ.get("RSI_V2_C_MAX_ALPHA", "0.25"))
+                if max_alpha not in (0.25, 0.5):
+                    raise ValueError("RSI_V2_C_MAX_ALPHA must be 0.25 or 0.5")
+                for alpha, conservative in conservative_candidates(model, candidate_model):
+                    if alpha > max_alpha:
+                        continue
+                    values, primary, predicted = _evaluate(
+                        conservative, x_val, y_val, task, classes, postprocess, profile=task_key)
+                    report = group_guard(parent_predicted, predicted, y_val,
+                                         [str(row.get("id", "")) for row in validation],
+                                         enforce_rul=True)
+                    plans.append({**plan, "kind": "continue_train_conservative",
+                                  "label": "C 续训后保守权重更新 alpha=%s" % alpha,
+                                  "model": conservative, "values": values, "primary": primary,
+                                  "predicted": predicted, "y_train": fit_y,
+                                  "alpha": alpha, "group_guard": report})
+            except Exception as exc:
+                print("train: conservative C rejected: %s: %s" %
+                      (type(exc).__name__, exc), file=sys.stderr, flush=True)
+            continue
         if postprocess == "FIT_DAMAGE":
             from rsi.inference import fit_damage_shrink
             dataset = _as_dataset(fit_x, fit_y, classes, task)
             postprocess = fit_damage_shrink(dataset)
-        values, primary, predicted = _evaluate(
-            candidate_model, x_val, y_val, task, classes, postprocess)
+        if all(key in plan for key in ("values", "primary", "predicted")):
+            values, primary, predicted = plan["values"], plan["primary"], plan["predicted"]
+        else:
+            values, primary, predicted = _evaluate(
+                candidate_model, x_val, y_val, task, classes, postprocess, profile=task_key)
+        if task_key == "C":
+            plan["group_guard"] = group_guard(
+                parent_predicted, predicted, y_val,
+                [str(row.get("id", "")) for row in validation], enforce_rul=True)
+        if task_key == "B":
+            plan["group_guard"] = bearing_guard(
+                parent_predicted, predicted, y_val,
+                [str(row.get("id", "")) for row in validation])
         plans.append({
             **plan,
             "postprocess": postprocess,
@@ -650,7 +731,7 @@ def _change_summary(chosen: dict) -> str:
     kind = chosen["kind"]
     if kind == "retain":
         return "保留父模型，不改权重与推理期后处理"
-    if kind == "continue_train":
+    if kind.startswith("continue_train"):
         return "基于官方 train 的短续训，父谱系与结构兼容"
     if kind == "scratch_retrain":
         return "从零重训官方 v1 单隐层 tanh（仅公开 train，validation 只用于选择）"
@@ -718,6 +799,15 @@ def _data_probe(train_rows: list[dict], validation_rows: list[dict],
             hasher.update(str(row.get("id") or "").encode("utf-8"))
         return hasher.hexdigest()[:16]
 
+    def content_digest(rows: list[dict]) -> str:
+        hasher = hashlib.sha256()
+        for row in rows:
+            payload = json.dumps(row, sort_keys=True, ensure_ascii=False,
+                                 separators=(",", ":"), allow_nan=False).encode("utf-8")
+            hasher.update(len(payload).to_bytes(8, "big"))
+            hasher.update(payload)
+        return hasher.hexdigest()
+
     label_counts: dict[str, int] = {}
     for row in train_rows:
         key = str(row.get("answer"))
@@ -727,8 +817,10 @@ def _data_probe(train_rows: list[dict], validation_rows: list[dict],
         "train_rows": len(train_rows),
         "duplicate_rows": int(duplicates),
         "train_id_sha256": digest(train_rows),
+        "train_content_sha256": content_digest(train_rows),
         "validation_rows": len(validation_rows),
         "validation_id_sha256": digest(validation_rows),
+        "validation_content_sha256": content_digest(validation_rows),
         "label_counts": label_counts,
     }
 
@@ -1015,11 +1107,39 @@ def _apply_drift_policy(ctx, chosen: dict, plans=None) -> tuple[dict, str]:
         return chosen, ""
 
 
+def _json_safe(value, notes=None, path="$", depth=0):
+    if depth > 20:
+        return "[depth limit]"
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item, notes, path + "." + str(key), depth + 1)
+                for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item, notes, path + "[%d]" % i, depth + 1)
+                for i, item in enumerate(value)]
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not np.isfinite(value):
+        if notes is not None and len(notes) < 16:
+            notes.append(path)
+        return None
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    return str(value)
+
+
 def _trim_config(payload: dict, limit: int = 60_000) -> dict:
-    text = json.dumps(payload, ensure_ascii=False, default=str)
-    if len(text) <= limit:
-        return payload
-    return {"truncated": True, "preview": text[:limit - 40] + "...(truncated)"}
+    notes = []
+    safe = _json_safe(payload, notes)
+    if notes:
+        safe["serialization_notes"] = {"nonfinite_replaced_with_null": notes}
+    text = json.dumps(safe, ensure_ascii=False, allow_nan=False)
+    if len(text.encode("utf-8")) <= limit:
+        return safe
+    # Bound encoded bytes, not characters. Preserve useful summary identities.
+    brief = {key: safe[key] for key in ("controller", "chosen", "decision", "build_identity",
+             "parent_checkpoint_sha256", "candidate_checkpoint_sha256", "resource") if key in safe}
+    brief.update(truncated=True, original_bytes=len(text.encode("utf-8")))
+    return brief
 
 
 def _gateway_model(rnd, messages, max_tokens: int):
@@ -1045,7 +1165,9 @@ def _new_state_dir(work: Path, rnd) -> Path:
     destination = work / ("state-round-%d-%d" % (int(rnd.round_index), os.getpid()))
     try:
         return rnd.state_workspace(str(destination))
-    except Exception:  # first round may omit /state; fall back to an empty dir
+    except Exception as exc:  # no reusable state is safe, but must be observable
+        print("train: state restore unavailable: %s" % type(exc).__name__,
+              file=sys.stderr, flush=True)
         destination.mkdir(parents=True, exist_ok=True)
         return destination
 
@@ -1108,10 +1230,17 @@ def train(rnd):
         history = []
 
     # -- route: deterministic pipeline (default) or autonomous PI-agent kernel
-    controller = _controller_mode(task)
+    probe_retain = _probe_retain_tasks()
+    probe_retain_applied = task_key in probe_retain
+    efficient_c = task_key == "C" and os.environ.get("RSI_V2_C_EFFICIENT", "1") == "1"
+    controller = "pipeline" if probe_retain_applied or efficient_c else _controller_mode(task)
     kernel_round = None
     kernel_ctx = None
-    kernel_state = None
+    work = _work_dir()
+    kernel_state = _open_agent_state(work, rnd) if controller == "kernel" else None
+    state_dir = (Path(kernel_state.dir) if kernel_state is not None and kernel_state.dir
+                 else _new_state_dir(work, rnd))
+    experiment_cache = ExperimentCache(state_dir / "experiment_cache")
     gate_decisions = None
     if controller == "kernel":
         try:
@@ -1119,8 +1248,8 @@ def train(rnd):
                 task_key, model, train_rows, validation_rows,
                 metric=metric, direction=direction,
                 margin=float(defaults["margin"]),
-                classes=list(model.meta.get("classes") or []))
-            kernel_state = _open_agent_state(_work_dir(), rnd)
+                classes=list(model.meta.get("classes") or []),
+                experiment_cache=experiment_cache)
             brief = _kernel_brief(task_key, model, kernel_ctx, history,
                                   int(rnd.round_index),
                                   int(getattr(rnd, "rounds_total", 10) or 10),
@@ -1208,7 +1337,8 @@ def train(rnd):
                     task_key, model, past_rows, holdout_rows,
                     metric=metric, direction=direction,
                     margin=float(defaults["margin"]),
-                    classes=list(model.meta.get("classes") or []))
+                    classes=list(model.meta.get("classes") or []),
+                experiment_cache=experiment_cache)
                 recent = _safety_net_plans(recent_ctx)
                 if len(recent) > 1:
                     r_labels = list(model.meta.get("classes") or [])
@@ -1258,9 +1388,26 @@ def train(rnd):
         if all(plan is not chosen for plan in policy_plans):
             policy_plans.append(chosen)
     else:
-        plans = _candidate_plans(task_key, model, train_rows, validation_rows,
-                                  metric=metric, direction=direction,
-                                  margin=float(defaults["margin"]))
+        if probe_retain_applied:
+            # A fixed-retain run cannot publish a trained candidate. Evaluate
+            # its parent and spend the required gateway call on diagnosis.
+            kernel_ctx = _plans.PlanContext.from_rows(
+                task_key, model, train_rows, validation_rows,
+                metric=metric, direction=direction,
+                margin=float(defaults["margin"]),
+                classes=list(model.meta.get("classes") or []),
+                experiment_cache=experiment_cache)
+            plans = [_plans.retain_plan(kernel_ctx)]
+        else:
+            if kernel_ctx is None:
+                kernel_ctx = _plans.PlanContext.from_rows(
+                    task_key, model, train_rows, validation_rows, metric=metric,
+                    direction=direction, margin=float(defaults["margin"]),
+                    classes=list(model.meta.get("classes") or []),
+                    experiment_cache=experiment_cache)
+            plans = _candidate_plans(task_key, model, train_rows, validation_rows,
+                                     metric=metric, direction=direction,
+                                     margin=float(defaults["margin"]), ctx=kernel_ctx)
         policy_plans = plans
         table = _format_plan_table(plans, metric)
         prompt = (
@@ -1269,6 +1416,15 @@ def train(rnd):
             "请只用一行 JSON 回复：{\"choice\": <候选编号>, \"hypothesis\": \"...\", \"reason\": \"...\"}。"
             "只能选改进父模型的候选；不确定时选 0。"
         ) % (task_key, int(rnd.round_index), metric, direction, table, table)
+        if probe_retain_applied:
+            prompt = (
+                "本轮为 %s 第 %d 轮，配置要求保留当前父模型，跳过不可上线的候选训练。"
+                "请根据以下真实公开测量诊断漂移及保留模型的风险，不声称完成训练。"
+                "父模型指标=%s；特征漂移=%s；历史记录数=%d。"
+                "请用一行 JSON 返回 choice=0、hypothesis 和 reason。"
+            ) % (task_key, int(rnd.round_index),
+                 json.dumps(plans[0]["values"], ensure_ascii=False),
+                 json.dumps(_drift_brief(kernel_ctx), ensure_ascii=False), len(history))
         receipt = _gateway_model(
             rnd,
             [{"role": "user", "content": prompt[:6000]}],
@@ -1279,7 +1435,7 @@ def train(rnd):
         try:
             if _gate_mode() == "off" or task != "classification":
                 gate_decisions = None
-                fallback_choice = _choose(plans, direction, defaults["margin"])
+                fallback_choice = _choose(plans, direction, defaults["margin"], task_key=task_key)
             else:
                 _x_val, y_val, _ = _xy_rows(validation_rows, model, class_labels)
                 fallback_choice, gate_decisions = _gate_choose(
@@ -1288,7 +1444,7 @@ def train(rnd):
             print("train: gate unavailable, falling back to point estimate: %s: %s"
                   % (type(exc).__name__, exc), file=sys.stderr, flush=True)
             gate_decisions = None
-            fallback_choice = _choose(plans, direction, defaults["margin"])
+            fallback_choice = _choose(plans, direction, defaults["margin"], task_key=task_key)
         chosen = plans[fallback_choice]
         if gate_decisions is not None:
             print("train: gate " + ", ".join(
@@ -1315,7 +1471,8 @@ def train(rnd):
                 better = (candidate_primary > parent_primary + margin
                           if direction == "higher"
                           else candidate_primary < parent_primary - margin)
-                if better:
+                if better and (task_key != "C" or _c_candidate_acceptable(
+                        plans[llm_choice], plans[0], margin)):
                     chosen = plans[llm_choice]
         if gate_decisions is not None:
             decision_note_gate = {}
@@ -1325,7 +1482,18 @@ def train(rnd):
                 decision_note_gate[str(plans[position].get("kind"))] = decision.to_dict()
         else:
             decision_note_gate = {}
-        candidates = [{"kind": plan["kind"], "primary": float(plan["primary"])}
+        candidates = [{"kind": plan["kind"], "primary": float(plan["primary"]),
+                       "metrics": plan.get("values", {}),
+                       "experiment_cache": plan.get("experiment_cache"),
+                       "alpha": plan.get("alpha"),
+                       "group_guard": plan.get("group_guard"),
+                       "training_action": ("cache_reused" if plan.get("experiment_cache", {}).get("cache_hit")
+                                           else "trained" if plan.get("experiment_cache")
+                                           else "not_trained" if plan["kind"] == "retain"
+                                           else "not_recorded"),
+                       "parameters": {"epochs": plan.get("epochs"),
+                                      "learning_rate": plan.get("learning_rate"),
+                                      "seed": (plan.get("model") or model).meta.get("seed")}}
                       for plan in plans]
         # Kernel calls are real gateway calls and must stay in the ledger even
         # when the kernel failed to act; the deterministic pipeline then owns the
@@ -1334,14 +1502,24 @@ def train(rnd):
         call_ids = [receipt.call_id] + kernel_call_ids
         decision_note = {"decision": "retain" if chosen is plans[0] else "promote",
                          "source": "pipeline",
-                         "reason": "paired block-bootstrap 门控 + 模型选择",
+                         "reason": ("按 C 联合门槛检查 RMSE 改善及 MAE/NASA 不退化"
+                                    if task_key == "C" else
+                                    ("分块 bootstrap + 模型选择" if gate_decisions is not None
+                                               else "公开指标门槛与分组检查 + 模型选择")
+                                    if gate_decisions is not None else "主指标改善门槛 + 模型选择"),
                          "gate": decision_note_gate}
         if kernel_inactive_note:
             decision_note["kernel_inactive"] = kernel_inactive_note
         controller_note = "kernel->pipeline" if kernel_inactive_note else "pipeline"
         choice_note = "pipeline 选择 %s" % chosen["kind"]
+        if probe_retain_applied:
+            controller_note = "probe_retain"
+            decision_note.update(
+                source="probe_retain",
+                reason="配置要求保留父模型；网关诊断：%s" % receipt.text[:1000])
+            choice_note = decision_note["reason"]
 
-    policy_note = ""
+    policy_note = "probe_retain" if probe_retain_applied else ""
     try:
         policy_ctx = kernel_ctx
         if policy_ctx is None:
@@ -1349,13 +1527,70 @@ def train(rnd):
                 task_key, model, train_rows, validation_rows,
                 metric=metric, direction=direction,
                 margin=float(defaults["margin"]),
-                classes=list(model.meta.get("classes") or []))
-        chosen, policy_note = _apply_drift_policy(policy_ctx, chosen, policy_plans)
+                classes=list(model.meta.get("classes") or []),
+                experiment_cache=experiment_cache)
+        if not probe_retain_applied:
+            chosen, policy_note = _apply_drift_policy(policy_ctx, chosen, policy_plans)
         if policy_note:
             print("train: %s" % policy_note, file=sys.stderr, flush=True)
     except Exception as exc:
         print("train: drift policy unavailable: %s: %s" % (type(exc).__name__, exc),
               file=sys.stderr, flush=True)
+
+    # Apply the C check after every route and policy override, including kernel
+    # choices. Missing or overflowing NASA evidence cannot authorize promotion.
+    if task_key == "C" and str(chosen.get("kind")) != "retain":
+        audit_ctx = kernel_ctx or policy_ctx
+        parent_plan = plans[0] if plans else _plans.retain_plan(audit_ctx)
+        chosen["values"], chosen["primary"], chosen["predicted"] = _plans.evaluate(
+            audit_ctx, chosen.get("model") or model, chosen.get("postprocess"))
+        chosen["group_guard"] = group_guard(
+            parent_plan["predicted"], chosen["predicted"], audit_ctx.y_val,
+            [str(row.get("id", "")) for row in validation_rows], enforce_rul=True)
+        accepted = _c_candidate_acceptable(chosen, parent_plan, float(defaults["margin"]))
+        decision_note["c_metric_gate"] = {
+            "minimum_rmse_gain": float(defaults["margin"]), "passed": accepted,
+            "parent": parent_plan.get("values", {}), "candidate": chosen.get("values", {}),
+            "group_guard": chosen.get("group_guard"),
+        }
+        if not accepted:
+            decision_note.pop("experiment_id", None)
+            decision_note.pop("delta", None)
+            chosen = parent_plan
+            decision_note.update(decision="retain", reason="C 联合指标检查未通过，保留父模型")
+            policy_note = "c_metric_guard->retain"
+            choice_note = decision_note["reason"]
+
+    if task_key == "A" and str(chosen.get("kind")) != "retain":
+        audit_ctx = kernel_ctx or policy_ctx
+        safety = _classification_guard(audit_ctx, chosen)
+        decision_note["a_final_guard"] = safety
+        if not safety["passed"]:
+            chosen = _plans.retain_plan(audit_ctx)
+            decision_note.pop("experiment_id", None)
+            decision_note.update(decision="retain", reason="A 最终类别保持检查未通过")
+            choice_note = decision_note["reason"]
+            policy_note = "a_final_guard->retain"
+    if task_key == "B" and str(chosen.get("kind")) != "retain":
+        audit_ctx = kernel_ctx or policy_ctx
+        values, chosen["primary"], chosen["predicted"] = _plans.evaluate(
+            audit_ctx, chosen.get("model") or model, chosen.get("postprocess"))
+        chosen["values"] = values
+        parent_values = audit_ctx.parent_values
+        passed = all(values.get(key) is not None and np.isfinite(values[key])
+                     and values[key] <= parent_values[key] for key in ("rmse", "mae"))
+        bearing_report = bearing_guard(
+            audit_ctx.parent_predicted, chosen["predicted"], audit_ctx.y_val,
+            [str(row.get("id", "")) for row in validation_rows])
+        passed = passed and bearing_report["passed"]
+        decision_note["b_final_guard"] = {"passed": bool(passed), "group_guard": bearing_report,
+                                         "parent": parent_values, "candidate": values}
+        if not passed:
+            chosen = _plans.retain_plan(audit_ctx)
+            decision_note.pop("experiment_id", None)
+            decision_note.update(decision="retain", reason="B 总体或轴承分组 RMSE/MAE 保持检查未通过")
+            choice_note = decision_note["reason"]
+            policy_note = "b_final_guard->retain"
 
     # The gate also vetoes *any* non-policy arm that a stale point estimate or the
     # LLM might have picked.  A drift-policy override is exempt because it carries
@@ -1397,38 +1632,10 @@ def train(rnd):
             print("train: warmup unavailable: %s: %s" % (type(exc).__name__, exc),
                   file=sys.stderr, flush=True)
 
-    # Hidden-baseline probe: ``RSI_V2_PROBE_RETAIN`` forces the listed datasets
-    # to keep the official parent artifact in every round.  A trial then reports
-    # the platform's static-baseline hidden metric for those datasets, which is
-    # the only trustworthy way to decide whether a candidate is above baseline.
-    probe_retain = _probe_retain_tasks()
-    probe_retain_applied = False
-    if task_key in probe_retain and str(chosen.get("kind") or "") != "retain":
-        try:
-            retain = _plans.retain_plan(policy_ctx)
-            decision_note["probe_retain"] = {
-                "round_index": int(rnd.round_index),
-                "tasks": sorted(probe_retain),
-                "kept": retain.get("kind"),
-                "replaced": chosen.get("kind"),
-            }
-            chosen = retain
-            policy_note = (policy_note + "+" if policy_note else "") + "probe_retain"
-            probe_retain_applied = True
-            print("train: probe_retain %s -> keep parent artifact (round %d)"
-                  % (task_key, int(rnd.round_index)), file=sys.stderr, flush=True)
-        except Exception as exc:
-            print("train: probe_retain unavailable: %s: %s"
-                  % (type(exc).__name__, exc), file=sys.stderr, flush=True)
-
-    work = _work_dir()
     candidate_dir = Path(tempfile.mkdtemp(prefix="candidate-", dir=work))
-    if kernel_state is not None and kernel_state.dir:
-        state_dir = Path(kernel_state.dir)
-    else:
-        state_dir = _new_state_dir(work, rnd)
     checkpoint_model = chosen.get("model") or model
-    if chosen.get("checkpoint") or str(chosen.get("kind", "")).startswith("continue_train"):
+    if (chosen.get("checkpoint") or chosen.get("checkpoint_changed")
+            or str(chosen.get("kind", "")).startswith("continue_train")):
         checkpoint_model.save(candidate_dir / CHECKPOINT_NAME)
     else:
         shutil.copyfile(parent_path, candidate_dir / CHECKPOINT_NAME)
@@ -1444,7 +1651,8 @@ def train(rnd):
     }
     meta = {
         "harness": "zhixun-rsi-harness",
-        "version": "0.14.12",
+        "version": __version__,
+        "build_identity": _build_identity(),
         "task_key": task_key,
         "task": task,
         "metric": metric,
@@ -1463,8 +1671,8 @@ def train(rnd):
         "candidate_checkpoint_sha256": None,  # filled after the file is written
         "data_boundary": {
             "fit_projection": "public/train.jsonl",
-            "fit_rows": int(probe.get("train_rows") or 0),
-            "fit_id_sha256": probe.get("train_id_sha256"),
+            "fit_rows": 0 if probe_retain_applied else int(probe.get("train_rows") or 0),
+            "fit_id_sha256": None if probe_retain_applied else probe.get("train_id_sha256"),
             "validation_projection": "public/validation.jsonl",
             "validation_rows": int(probe.get("validation_rows") or 0),
             "validation_id_sha256": probe.get("validation_id_sha256"),
@@ -1499,7 +1707,12 @@ def train(rnd):
     configuration = _trim_config({
         "controller": controller_note,
         "model_usage": model_usage,
-        "code_changes": ["rsi/platform/submission.py", "rsi/platform/plans.py"],
+        "build_identity": meta["build_identity"],
+        "experiment_cache": chosen.get("experiment_cache"),
+        "c_update_alpha": chosen.get("alpha"),
+        "a_final_guard": decision_note.get("a_final_guard"),
+        "b_final_guard": decision_note.get("b_final_guard"),
+        "code_changes": ["rsi/platform/submission.py", "rsi/platform/plans.py", "rsi/metrics.py"],
         "candidate_checkpoint_sha256": meta["candidate_checkpoint_sha256"],
         "parent_checkpoint_sha256": rnd.parent.checkpoint_sha256,
         "warmup": {"applied": warmup_applied, "rounds": warmup_rounds},
@@ -1512,6 +1725,7 @@ def train(rnd):
         "policy": policy_note[:200],
         "decision": {key: decision_note.get(key) for key in
                      ("decision", "experiment_id", "reason", "source", "delta")},
+        "c_metric_gate": decision_note.get("c_metric_gate"),
         "kernel": None if kernel_round is None else {
             "calls": kernel_round.calls,
             "call_ids": kernel_call_ids[:8],
@@ -1523,8 +1737,16 @@ def train(rnd):
         "llm_choice": llm_choice,
         "fallback_choice": fallback_choice,
         "data_probe": {key: probe.get(key) for key in
-                       ("train_rows", "duplicate_rows", "validation_rows")},
+                       ("train_rows", "duplicate_rows", "validation_rows",
+                        "train_content_sha256", "validation_content_sha256")},
     })
+    # This local journal is part of native state; it makes no external upload.
+    journal = {"version": __version__, "dataset": task_key, "round": int(rnd.round_index),
+               "configuration": configuration, "selected_metrics": chosen.get("values"),
+               "hypothesis": chosen.get("hypothesis") or chosen.get("label"),
+               "change_summary": _change_summary(chosen)}
+    with (state_dir / "round_records.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(_json_safe(journal), ensure_ascii=False, allow_nan=False) + "\n")
     label = str(chosen.get("label") or chosen.get("kind") or "retain")
     primary_value = chosen.get("primary")
     primary_text = ("%.6f" % float(primary_value)) if primary_value is not None else "n/a"

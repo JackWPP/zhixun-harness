@@ -96,11 +96,16 @@ def test_frozen_stream_roundtrip(tmp_path):
 
     result = run_task_stream({
         "key": "A", "source": "official", "n_batches": 2, "arm": "frozen",
+        # This round trip exercises two arrival batches; the runner normally
+        # reserves two final batches as hidden, which are reported separately.
+        "hidden_tail": 0,
         "state_dir": str(tmp_path), "llm_mode": "off", "experiments_cap": 1,
         "memory": False, "retention_every": 0, "verbose": False,
     })
     assert result["errors"] == []
     assert len(result["batches"]) == 2
+    assert result["hidden"] == []
+    assert all(item["phase"] == "arrival" for item in result["batches"])
     assert all(item["decision"] == "retain" for item in result["batches"])
     assert all(item["prediction_count"] > 0 for item in result["batches"])
     assert result["report_path"] and Path(result["report_path"]).is_file()
