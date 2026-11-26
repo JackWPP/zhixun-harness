@@ -1,0 +1,214 @@
+{
+  "author": "Arthur",
+  "started_at_utc": "2026-11-26T16:59:21.074475+00:00",
+  "baseline_commit": "17cc307b10caed360405d739bdfb09f457910bad",
+  "task": "C",
+  "rounds_per_variant": 1,
+  "execution_order": "serial",
+  "complete": true,
+  "inputs": {
+    "public/train.jsonl": {
+      "sha256": "fcfaeaf1e50a0cc01766dfba5fd34c7369f1fe14bf583111837e847865fac281",
+      "bytes": 38081620,
+      "rows": 113089
+    },
+    "public/validation.jsonl": {
+      "sha256": "0cc747f9998c5d7ee1e4eac6aec0db9f5ed4d2de149a1b1cbe689cce6b6aaca7",
+      "bytes": 7771735,
+      "rows": 23049
+    },
+    "checkpoint.npz": {
+      "sha256": "98ec6e30e38aee56ca15b7d624a8f412226d46fe97b170667a567601c700bc4e",
+      "bytes": 28848
+    }
+  },
+  "limitations": [
+    "Single observation per variant on a local CPU; no repeated-run variance estimate.",
+    "Complete official public train/validation projections and a fresh official parent per variant; no hidden data.",
+    "Fake gateway, artifact/state upload, round finish and three-row prediction protocol check are included.",
+    "End-to-end wall time includes emulator setup and prediction; reported CPU/wall end before final artifact/state upload.",
+    "Reported CPU is participant process_time, not total host/container CPU; timings are not platform scores.",
+    "Upstream and current paths also differ in SDK/protocol implementation; this is a complete-path comparison.",
+    "Cold state for every variant; no cross-round cache reuse is measured."
+  ],
+  "results": [
+    {
+      "variant": "upstream_late_retain",
+      "runtime": {
+        "python": "3.12.14",
+        "numpy": "1.26.4",
+        "system": "Darwin",
+        "machine": "arm64"
+      },
+      "source_identity": {
+        "source_sha256": "537b4caca04c2e484ffc9358320f33e8763f15554539fefc21d9ffa5967a2e89",
+        "sdk_version": "1.0.4"
+      },
+      "configuration": {
+        "BASELINE_CPU_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "RSI_V2_B_RETAIN": "0",
+        "RSI_V2_CAPACITY_ARM": "ls10",
+        "RSI_V2_CONTROLLER": "auto",
+        "RSI_V2_C_EFFICIENT": "0",
+        "RSI_V2_C_MAX_ALPHA": "0.25",
+        "RSI_V2_EXPERIMENT_CACHE": "1",
+        "RSI_V2_PROBE_RETAIN": "C",
+        "RSI_V2_SCRATCH_ARM": "on",
+        "RSI_V2_WARMUP_ROUNDS": "0",
+        "VECLIB_MAXIMUM_THREADS": "1"
+      },
+      "end_to_end_seconds": 37.7833187920005,
+      "reported_training_resource": {
+        "cpu_seconds": 36.934,
+        "wall_seconds": 37.209,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "gateway_calls": 1
+      },
+      "parent_checkpoint_sha256": "98ec6e30e38aee56ca15b7d624a8f412226d46fe97b170667a567601c700bc4e",
+      "candidate_checkpoint_sha256": "98ec6e30e38aee56ca15b7d624a8f412226d46fe97b170667a567601c700bc4e",
+      "chosen": "retain",
+      "probe_retain_applied": true,
+      "candidate_evaluations": [
+        {
+          "kind": "retain",
+          "primary": 52.86857256611151
+        },
+        {
+          "kind": "shrink",
+          "primary": 67.38112734758192
+        },
+        {
+          "kind": "continue_train",
+          "primary": 51.358784790385414
+        },
+        {
+          "kind": "scratch_retrain",
+          "primary": 51.19801565217985
+        }
+      ],
+      "gateway_calls_verified": 1,
+      "prediction_lines": 3,
+      "protocol_round_completed": true
+    },
+    {
+      "variant": "current_early_retain",
+      "runtime": {
+        "python": "3.12.14",
+        "numpy": "1.26.4",
+        "system": "Darwin",
+        "machine": "arm64"
+      },
+      "source_identity": {
+        "source_sha256": "bff39fe5da847da5080ef74df352d380b9be7f74b91a1205bb8c05e0f812d6f4",
+        "sdk_version": "1.0.5"
+      },
+      "configuration": {
+        "BASELINE_CPU_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "RSI_V2_B_RETAIN": "0",
+        "RSI_V2_CAPACITY_ARM": "ls10",
+        "RSI_V2_CONTROLLER": "auto",
+        "RSI_V2_C_EFFICIENT": "1",
+        "RSI_V2_C_MAX_ALPHA": "0.25",
+        "RSI_V2_EXPERIMENT_CACHE": "1",
+        "RSI_V2_PROBE_RETAIN": "C",
+        "RSI_V2_SCRATCH_ARM": "off",
+        "RSI_V2_WARMUP_ROUNDS": "0",
+        "VECLIB_MAXIMUM_THREADS": "1"
+      },
+      "end_to_end_seconds": 2.911331582999992,
+      "reported_training_resource": {
+        "cpu_seconds": 2.361,
+        "wall_seconds": 2.369,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "gateway_calls": 1
+      },
+      "parent_checkpoint_sha256": "98ec6e30e38aee56ca15b7d624a8f412226d46fe97b170667a567601c700bc4e",
+      "candidate_checkpoint_sha256": "98ec6e30e38aee56ca15b7d624a8f412226d46fe97b170667a567601c700bc4e",
+      "chosen": "retain",
+      "probe_retain_applied": true,
+      "candidate_evaluations": [
+        {
+          "kind": "retain",
+          "primary": 52.86857256611151
+        }
+      ],
+      "gateway_calls_verified": 1,
+      "prediction_lines": 3,
+      "protocol_round_completed": true,
+      "reduction_vs_upstream_percent": {
+        "reported_cpu_seconds": 93.60751610981751,
+        "end_to_end_seconds": 92.2946642166956
+      }
+    },
+    {
+      "variant": "current_conservative_c",
+      "runtime": {
+        "python": "3.12.14",
+        "numpy": "1.26.4",
+        "system": "Darwin",
+        "machine": "arm64"
+      },
+      "source_identity": {
+        "source_sha256": "bff39fe5da847da5080ef74df352d380b9be7f74b91a1205bb8c05e0f812d6f4",
+        "sdk_version": "1.0.5"
+      },
+      "configuration": {
+        "BASELINE_CPU_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "RSI_V2_B_RETAIN": "0",
+        "RSI_V2_CAPACITY_ARM": "ls10",
+        "RSI_V2_CONTROLLER": "auto",
+        "RSI_V2_C_EFFICIENT": "1",
+        "RSI_V2_C_MAX_ALPHA": "0.25",
+        "RSI_V2_EXPERIMENT_CACHE": "1",
+        "RSI_V2_PROBE_RETAIN": "",
+        "RSI_V2_SCRATCH_ARM": "off",
+        "RSI_V2_WARMUP_ROUNDS": "0",
+        "VECLIB_MAXIMUM_THREADS": "1"
+      },
+      "end_to_end_seconds": 3.8595618330000434,
+      "reported_training_resource": {
+        "cpu_seconds": 3.306,
+        "wall_seconds": 3.322,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "gateway_calls": 1
+      },
+      "parent_checkpoint_sha256": "98ec6e30e38aee56ca15b7d624a8f412226d46fe97b170667a567601c700bc4e",
+      "candidate_checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "chosen": "continue_train_conservative",
+      "probe_retain_applied": false,
+      "candidate_evaluations": [
+        {
+          "kind": "retain",
+          "primary": 52.86857256611151
+        },
+        {
+          "kind": "continue_train_conservative",
+          "primary": 52.495747325820815
+        }
+      ],
+      "gateway_calls_verified": 1,
+      "prediction_lines": 3,
+      "protocol_round_completed": true,
+      "reduction_vs_upstream_percent": {
+        "reported_cpu_seconds": 91.04889803433151,
+        "end_to_end_seconds": 89.78501106732533
+      }
+    }
+  ],
+  "updated_at_utc": "2026-11-26T17:00:06.147187+00:00"
+}

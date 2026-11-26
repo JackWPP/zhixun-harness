@@ -46,11 +46,10 @@ else
 fi
 
 # 3. workspace v2 participant runtime (vendored platform SDK + /app entrypoint)
-VENDOR_SDK=${VENDOR_SDK:-vendor/contest_harness-1.0.4/contest_harness}
+VENDOR_SDK=${VENDOR_SDK:-vendor/contest_harness-1.0.5/contest_harness}
 if [ -d "$VENDOR_SDK" ]; then
     mkdir -p "$APP/contest_harness"
     rsync -a --exclude '__pycache__' --exclude '*.pyc' "$VENDOR_SDK/" "$APP/contest_harness/"
-    [ -f vendor/contest_harness-1.0.4/HARNESS_SDK.md ] && cp vendor/contest_harness-1.0.4/HARNESS_SDK.md "$APP/contest_harness/HARNESS_SDK.md"
 else
     echo "[stage] ERROR: vendored contest_harness SDK missing at $VENDOR_SDK" >&2
     exit 1
@@ -62,6 +61,7 @@ chmod 0644 "$OVERLAY/app/harness.py" "$OVERLAY/app/contest_submission.py"
 # 4. entrypoints
 cp docker/entrypoint.sh "$BIN/entrypoint.sh"
 cp docker/predict.sh "$BIN/rsi-predict"
+cp docker/requirements.txt "$OVERLAY/opt/zhixun/requirements.txt"
 chmod +x "$BIN/entrypoint.sh" "$BIN/rsi-predict"
 
 # 5. python dependencies (wheels for the same 3.12 ABI as the base image)
@@ -75,6 +75,10 @@ else
     echo "[stage] ERROR: uv not found at $UV" >&2
     exit 1
 fi
+
+# Record exactly the staged source, SDK and non-sensitive runtime defaults.
+# build_image_tar.py regenerates this after applying --extra-env overrides.
+python3 scripts/build_image_tar.py --write-build-manifest "$OVERLAY"
 
 du -sh "$APP" "$SITE" "$OVERLAY"
 echo "[stage] done"

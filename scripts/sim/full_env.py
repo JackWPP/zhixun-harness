@@ -52,7 +52,7 @@ from rsi.metrics import from_predictions  # noqa: E402
 
 PYTHON = sys.executable
 APP = Path("/app") if Path("/app/harness.py").is_file() else REPO / "docker" / "app"
-SDK = REPO / "vendor" / "contest_harness-1.0.4"
+SDK = REPO / "vendor" / "contest_harness-1.0.5"
 SDK_PARENT = REPO if (REPO / "contest_harness").is_dir() else SDK
 
 _UPLOAD_LIMITS = {

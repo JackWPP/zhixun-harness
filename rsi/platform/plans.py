@@ -14,6 +14,8 @@ here touches hidden labels or any network service.
 from __future__ import annotations
 
 import json
+import copy
+import hashlib
 import os
 import tempfile
 import time
@@ -30,6 +32,7 @@ from rsi.inference import (
 )
 from rsi.metrics import from_predictions, primary as primary_metric
 from rsi.model import ExtendedModel
+from rsi.platform.experiment_cache import ExperimentCache
 
 TASKS = ("classification", "regression")
 
@@ -146,6 +149,131 @@ def dataset_from_rows(x: np.ndarray, y: np.ndarray, classes, task: str):
 # ---------------------------------------------------------------------------
 # plan context
 # ---------------------------------------------------------------------------
+def _validated_parent_postprocess(spec, model: ExtendedModel, depth: int = 0) -> dict:
+    """Validate an already-resolved artifact without refitting or rounding it.
+
+    ``resolve_postprocess`` is intentionally not used: it can replace shrink's
+    stored center or round thresholds, changing the actual parent's behavior.
+    """
+    if depth > 8:
+        raise ValueError("parent postprocess nesting is too deep")
+    if spec is None or spec == {}:
+        return {"type": "none"}
+    if not isinstance(spec, dict) or spec.get("type") not in POSTPROCESS_KINDS:
+        raise ValueError("invalid parent postprocess declaration")
+    result = copy.deepcopy(spec)
+    kind = spec["type"]
+
+    def number(value, name, lower=None, upper=None):
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not np.isfinite(value) or (lower is not None and value < lower)
+                or (upper is not None and value > upper)):
+            raise ValueError("invalid parent postprocess " + name)
+
+    def positive_int(value, name):
+        if type(value) is not int or value < 1:
+            raise ValueError("invalid parent postprocess " + name)
+
+    def vector(value, name, length=None):
+        if not isinstance(value, list) or (length is not None and len(value) != length):
+            raise ValueError("invalid parent postprocess " + name)
+        for item in value:
+            number(item, name)
+
+    if kind == "none":
+        return result
+    if kind == "recenter":
+        if spec.get("mode", "batch_mean") not in ("batch_mean", "batch_std"):
+            raise ValueError("invalid parent postprocess recenter mode")
+        number(spec.get("weight", 1.), "weight", 0., 1.)
+    elif kind == "pair_threshold":
+        if model.meta["task"] != "classification":
+            raise ValueError("parent pair threshold requires classification")
+        pair = spec.get("pair")
+        if (not isinstance(pair, list) or len(pair) != 2
+                or any(type(index) is not int or not 0 <= index < len(model.meta["classes"]) for index in pair)
+                or pair[0] == pair[1]):
+            raise ValueError("invalid parent postprocess pair shape or indices")
+        number(spec.get("delta"), "delta")
+        result["base"] = _validated_parent_postprocess(spec.get("base"), model, depth+1)
+    elif kind in ("shrink", "damage_shrink"):
+        if model.meta["task"] != "regression":
+            raise ValueError("parent shrink requires regression")
+        number(spec.get("center"), "center")
+        if kind == "shrink":
+            number(spec.get("alpha"), "alpha", 0., 1.)
+            return result
+        width = len(model.meta["paths"])
+        dims = spec.get("dims", list((0, 17)))
+        if (not isinstance(dims, list) or not dims
+                or any(type(index) is not int or not 0 <= index < width for index in dims)
+                or (len(dims) < 2 and width <= 17)):
+            raise ValueError("invalid parent postprocess damage dimensions")
+        vector(spec.get("robust_scale"), "robust_scale", width)
+        if any(value <= 0 for value in spec["robust_scale"]):
+            raise ValueError("invalid parent postprocess robust_scale")
+        curve = spec.get("curve")
+        if not isinstance(curve, dict):
+            raise ValueError("invalid parent postprocess curve")
+        vector(curve.get("edges"), "curve.edges")
+        vector(curve.get("values"), "curve.values", len(curve["edges"])+1)
+        if any(right <= left for left, right in zip(curve["edges"], curve["edges"][1:])):
+            raise ValueError("parent postprocess curve edges must be strictly increasing")
+        for name, default in (("a", .5), ("w", .6), ("fallback_alpha", .3)):
+            number(spec.get(name, default), name, 0., 1.)
+        positive_int(spec.get("early", 10), "early")
+        detector = spec.get("detector")
+        if detector is not None:
+            if not isinstance(detector, dict):
+                raise ValueError("invalid parent postprocess detector")
+            for name, default in (("rel", .15), ("ratio", .1)):
+                number(detector.get(name, default), "detector."+name, 0., 1.)
+            for name, default in (("min_rows", 8), ("window", 20)):
+                positive_int(detector.get(name, default), "detector."+name)
+    return result
+
+
+def _parent_postprocess(model: ExtendedModel, task_key: str) -> dict:
+    """Load a digest-bound parent's predictor spec; missing initial metadata is none."""
+    source = model.meta.get("_source_path")
+    if not source:
+        return {"type": "none"}
+    checkpoint = Path(source)
+    metadata_path = checkpoint.parent / "submission_meta.json"
+    if metadata_path.is_symlink():
+        raise ValueError("parent artifact metadata must be a regular file")
+    if not metadata_path.exists():
+        return {"type": "none"}
+    if not metadata_path.is_file() or metadata_path.stat().st_size > 128*1024:
+        raise ValueError("parent artifact metadata is not a bounded regular file")
+    def reject_constant(value):
+        raise ValueError("nonfinite parent artifact metadata: " + value)
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"), parse_constant=reject_constant)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid parent artifact metadata") from exc
+    if not isinstance(metadata, dict):
+        raise ValueError("parent artifact metadata must be an object")
+    declared = metadata.get("candidate_checkpoint_sha256")
+    if isinstance(declared, str) and declared.startswith("sha256:"):
+        declared = declared[7:]
+    if (not isinstance(declared, str) or len(declared) != 64
+            or any(character not in "0123456789abcdefABCDEF" for character in declared)):
+        raise ValueError("parent artifact metadata requires a checkpoint SHA-256")
+    if checkpoint.is_symlink() or not checkpoint.is_file():
+        raise ValueError("parent checkpoint must be a regular file")
+    actual = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    if declared.lower() != actual:
+        raise ValueError("parent artifact checkpoint SHA-256 mismatch")
+    if metadata.get("task", model.meta["task"]) != model.meta["task"]:
+        raise ValueError("parent artifact task does not match checkpoint")
+    if metadata.get("task_key", task_key) != task_key:
+        raise ValueError("parent artifact dataset does not match current task")
+    if metadata.get("classes", model.meta["classes"]) != model.meta["classes"]:
+        raise ValueError("parent artifact classes do not match checkpoint")
+    return _validated_parent_postprocess(metadata.get("postprocess"), model)
+
+
 @dataclass
 class PlanContext:
     task_key: str
@@ -163,12 +291,16 @@ class PlanContext:
     y_val: np.ndarray
     parent_values: dict = field(default_factory=dict)
     parent_primary: float = 0.0
+    parent_predicted: np.ndarray | None = None
+    parent_postprocess: dict = field(default_factory=lambda: {"type": "none"})
     target_mean: float = 0.0
+    experiment_cache: ExperimentCache = field(default_factory=ExperimentCache)
 
     @classmethod
     def from_rows(cls, task_key: str, model: ExtendedModel, train_rows: list[dict],
                   val_rows: list[dict], *, metric: str, direction: str, margin: float,
-                  classes: list[str] | None = None) -> "PlanContext":
+                  classes: list[str] | None = None,
+                  experiment_cache: ExperimentCache | None = None) -> "PlanContext":
         task = str(model.meta.get("task") or "classification")
         classes = [str(c) for c in (classes if classes is not None else model.meta.get("classes") or [])]
         x_train, y_train = xy_rows(train_rows, model, classes)
@@ -177,14 +309,18 @@ class PlanContext:
                   margin=float(margin), model=model, classes=classes,
                   train_rows=train_rows, val_rows=val_rows,
                   x_train=x_train, y_train=y_train, x_val=x_val, y_val=y_val,
-                  target_mean=float(model.meta.get("target_mean") or 0.0))
-        ctx.parent_values, ctx.parent_primary, _ = evaluate(ctx, model, {"type": "none"})
+                  parent_postprocess=_parent_postprocess(model, task_key),
+                  target_mean=float(model.meta.get("target_mean") or 0.0),
+                  experiment_cache=(experiment_cache if experiment_cache is not None
+                                    else ExperimentCache()))
+        ctx.parent_values, ctx.parent_primary, ctx.parent_predicted = evaluate(
+            ctx, model, ctx.parent_postprocess)
         return ctx
 
 
 def evaluate(ctx: PlanContext, model: ExtendedModel, postprocess: dict | None):
     predicted = apply_postprocess(postprocess or {"type": "none"}, model, ctx.x_val)
-    values = from_predictions(ctx.task, predicted, ctx.y_val, ctx.classes)
+    values = from_predictions(ctx.task, predicted, ctx.y_val, ctx.classes, profile=ctx.task_key)
     primary = values.get("primary")
     if primary is None:
         primary = primary_metric(ctx.task, values)
@@ -193,8 +329,10 @@ def evaluate(ctx: PlanContext, model: ExtendedModel, postprocess: dict | None):
 
 def _make_plan(ctx: PlanContext, *, kind: str, label: str, strategy: str,
                params: dict, postprocess: dict, model: ExtendedModel,
-               hypothesis: str = "", checkpoint_changed: bool = False) -> dict:
-    values, primary, predicted = evaluate(ctx, model, postprocess)
+               hypothesis: str = "", checkpoint_changed: bool = False,
+               evaluated: tuple | None = None) -> dict:
+    values, primary, predicted = (evaluated if evaluated is not None
+                                  else evaluate(ctx, model, postprocess))
     return {
         "ok": True,
         "predicted": predicted,
@@ -213,9 +351,11 @@ def _make_plan(ctx: PlanContext, *, kind: str, label: str, strategy: str,
 
 
 def retain_plan(ctx: PlanContext) -> dict:
+    evaluated = ((dict(ctx.parent_values), ctx.parent_primary, ctx.parent_predicted)
+                 if ctx.parent_predicted is not None else None)
     return _make_plan(ctx, kind="retain", label="保留父模型（不做任何改动）",
-                      strategy="retain", params={}, postprocess={"type": "none"},
-                      model=ctx.model, hypothesis="保留父模型")
+                      strategy="retain", params={}, postprocess=copy.deepcopy(ctx.parent_postprocess),
+                      model=ctx.model, hypothesis="保留父模型", evaluated=evaluated)
 
 
 # ---------------------------------------------------------------------------
@@ -305,21 +445,39 @@ def _resolve_postprocess(ctx: PlanContext, model: ExtendedModel, spec) -> dict:
     return resolve_postprocess(spec, model)
 
 
-def _candidate_model(ctx: PlanContext, strategy: str, params: dict) -> tuple[ExtendedModel, bool]:
-    """Build the checkpoint for a training strategy (never fits validation)."""
-    if strategy == "retain":
-        return ctx.model, False
-    if strategy in ("continue_train", "continue_train_staged"):
-        source = Path(str(ctx.model.meta.get("_source_path", "")))
-        if not source.is_file():
-            raise ValueError("parent checkpoint path is not available for continuation")
+def cached_continuation(ctx: PlanContext, params: dict, *,
+                        strategy: str = "continue_train") -> tuple[ExtendedModel, dict]:
+    """Continue the actual parent, reusing only identical training computations.
+
+    Share ``ctx.experiment_cache`` with any holdout/alternative context explicitly.
+    Validation and postprocessing are excluded from the training key: callers
+    must evaluate the returned model against their current validation projection.
+    An explicit ``seed`` overrides the parent seed; otherwise it is preserved.
+    """
+    if strategy not in {"continue_train", "continue_train_staged"}:
+        raise ValueError(f"unsupported continuation strategy: {strategy!r}")
+    source = Path(str(ctx.model.meta.get("_source_path", "")))
+    if not source.is_file():
+        raise ValueError("parent checkpoint path is not available for continuation")
+    # Canonicalize defaults so equivalent A variants use the same training key.
+    config = {"strategy": strategy, "seed": int(params.get("seed", ctx.model.meta.get("seed", 42))),
+              "class_weight_beta": float(params.get("class_weight_beta", 0.0) or 0.0)}
+    if strategy == "continue_train_staged":
+        config.update(stage1_epochs=int(params.get("stage1_epochs", 200)),
+                      stage1_learning_rate=float(params.get("stage1_learning_rate", 1e-3)),
+                      stage2_epochs=int(params.get("stage2_epochs", 0) or 0),
+                      stage2_learning_rate=float(params.get("stage2_learning_rate", 2e-4)))
+    else:
+        config.update(epochs=int(params.get("epochs", 20)),
+                      learning_rate=float(params.get("learning_rate", 1e-3)))
+    y_fit = (np.asarray(ctx.y_train, dtype=np.int64) if ctx.task == "classification"
+             else np.asarray(ctx.y_train, dtype=np.float64))
+
+    def fit():
         model = ExtendedModel.from_checkpoint(source)
-        y_fit = (np.asarray(ctx.y_train, dtype=np.int64)
-                 if ctx.task == "classification" else np.asarray(ctx.y_train, dtype=np.float64))
-        epochs = int(params.get("epochs", 20))
-        lr = float(params.get("learning_rate", 1e-3))
+        model.meta["seed"] = config["seed"]
         weight = None
-        beta = float(params.get("class_weight_beta", 0.0) or 0.0)
+        beta = config["class_weight_beta"]
         if ctx.task == "classification" and beta > 0:
             counts = np.bincount(np.asarray(ctx.y_train, dtype=np.int64),
                                  minlength=max(len(ctx.classes), 1)).astype(np.float64)
@@ -327,17 +485,30 @@ def _candidate_model(ctx: PlanContext, strategy: str, params: dict) -> tuple[Ext
             weight = (len(ctx.y_train) / (len(ctx.classes) * counts)) ** beta
             weight = weight / float(np.mean(weight))
         if strategy == "continue_train_staged":
-            model.set_learning_rate(float(params.get("stage1_learning_rate", 1e-3)))
-            model.fit(ctx.x_train, y_fit, int(params.get("stage1_epochs", 200)), class_weight=weight)
-            polish = int(params.get("stage2_epochs", 0) or 0)
+            model.set_learning_rate(config["stage1_learning_rate"])
+            model.fit(ctx.x_train, y_fit, config["stage1_epochs"], class_weight=weight)
+            polish = config["stage2_epochs"]
             if polish > 0:
-                model.set_learning_rate(float(params.get("stage2_learning_rate", 2e-4)))
+                model.set_learning_rate(config["stage2_learning_rate"])
                 model.fit(ctx.x_train, y_fit, polish, class_weight=weight)
         else:
-            model.set_learning_rate(lr)
-            if epochs > 0:
-                model.fit(ctx.x_train, y_fit, epochs, class_weight=weight)
-        return model, True
+            model.set_learning_rate(config["learning_rate"])
+            if config["epochs"] > 0:
+                model.fit(ctx.x_train, y_fit, config["epochs"], class_weight=weight)
+        return model
+
+    return ctx.experiment_cache.get_or_fit(
+        parent_path=source, task_key=ctx.task_key, x_train=ctx.x_train, y_train=y_fit,
+        configuration=config, fit=fit)
+
+
+def _candidate_model(ctx: PlanContext, strategy: str, params: dict):
+    """Build the checkpoint for a training strategy (never fits validation)."""
+    if strategy == "retain":
+        return ctx.model, False, {}
+    if strategy in ("continue_train", "continue_train_staged"):
+        model, cache = cached_continuation(ctx, params, strategy=strategy)
+        return model, True, cache
     raise ValueError(f"strategy {strategy!r} is not executable on the v2 host gateway path")
 
 
@@ -348,7 +519,11 @@ def plan_for_proposal(ctx: PlanContext, proposal) -> dict:
     raw_post = dict(getattr(proposal, "postprocess", {}) or {"type": "none"})
     hypothesis = str(getattr(proposal, "hypothesis", "") or "")[:400]
     try:
-        model, changed = _candidate_model(ctx, strategy, params)
+        if strategy == "retain" and raw_post.get("type", "none") == "none":
+            plan = retain_plan(ctx)
+            plan["hypothesis"] = hypothesis or plan["hypothesis"]
+            return plan
+        model, changed, cache = _candidate_model(ctx, strategy, params)
         postprocess = _resolve_postprocess(ctx, model, raw_post)
         if strategy == "continue_train":
             kind = ("continue_train_pair"
@@ -363,9 +538,12 @@ def plan_for_proposal(ctx: PlanContext, proposal) -> dict:
             label = "推理期后处理 %s（不改权重）" % str(postprocess.get("type", "none"))
             if postprocess.get("type", "none") == "none":
                 label = "保留父模型（不做任何改动）"
-        return _make_plan(ctx, kind=kind, label=label, strategy=strategy, params=params,
+        plan = _make_plan(ctx, kind=kind, label=label, strategy=strategy, params=params,
                           postprocess=postprocess, model=model, hypothesis=hypothesis,
                           checkpoint_changed=changed)
+        if cache:
+            plan["experiment_cache"] = cache
+        return plan
     except Exception as error:  # a failed proposal must not kill the round
         return {"ok": False, "kind": strategy, "strategy": strategy, "params": params,
                 "postprocess": raw_post, "model": None, "primary": None, "values": {},
@@ -412,10 +590,11 @@ def build_plans(ctx: PlanContext) -> list[dict]:
                 candidates.append(("damage_shrink", "retain", "",
                                    {}, {"type": "damage_shrink", "a": 0.5, "w": 0.6, "fit": "train"},
                                    "damage_shrink 因果分段校准（train 标签拟合）"))
+            b_params = b_continuation_parameters()
             candidates.append(("continue_train", "continue_train", "",
-                               {"learning_rate": 1e-3, "epochs": 15},
+                               b_params,
                                {"type": "none"},
-                               "累积标签续训 15 epoch（用当前 /data/train 全部已揭示行）"))
+                               "父检查点续训 %d epoch（仅公开 train）" % b_params["epochs"]))
         if ctx.task_key == "C":
             candidates.append(("continue_train", "continue_train", "",
                                {"learning_rate": 1e-3, "epochs": 40},
@@ -536,6 +715,25 @@ def catalog_text(include_strategies: bool = True) -> str:
 B_STATIC_ENV = "RSI_V2_B_STATIC"
 
 
+def b_continuation_parameters() -> dict:
+    """Bounded B continuation preserves parent architecture and optimizer state."""
+    epochs = int(os.environ.get("RSI_V2_B_EPOCHS", "15"))
+    lr = float(os.environ.get("RSI_V2_B_LR", "0.001"))
+    if not 1 <= epochs <= 60 or not np.isfinite(lr) or not 0 < lr <= 0.01:
+        raise ValueError("B continuation requires 1..60 epochs and learning rate in (0, 0.01]")
+    return {"epochs": epochs, "learning_rate": lr}
+
+
+def b_continuation_plan(ctx: PlanContext) -> dict:
+    """One inexpensive B candidate based on this round's supplied parent."""
+    if ctx.task_key != "B" or ctx.task != "regression":
+        raise ValueError("B continuation requires a B regression context")
+    parameters = b_continuation_parameters()
+    return plan_for_proposal(ctx, _Proposal(
+        "continue_train", parameters, {"type": "none"},
+        "从本轮父检查点续训 %d epoch，检验新增公开训练数据是否改善预测" % parameters["epochs"]))
+
+
 def b_static_mode() -> bool:
     """Whether B keeps the legacy static shrink/damage arms (default: off)."""
     value = (os.environ.get(B_STATIC_ENV, "0") or "0").strip().lower()
@@ -556,8 +754,12 @@ _SCRATCH_CONFIG: dict[str, dict] = {
 
 
 def scratch_arm_mode() -> str:
-    """``on`` (default), ``off`` or a comma list of task keys (e.g. ``B,C``)."""
-    return (os.environ.get(SCRATCH_ARM_ENV, "on") or "on").strip().lower()
+    """Legacy research-only retraining; disabled unless explicitly requested.
+
+    Enabling an official-format scratch model does not establish compliance with
+    the platform's parent-continuation requirement. Production defaults stay off.
+    """
+    return (os.environ.get(SCRATCH_ARM_ENV, "off") or "off").strip().lower()
 
 
 def _scratch_enabled(task_key: str) -> bool:
@@ -566,7 +768,7 @@ def _scratch_enabled(task_key: str) -> bool:
         return False
     if mode in {"on", "1", "true", "yes", "all", "auto"}:
         return task_key in _SCRATCH_CONFIG
-    return task_key in {part.strip() for part in mode.split(",") if part.strip()}
+    return task_key.upper() in {part.strip().upper() for part in mode.split(",") if part.strip()}
 
 
 def _model_to_official(model) -> "ExtendedModel":

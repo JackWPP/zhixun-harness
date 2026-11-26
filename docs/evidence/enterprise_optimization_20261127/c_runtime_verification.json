@@ -1,0 +1,2252 @@
+{
+  "runtime": {
+    "numpy_version": "1.26.4",
+    "python_version": "3.12.14",
+    "platform": "macOS-27.2.1-arm64-arm-64bit",
+    "configured_blas_threads": 1
+  },
+  "validation_sha256": "0cc747f9998c5d7ee1e4eac6aec0db9f5ed4d2de149a1b1cbe689cce6b6aaca7",
+  "fake_gateway": true,
+  "rounds": [
+    {
+      "round": 1,
+      "chosen": "continue_train_conservative",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 3.712,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 4.291
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 34.585928881674825,
+              "rmse": 42.83453261937968,
+              "nasa_score": 1577040.5672952256,
+              "nasa_overflow": false,
+              "bias": 12.236425860713705
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.619114710891438,
+              "rmse": 41.152059506011675,
+              "nasa_score": 6840502.898679103,
+              "nasa_overflow": false,
+              "bias": 2.774232338267247
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 43.89943560500052,
+              "rmse": 55.355939500721526,
+              "nasa_score": 199500506.50694418,
+              "nasa_overflow": false,
+              "bias": 21.080329979276005
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.79080130593441,
+              "rmse": 63.23679488033417,
+              "nasa_score": 5615521275.369541,
+              "nasa_overflow": false,
+              "bias": -12.685051493211933
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 31.266525064820037,
+              "rmse": 40.23453571319603,
+              "nasa_score": 136386660.47736505,
+              "nasa_overflow": false,
+              "bias": 26.421803788020426
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 36.21897054416208,
+              "rmse": 46.53862973151582,
+              "nasa_score": 175447157.62305656,
+              "nasa_overflow": false,
+              "bias": -8.14934339669346
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 117.10152375251452,
+              "rmse": 128.58369445599524,
+              "nasa_score": 5511605507.242038,
+              "nasa_overflow": false,
+              "bias": -116.97240914855607
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "trained",
+          "experiment_cache": {
+            "cache_hit": false,
+            "cache_key": "c042d32f382a5d1cfb00a23dd73ce875b2a3e9fb6a350f41a966eea0dd73de73",
+            "parent_sha256": "98ec6e30e38aee56ca15b7d624a8f412226d46fe97b170667a567601c700bc4e",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "fit",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 1,
+      "state_sha256": "sha256:ac0af2bae63ca537635bd67305ed88a6a33dae0aeb19331ce5cadab6d68613d4"
+    },
+    {
+      "round": 2,
+      "chosen": "retain",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 3.309,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 3.317
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "trained",
+          "experiment_cache": {
+            "cache_hit": false,
+            "cache_key": "287ad2896bd30035baf3fd10774320aaae318576cda16de418c2ee7d144491a9",
+            "parent_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "fit",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 2,
+      "state_sha256": "sha256:08e701cf53ca02693f04c33cc791a15dafa6f87699b1687f68415b02e2c06065"
+    },
+    {
+      "round": 3,
+      "chosen": "retain",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 2.463,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 2.472
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "cache_reused",
+          "experiment_cache": {
+            "cache_hit": true,
+            "cache_key": "287ad2896bd30035baf3fd10774320aaae318576cda16de418c2ee7d144491a9",
+            "parent_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "state",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 3,
+      "state_sha256": "sha256:8230398c9413fad9f086785f2c4698f0b339308f37b4d5762403667229f67817"
+    },
+    {
+      "round": 4,
+      "chosen": "retain",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 2.447,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 2.453
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "cache_reused",
+          "experiment_cache": {
+            "cache_hit": true,
+            "cache_key": "287ad2896bd30035baf3fd10774320aaae318576cda16de418c2ee7d144491a9",
+            "parent_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "state",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 4,
+      "state_sha256": "sha256:21fd96f95dae3cf127e66cc184ae01d296b11a3b8e662480013bcc00a8f9989f"
+    },
+    {
+      "round": 5,
+      "chosen": "retain",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 2.476,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 2.486
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "cache_reused",
+          "experiment_cache": {
+            "cache_hit": true,
+            "cache_key": "287ad2896bd30035baf3fd10774320aaae318576cda16de418c2ee7d144491a9",
+            "parent_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "state",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 5,
+      "state_sha256": "sha256:bc28037f81ef5fc81ff732839a1755362f91d0cd999d438a2a847a823e5eee3f"
+    },
+    {
+      "round": 6,
+      "chosen": "retain",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 2.447,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 2.456
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "cache_reused",
+          "experiment_cache": {
+            "cache_hit": true,
+            "cache_key": "287ad2896bd30035baf3fd10774320aaae318576cda16de418c2ee7d144491a9",
+            "parent_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "state",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 6,
+      "state_sha256": "sha256:c6e6875e0a5da6dcb0845b21c075449bdcc0a3f4cc7e5af1222535182506e7f1"
+    },
+    {
+      "round": 7,
+      "chosen": "retain",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 2.442,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 2.447
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "cache_reused",
+          "experiment_cache": {
+            "cache_hit": true,
+            "cache_key": "287ad2896bd30035baf3fd10774320aaae318576cda16de418c2ee7d144491a9",
+            "parent_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "state",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 7,
+      "state_sha256": "sha256:afaeb83263f8000967eb2388f1027804756b7c36e246b8c0399c6882047d2ff9"
+    },
+    {
+      "round": 8,
+      "chosen": "retain",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 2.821,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 3.449
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "cache_reused",
+          "experiment_cache": {
+            "cache_hit": true,
+            "cache_key": "287ad2896bd30035baf3fd10774320aaae318576cda16de418c2ee7d144491a9",
+            "parent_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "state",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 8,
+      "state_sha256": "sha256:72709f3cb8a43fffd2e46699c8a2fcf5601f55ad94827580e375bd7d784d8f3f"
+    },
+    {
+      "round": 9,
+      "chosen": "retain",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 2.443,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 2.451
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "cache_reused",
+          "experiment_cache": {
+            "cache_hit": true,
+            "cache_key": "287ad2896bd30035baf3fd10774320aaae318576cda16de418c2ee7d144491a9",
+            "parent_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "state",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 9,
+      "state_sha256": "sha256:a6980b8818ca300ac81e9f09d9275aaa9f252830ac465f83379a2d77e282c90e"
+    },
+    {
+      "round": 10,
+      "chosen": "retain",
+      "metrics": {
+        "rmse": 52.495747325820815,
+        "mae": 38.5809456377716,
+        "nasa": 5153399771.500433
+      },
+      "checkpoint_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+      "model_call_count": 1,
+      "resource": {
+        "cpu_seconds": 2.511,
+        "gateway_calls": 1,
+        "train_rows": 113089,
+        "validation_rows": 23049,
+        "wall_seconds": 2.654
+      },
+      "group_guard": {
+        "passed": true,
+        "status": "noninferior",
+        "groups": {
+          "fd001": {
+            "rows": 3210,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "candidate": {
+              "mae": 33.83264862461265,
+              "rmse": 42.22217783447577,
+              "nasa_score": 1543332.4344171872,
+              "nasa_overflow": false,
+              "bias": 10.054888369266191
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd002": {
+            "rows": 7581,
+            "engines": 39,
+            "passed": true,
+            "parent": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "candidate": {
+              "mae": 31.569147222018014,
+              "rmse": 40.97284419548266,
+              "nasa_score": 6420727.600149086,
+              "nasa_overflow": false,
+              "bias": 3.436704628493257
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd003": {
+            "rows": 3555,
+            "engines": 15,
+            "passed": true,
+            "parent": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "candidate": {
+              "mae": 42.86946766115442,
+              "rmse": 54.48144801456033,
+              "nasa_score": 170790081.85431826,
+              "nasa_overflow": false,
+              "bias": 18.94193685779656
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          },
+          "fd004": {
+            "rows": 8703,
+            "engines": 37,
+            "passed": true,
+            "parent": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "candidate": {
+              "mae": 44.688354739109336,
+              "rmse": 62.97716530919982,
+              "nasa_score": 4974645629.611549,
+              "nasa_overflow": false,
+              "bias": -12.051287005926326
+            },
+            "failed_metrics": [],
+            "status": "noninferior"
+          }
+        },
+        "rul_groups": {
+          "RUL_0_99": {
+            "rows": 10600,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "candidate": {
+              "mae": 30.952350167992563,
+              "rmse": 39.813661021242076,
+              "nasa_score": 114503848.44352582,
+              "nasa_overflow": false,
+              "bias": 26.123312758820084
+            },
+            "failed_metrics": []
+          },
+          "RUL_100_249": {
+            "rows": 11036,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "candidate": {
+              "mae": 35.87154107964247,
+              "rmse": 46.120202039685076,
+              "nasa_score": 167246918.59173647,
+              "nasa_overflow": false,
+              "bias": -8.245494094406988
+            },
+            "failed_metrics": []
+          },
+          "RUL_250_plus": {
+            "rows": 1413,
+            "passed": true,
+            "status": "noninferior",
+            "parent": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "candidate": {
+              "mae": 116.97025963860025,
+              "rmse": 128.25185311429522,
+              "nasa_score": 4871649004.465171,
+              "nasa_overflow": false,
+              "bias": -116.86040923338679
+            },
+            "failed_metrics": []
+          }
+        },
+        "insufficient": [],
+        "unknown_rows": 0,
+        "minimum_rows": 8,
+        "minimum_engines": 2,
+        "enforce_rul": true,
+        "coverage": {
+          "total_rows": 23049,
+          "fd_recognized_rows": 23049,
+          "fd_supported_rows": 23049,
+          "fd_supported_groups": [
+            "fd001",
+            "fd002",
+            "fd003",
+            "fd004"
+          ],
+          "fd_complete": true,
+          "rul_supported_groups": [
+            "RUL_0_99",
+            "RUL_100_249",
+            "RUL_250_plus"
+          ],
+          "rul_supported_rows": 23049
+        },
+        "rul_guard_passed": true,
+        "limitation": "FD and fixed RUL groups do not identify the platform's hidden drift stages.",
+        "protection": "fd_and_rul"
+      },
+      "candidates": [
+        {
+          "kind": "retain",
+          "training_action": "not_trained",
+          "experiment_cache": null,
+          "alpha": null
+        },
+        {
+          "kind": "continue_train_conservative",
+          "training_action": "cache_reused",
+          "experiment_cache": {
+            "cache_hit": true,
+            "cache_key": "287ad2896bd30035baf3fd10774320aaae318576cda16de418c2ee7d144491a9",
+            "parent_sha256": "f6dcd11e2b4635d28e8891844487a0ce81a0b870d14c353b1af16c41cb50ab8f",
+            "train_sha256": "889b93da926cf3a703660c020999539a9b81fcaceb77e884871c62c322ea9e7a",
+            "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+            "cache_enabled": true,
+            "cache_source": "state",
+            "disk_budget": {
+              "entries": 8,
+              "bytes": 16777216
+            }
+          },
+          "alpha": 0.25
+        }
+      ],
+      "journal_rounds": 10,
+      "state_sha256": "sha256:c25539b4eea4af73b48c3586381f0e24eed5e55f33ca5c97bb8ab9d336fb79c5"
+    }
+  ]
+}

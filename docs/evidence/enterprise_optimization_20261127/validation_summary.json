@@ -1,0 +1,36 @@
+{
+  "author": "Arthur",
+  "version": "0.15.0.dev1",
+  "base_commit": "17cc307b10caed360405d739bdfb09f457910bad",
+  "python": "3.12.14",
+  "numpy": "1.26.4",
+  "project_tests": {
+    "command": "python -m pytest -q",
+    "passed": 321,
+    "failed": 0,
+    "skipped": 0,
+    "deselected": 0,
+    "seconds": 27.37,
+    "integration_included": true
+  },
+  "sdk_tests": {
+    "version": "1.0.5",
+    "passed": 18,
+    "live_gateway": false
+  },
+  "workspace_emulator_rounds": {
+    "A": 2,
+    "B": 3,
+    "C": 10
+  },
+  "c_full_validation_rows": 23049,
+  "c_actual_fits": 2,
+  "c_cache_hits": 8,
+  "build_linux_image_validated": false,
+  "new_platform_run": false,
+  "limitations": [
+    "Local public-data tests and fake gateway only.",
+    "Public validation reused for selection; not independent hidden evidence.",
+    "Remote CI status must be read from the PR."
+  ]
+}

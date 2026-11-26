@@ -13,7 +13,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 APP = REPO / "docker" / "app"
-SDK = REPO / "vendor" / "contest_harness-1.0.4"
+SDK = REPO / "vendor" / "contest_harness-1.0.5"
 
 
 def run_python(args, **kwargs):
@@ -37,7 +37,7 @@ def test_describe_speaks_workspace_v2():
         "protocol": "contest.harness.workspace.v2",
         "model_access": "host_gateway_rpc",
         "sdk": "contest_harness",
-        "sdk_version": "1.0.4",
+        "sdk_version": "1.0.5",
         "tasks": ["classification", "regression"],
     }
 
@@ -181,8 +181,9 @@ def _load_jsonl(path, limit):
     return rows
 
 
-def _fake_round(task_contract):
-    base = REPO / "datasets" / "cpu-b-rul-20261110-v1"
+def _fake_round(task_contract, task_key="B"):
+    package = "cpu-c-guide-20261110-v1" if task_key == "C" else "cpu-b-rul-20261110-v1"
+    base = REPO / "datasets" / package
     train = _load_jsonl(base / "public" / "train.jsonl", 120)
     validation = _load_jsonl(base / "public" / "validation.jsonl", 60)
     checkpoint = base / "checkpoint.npz"
@@ -202,7 +203,7 @@ def _fake_round(task_contract):
             return iter(validation)
 
     class FakeRound:
-        dataset_key = "B"
+        dataset_key = task_key
         round_index = 1
         max_output_tokens = 256
 
@@ -499,6 +500,7 @@ def test_b_scratch_arm_offered_static_arms_disabled(monkeypatch):
 
 
 def test_c_scratch_arm_uses_small_hidden_layer(monkeypatch):
+    monkeypatch.setenv("RSI_V2_C_EFFICIENT", "0")
     from rsi.model import ExtendedModel
     from rsi.platform import submission
 
@@ -541,6 +543,117 @@ def test_probe_retain_tasks_env(monkeypatch):
     assert sub._probe_retain_tasks() == {"A", "B", "C"}
     monkeypatch.setenv("RSI_V2_PROBE_RETAIN", "off")
     assert sub._probe_retain_tasks() == set()
+
+
+def test_probe_retain_skips_training_but_preserves_round_contract(tmp_path, monkeypatch):
+    from rsi.platform import submission as sub
+
+    monkeypatch.setenv("CONTEST_WORK", str(tmp_path / "work"))
+    monkeypatch.setenv("RSI_V2_PROBE_RETAIN", "C")
+    monkeypatch.setenv("RSI_V2_CONTROLLER", "kernel")
+
+    def unexpected_training(*args, **kwargs):
+        raise AssertionError("fixed-retain round must not train a candidate")
+
+    monkeypatch.setattr(sub, "_candidate_plans", unexpected_training)
+    monkeypatch.setattr(sub._agent_host, "run_kernel_round", unexpected_training)
+    monkeypatch.setattr(sub, "_apply_drift_policy", unexpected_training)
+    rnd = _fake_round({"task": "regression", "metric": "rmse", "direction": "lower"}, "C")
+    rnd.history = lambda: [{"id": "previous-round"}]
+    sub.train(rnd)
+
+    assert len(rnd.calls) == 1
+    assert "父模型指标" in rnd.calls[0][0]["content"]
+    assert "特征漂移" in rnd.calls[0][0]["content"]
+    assert rnd.finished["model_call_ids"] == ["call-test-1"]
+    assert rnd.finished["history_ids"] == ["previous-round"]
+    assert rnd.submitted["directory"].joinpath("checkpoint.npz").read_bytes() == (
+        rnd.parent.path("checkpoint.npz").read_bytes())
+    configuration = rnd.finished["configuration"]
+    assert configuration["probe_retain"]["applied"] is True
+    assert configuration["chosen"] == "retain"
+    assert configuration["decision"]["decision"] == "retain"
+    assert "keep parent" in configuration["decision"]["reason"]
+    assert len(configuration["candidates"]) == 1
+    assert configuration["resource"]["gateway_calls"] == 1
+    assert configuration["resource"]["cpu_seconds"] >= 0
+    assert configuration["resource"]["wall_seconds"] >= 0
+    state = json.loads((rnd.saved_state / "state.json").read_text())
+    assert state["chosen"] == "retain"
+    meta = json.loads((rnd.submitted["directory"] / sub.META_NAME).read_text())
+    assert meta["postprocess"] == {"type": "none"}
+    assert meta["data_boundary"]["fit_rows"] == 0
+    assert meta["data_boundary"]["validation_used_for_fit"] is False
+
+
+def test_probe_retain_disabled_uses_candidate_pipeline(tmp_path, monkeypatch):
+    from rsi.platform import submission as sub
+
+    monkeypatch.setenv("CONTEST_WORK", str(tmp_path / "work"))
+    monkeypatch.setenv("RSI_V2_PROBE_RETAIN", "off")
+    monkeypatch.setenv("RSI_V2_CONTROLLER", "pipeline")
+    generated = []
+
+    def candidates(task_key, model, train, validation, **kwargs):
+        generated.append(task_key)
+        ctx = kwargs.pop("ctx", None) or sub._plans.PlanContext.from_rows(
+            task_key, model, train, validation, **kwargs)
+        return [sub._plans.retain_plan(ctx)]
+
+    monkeypatch.setattr(sub, "_candidate_plans", candidates)
+    rnd = _fake_round({"task": "regression", "metric": "rmse", "direction": "lower"}, "C")
+    sub.train(rnd)
+    assert generated == ["C"]
+    assert rnd.finished["configuration"]["probe_retain"]["applied"] is False
+    assert rnd.finished["configuration"]["controller"] == "pipeline"
+
+
+def test_efficient_c_limits_normal_entry_to_one_training_candidate(tmp_path, monkeypatch):
+    from rsi.platform import submission as sub
+
+    monkeypatch.setenv("CONTEST_WORK", str(tmp_path / "work"))
+    monkeypatch.setenv("RSI_V2_PROBE_RETAIN", "off")
+    monkeypatch.setenv("RSI_V2_C_EFFICIENT", "1")
+    monkeypatch.setenv("RSI_V2_CONTROLLER", "kernel")
+
+    def unexpected_kernel(*args, **kwargs):
+        raise AssertionError("efficient C uses one bounded pipeline experiment")
+
+    monkeypatch.setattr(sub._agent_host, "run_kernel_round", unexpected_kernel)
+    rnd = _fake_round({"task": "regression", "metric": "rmse", "direction": "lower"}, "C")
+    sub.train(rnd)
+    configuration = rnd.finished["configuration"]
+    assert configuration["controller"] == "pipeline"
+    assert len(rnd.calls) == 1
+    assert [row["kind"] for row in configuration["candidates"]] == ["retain", "continue_train_conservative"]
+    candidate = configuration["candidates"][1]
+    assert candidate["parameters"]["epochs"] == 10
+    assert candidate["parameters"]["learning_rate"] == 3e-4
+    assert "nasa_overflow" in candidate["metrics"]
+
+
+def test_c_gateway_choice_cannot_override_nasa_guard(tmp_path, monkeypatch):
+    from rsi.platform import submission as sub
+
+    monkeypatch.setenv("CONTEST_WORK", str(tmp_path / "work"))
+    monkeypatch.setenv("RSI_V2_PROBE_RETAIN", "off")
+    monkeypatch.setenv("RSI_V2_C_EFFICIENT", "1")
+    def candidates(task_key, model, train, validation, **kwargs):
+        ctx = kwargs.pop("ctx", None) or sub._plans.PlanContext.from_rows(
+            task_key, model, train, validation, **kwargs)
+        parent = sub._plans.retain_plan(ctx)
+        unsafe = {**parent, "kind": "continue_train", "primary": parent["primary"] - 1.0,
+                  "values": {**parent["values"], "rmse": parent["primary"] - 1.0,
+                             "nasa_score": parent["values"]["nasa_score"] * 2}}
+        return [parent, unsafe]
+
+    monkeypatch.setattr(sub, "_candidate_plans", candidates)
+    monkeypatch.setattr(sub, "_parse_choice", lambda *_args: 1)
+    rnd = _fake_round({"task": "regression", "metric": "rmse", "direction": "lower"}, "C")
+    sub.train(rnd)
+    assert rnd.finished["configuration"]["chosen"] == "retain"
+    assert rnd.submitted["directory"].joinpath("checkpoint.npz").read_bytes() == (
+        rnd.parent.path("checkpoint.npz").read_bytes())
 
 
 def test_state_payload_includes_resource():

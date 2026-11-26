@@ -30,7 +30,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 APP = Path("/app") if Path("/app/harness.py").is_file() else REPO / "docker" / "app"
-SDK = REPO / "vendor" / "contest_harness-1.0.4"
+SDK = REPO / "vendor" / "contest_harness-1.0.5"
 SDK_PARENT = REPO if (REPO / "contest_harness").is_dir() else SDK
 PYTHON = sys.executable
 
@@ -207,6 +207,7 @@ def serve(process: subprocess.Popen, frame: dict, artifact_dir: Path, state_dir:
     sequence = 0
     call_ids: list[str] = []
     files: dict[str, bytes] = {}
+    saved_state_sha = ""
     uploads = UploadStore(max_bytes=int(frame.get("resource_limits", {}).get("artifact_bytes", 512 * 1024 * 1024)))
     while True:
         line = process.stdout.readline()
@@ -221,7 +222,8 @@ def serve(process: subprocess.Popen, frame: dict, artifact_dir: Path, state_dir:
             process.stdin.write(json.dumps({"type": "round_ack", "accepted": True}) + "\n")
             process.stdin.flush()
             process.stdin.close()
-            return {"record": record, "files": files, "call_ids": call_ids}
+            return {"record": record, "files": files, "call_ids": call_ids,
+                    "state_sha256": saved_state_sha}
         if reply.get("id") != sequence:
             raise RuntimeError("rpc sequence mismatch")
         sequence += 1
@@ -269,8 +271,10 @@ def serve(process: subprocess.Popen, frame: dict, artifact_dir: Path, state_dir:
                 target = state_dir / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
-            digest = hashlib.sha256(json.dumps(sorted(payload), default=str).encode()).hexdigest()
-            out = {"type": "state_response", "id": reply["id"], "state_sha256": "sha256:" + digest}
+            manifest = [(name, len(data), hashlib.sha256(data).hexdigest())
+                        for name, data in sorted(payload.items())]
+            saved_state_sha = "sha256:" + hashlib.sha256(json.dumps(manifest).encode()).hexdigest()
+            out = {"type": "state_response", "id": reply["id"], "state_sha256": saved_state_sha}
         else:
             raise RuntimeError("unexpected frame: %s" % kind)
         process.stdin.write(json.dumps(out, ensure_ascii=False) + "\n")
@@ -279,8 +283,8 @@ def serve(process: subprocess.Popen, frame: dict, artifact_dir: Path, state_dir:
 
 def run_train(root: Path, task_key: str, package: Path, round_index: int, previous: Path,
               work: Path, artifact_dir: Path, state_dir: Path, parent: dict, history: list,
-              model_reply: str, timeout: float) -> dict:
-    frame = start_frame(task_key, package, parent, round_index, history, [parent], None, "")
+              model_reply: str, timeout: float, *, state_path=None, state_sha="") -> dict:
+    frame = start_frame(task_key, package, parent, round_index, history, [parent], state_path, state_sha)
     process = subprocess.Popen(
         [PYTHON, str(APP / "harness.py"), "train"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -410,6 +414,7 @@ def main(argv=None) -> int:
     }
     history: list[dict] = []
     state_path = ""
+    state_sha = ""
     results = []
     for round_index in range(1, max(1, args.rounds) + 1):
         artifact_dir = root / ("artifact-%02d" % round_index)
@@ -421,7 +426,8 @@ def main(argv=None) -> int:
             "reason": "emulator: 选择改进最大的候选（确定性回退也会得到同一结果）",
         }, ensure_ascii=False)
         served = run_train(root, args.task, package, round_index, previous, work,
-                           artifact_dir, state_dir, parent, history, reply, args.timeout)
+                           artifact_dir, state_dir, parent, history, reply, args.timeout,
+                           state_path=state_path or None, state_sha=state_sha)
         validate_artifact(served)
         install_previous(previous, artifact_dir)
         checkpoint = artifact_dir / "checkpoint.npz"
@@ -439,6 +445,7 @@ def main(argv=None) -> int:
             "reason": record["reason"],
         })
         state_path = str(state_dir)
+        state_sha = served["state_sha256"]
         parent = {
             "artifact_id": record["selected_artifact_id"],
             "artifact_sha256": "sha256:" + sha256_file(checkpoint),
@@ -460,7 +467,7 @@ def main(argv=None) -> int:
             "selected_artifact_id": record["selected_artifact_id"],
             "model_call_ids": record["model_call_ids"],
             "predictions": len(predictions),
-            "state_sha256": "",
+            "state_sha256": state_sha,
         })
     report = {"ok": True, "protocol": "contest.harness.workspace.v2", "task": args.task,
               "rounds": results, "root": str(root)}

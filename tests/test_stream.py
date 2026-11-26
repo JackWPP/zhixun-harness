@@ -95,14 +95,22 @@ def test_official_stream_frozen_two_batches(tmp_path):
         keys=["A"], source="official", n_batches=2, state_dir=tmp_path,
         controller="pipeline", llm_mode="off", experiments_cap=1,
         batch_wall=600.0, retention_every=0, parallel_tasks=1, arm="frozen",
+        hidden_tail=0,  # Exercise two arrival records, not the default hidden tail.
     )
     task = report["tasks"]["A"]
     assert not task["errors"], task["errors"]
     assert len(task["batches"]) == 2
+    assert task["hidden"] == []
     for batch in task["batches"]:
-        record = json.loads((tmp_path / "tasks" / "A" / f"batch_{batch['batch']:04d}" /
-                             "decision.json").read_text())
+        assert batch["phase"] == "arrival"
+        batch_dir = tmp_path / "tasks" / "A" / f"batch_{batch['batch']:04d}"
+        record = json.loads((batch_dir / "decision.json").read_text())
+        evaluation = json.loads((batch_dir / "evaluation.json").read_text())
         assert record["decision"] in {"promote", "retain", "rollback"}
         assert record["arm"] == "frozen"
-        assert record["prediction_count"] == batch["prediction_count"]
+        # Scored outputs belong to the separate evaluation artifact; the report
+        # merges them after the decision has already been written.
+        assert "prediction_count" not in record
+        assert "prediction_metrics" not in record
+        assert evaluation["prediction_count"] == batch["prediction_count"] > 0
     assert Path(task["report_path"]).is_file()

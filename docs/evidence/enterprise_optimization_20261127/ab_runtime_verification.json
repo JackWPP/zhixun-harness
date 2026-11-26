@@ -1,0 +1,1180 @@
+{
+  "author": "Arthur",
+  "scope": "Official SDK local emulator with fake model gateway; public fixed projections only. No platform or hidden score.",
+  "tasks": {
+    "A": [
+      {
+        "round": 1,
+        "chosen": "pair_history",
+        "controller": "kernel->pipeline",
+        "parent_checkpoint_sha256": "sha256:fd1e08b2aad08b2e9754f9b2dfdc029481c0da7ecdedca0abb0ec6fcc818c757",
+        "candidate_checkpoint_sha256": "fd1e08b2aad08b2e9754f9b2dfdc029481c0da7ecdedca0abb0ec6fcc818c757",
+        "postprocess": {
+          "type": "pair_threshold",
+          "pair": [
+            0,
+            3
+          ],
+          "delta": -4.0
+        },
+        "selected_metrics": {
+          "accuracy": 0.9292604501607717,
+          "macro_f1": 0.8544172448193348,
+          "per_class_f1": {
+            "0": 0.8288288288288288,
+            "1": 0.9422776911076443,
+            "2": 0.9950248756218906,
+            "3": 0.6974789915966386,
+            "4": 0.9962264150943396,
+            "5": 0.6666666666666666
+          }
+        },
+        "a_final_guard": {
+          "passed": true,
+          "overall_delta": 0.14038752274046384,
+          "supported_class_mean_delta": 0.16846502728855667,
+          "per_class_delta": {
+            "0": 0.14484614484614478,
+            "1": 0.0,
+            "2": 0.0,
+            "3": 0.6974789915966386,
+            "4": 0.0
+          },
+          "minimum_class_support": 63,
+          "margin": 0.004,
+          "scope": "public point-estimate guard, not hidden-stage evidence"
+        },
+        "b_final_guard": null,
+        "candidates": [
+          {
+            "kind": "retain",
+            "primary": 0.7140297220788709,
+            "metrics": {
+              "accuracy": 0.8786173633440515,
+              "macro_f1": 0.7140297220788709,
+              "per_class_f1": {
+                "0": 0.683982683982684,
+                "1": 0.9422776911076443,
+                "2": 0.9950248756218906,
+                "3": 0.0,
+                "4": 0.9962264150943396,
+                "5": 0.6666666666666666
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_trained",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "recenter",
+            "primary": 0.7256743598217947,
+            "metrics": {
+              "accuracy": 0.8866559485530546,
+              "macro_f1": 0.7256743598217947,
+              "per_class_f1": {
+                "0": 0.6975717439293598,
+                "1": 0.9602446483180428,
+                "2": 0.9847715736040609,
+                "3": 0.0,
+                "4": 0.9971724787935909,
+                "5": 0.7142857142857143
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_recorded",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "recenter",
+            "primary": 0.7036032096913405,
+            "metrics": {
+              "accuracy": 0.8729903536977492,
+              "macro_f1": 0.7036032096913405,
+              "per_class_f1": {
+                "0": 0.6738197424892703,
+                "1": 0.9324960753532182,
+                "2": 0.9950248756218906,
+                "3": 0.0,
+                "4": 0.9952785646836638,
+                "5": 0.625
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_recorded",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "pair_history",
+            "primary": 0.8544172448193348,
+            "metrics": {
+              "accuracy": 0.9292604501607717,
+              "macro_f1": 0.8544172448193348,
+              "per_class_f1": {
+                "0": 0.8288288288288288,
+                "1": 0.9422776911076443,
+                "2": 0.9950248756218906,
+                "3": 0.6974789915966386,
+                "4": 0.9962264150943396,
+                "5": 0.6666666666666666
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_recorded",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "continue_train",
+            "primary": 0.7156581637303541,
+            "metrics": {
+              "accuracy": 0.8802250803858521,
+              "macro_f1": 0.7156581637303541,
+              "per_class_f1": {
+                "0": 0.6869565217391305,
+                "1": 0.9440993788819876,
+                "2": 1.0,
+                "3": 0.0,
+                "4": 0.9962264150943396,
+                "5": 0.6666666666666666
+              }
+            },
+            "experiment_cache": {
+              "cache_hit": false,
+              "cache_key": "3708411e506bb30b9c2bbab4a0cbf4c2cbce0cf69184a6f0e19780f3350443c6",
+              "parent_sha256": "fd1e08b2aad08b2e9754f9b2dfdc029481c0da7ecdedca0abb0ec6fcc818c757",
+              "train_sha256": "25aff66d0c09db74fba20b0353da09375d544fbf6539ba00bbfc1404866c8cbd",
+              "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+              "cache_enabled": true,
+              "cache_source": "fit",
+              "disk_budget": {
+                "entries": 8,
+                "bytes": 16777216
+              }
+            },
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "trained",
+            "parameters": {
+              "epochs": 20,
+              "learning_rate": null,
+              "seed": 20261117
+            }
+          },
+          {
+            "kind": "capacity_ls10",
+            "primary": 0.6591029091173902,
+            "metrics": {
+              "accuracy": 0.8729903536977492,
+              "macro_f1": 0.6591029091173902,
+              "per_class_f1": {
+                "0": 0.6636568848758465,
+                "1": 0.9476923076923077,
+                "2": 0.98989898989899,
+                "3": 0.0,
+                "4": 0.9962264150943396,
+                "5": 0.35714285714285715
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_recorded",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 20261117
+            }
+          }
+        ],
+        "model_call_count": 3,
+        "journal_rounds": 1,
+        "state_files": 31
+      },
+      {
+        "round": 2,
+        "chosen": "pair_history",
+        "controller": "kernel->pipeline",
+        "parent_checkpoint_sha256": "sha256:fd1e08b2aad08b2e9754f9b2dfdc029481c0da7ecdedca0abb0ec6fcc818c757",
+        "candidate_checkpoint_sha256": "fd1e08b2aad08b2e9754f9b2dfdc029481c0da7ecdedca0abb0ec6fcc818c757",
+        "postprocess": {
+          "type": "pair_threshold",
+          "pair": [
+            0,
+            3
+          ],
+          "delta": -4.0
+        },
+        "selected_metrics": {
+          "accuracy": 0.9292604501607717,
+          "macro_f1": 0.8544172448193348,
+          "per_class_f1": {
+            "0": 0.8288288288288288,
+            "1": 0.9422776911076443,
+            "2": 0.9950248756218906,
+            "3": 0.6974789915966386,
+            "4": 0.9962264150943396,
+            "5": 0.6666666666666666
+          }
+        },
+        "a_final_guard": {
+          "passed": true,
+          "overall_delta": 0.0,
+          "supported_class_mean_delta": 0.0,
+          "per_class_delta": {
+            "0": 0.0,
+            "1": 0.0,
+            "2": 0.0,
+            "3": 0.0,
+            "4": 0.0
+          },
+          "minimum_class_support": 63,
+          "margin": 0.004,
+          "scope": "public point-estimate guard, not hidden-stage evidence"
+        },
+        "b_final_guard": null,
+        "candidates": [
+          {
+            "kind": "retain",
+            "primary": 0.8544172448193348,
+            "metrics": {
+              "accuracy": 0.9292604501607717,
+              "macro_f1": 0.8544172448193348,
+              "per_class_f1": {
+                "0": 0.8288288288288288,
+                "1": 0.9422776911076443,
+                "2": 0.9950248756218906,
+                "3": 0.6974789915966386,
+                "4": 0.9962264150943396,
+                "5": 0.6666666666666666
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_trained",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "recenter",
+            "primary": 0.7256743598217947,
+            "metrics": {
+              "accuracy": 0.8866559485530546,
+              "macro_f1": 0.7256743598217947,
+              "per_class_f1": {
+                "0": 0.6975717439293598,
+                "1": 0.9602446483180428,
+                "2": 0.9847715736040609,
+                "3": 0.0,
+                "4": 0.9971724787935909,
+                "5": 0.7142857142857143
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_recorded",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "recenter",
+            "primary": 0.7036032096913405,
+            "metrics": {
+              "accuracy": 0.8729903536977492,
+              "macro_f1": 0.7036032096913405,
+              "per_class_f1": {
+                "0": 0.6738197424892703,
+                "1": 0.9324960753532182,
+                "2": 0.9950248756218906,
+                "3": 0.0,
+                "4": 0.9952785646836638,
+                "5": 0.625
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_recorded",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "pair_history",
+            "primary": 0.8544172448193348,
+            "metrics": {
+              "accuracy": 0.9292604501607717,
+              "macro_f1": 0.8544172448193348,
+              "per_class_f1": {
+                "0": 0.8288288288288288,
+                "1": 0.9422776911076443,
+                "2": 0.9950248756218906,
+                "3": 0.6974789915966386,
+                "4": 0.9962264150943396,
+                "5": 0.6666666666666666
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_recorded",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "continue_train",
+            "primary": 0.7156581637303541,
+            "metrics": {
+              "accuracy": 0.8802250803858521,
+              "macro_f1": 0.7156581637303541,
+              "per_class_f1": {
+                "0": 0.6869565217391305,
+                "1": 0.9440993788819876,
+                "2": 1.0,
+                "3": 0.0,
+                "4": 0.9962264150943396,
+                "5": 0.6666666666666666
+              }
+            },
+            "experiment_cache": {
+              "cache_hit": true,
+              "cache_key": "3708411e506bb30b9c2bbab4a0cbf4c2cbce0cf69184a6f0e19780f3350443c6",
+              "parent_sha256": "fd1e08b2aad08b2e9754f9b2dfdc029481c0da7ecdedca0abb0ec6fcc818c757",
+              "train_sha256": "25aff66d0c09db74fba20b0353da09375d544fbf6539ba00bbfc1404866c8cbd",
+              "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+              "cache_enabled": true,
+              "cache_source": "state",
+              "disk_budget": {
+                "entries": 8,
+                "bytes": 16777216
+              }
+            },
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "cache_reused",
+            "parameters": {
+              "epochs": 20,
+              "learning_rate": null,
+              "seed": 20261117
+            }
+          },
+          {
+            "kind": "capacity_ls10",
+            "primary": 0.6591029091173902,
+            "metrics": {
+              "accuracy": 0.8729903536977492,
+              "macro_f1": 0.6591029091173902,
+              "per_class_f1": {
+                "0": 0.6636568848758465,
+                "1": 0.9476923076923077,
+                "2": 0.98989898989899,
+                "3": 0.0,
+                "4": 0.9962264150943396,
+                "5": 0.35714285714285715
+              }
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_recorded",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 20261117
+            }
+          }
+        ],
+        "model_call_count": 3,
+        "journal_rounds": 2,
+        "state_files": 31
+      }
+    ],
+    "B": [
+      {
+        "round": 1,
+        "chosen": "retain",
+        "controller": "pipeline",
+        "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+        "candidate_checkpoint_sha256": "c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+        "postprocess": {
+          "type": "none"
+        },
+        "selected_metrics": {
+          "mae": 563.1058414514887,
+          "rmse": 681.1598326043113,
+          "nasa_score": 839321.1284858374,
+          "bias": -365.38394916105057
+        },
+        "a_final_guard": null,
+        "b_final_guard": {
+          "passed": false,
+          "group_guard": {
+            "passed": false,
+            "status": "bearing_regression",
+            "minimum_rows": 10,
+            "global": {
+              "parent": {
+                "rmse": 681.1598326043113,
+                "mae": 563.1058414514887
+              },
+              "candidate": {
+                "rmse": 663.6360593953132,
+                "mae": 559.4318172453917
+              },
+              "passed": true,
+              "failed_metrics": [],
+              "status": "noninferior"
+            },
+            "groups": {
+              "Bearing1_4": {
+                "rows": 122,
+                "unique_snapshots": 122,
+                "passed": false,
+                "status": "regression",
+                "parent": {
+                  "rmse": 241.98079883050283,
+                  "mae": 175.58693393738477
+                },
+                "candidate": {
+                  "rmse": 290.010084898141,
+                  "mae": 235.15155449006633
+                },
+                "failed_metrics": [
+                  "rmse",
+                  "mae"
+                ]
+              },
+              "Bearing2_4": {
+                "rows": 42,
+                "unique_snapshots": 42,
+                "passed": true,
+                "status": "noninferior",
+                "parent": {
+                  "rmse": 390.81504161336534,
+                  "mae": 328.14713559610186
+                },
+                "candidate": {
+                  "rmse": 381.69046966234913,
+                  "mae": 314.3045018750412
+                },
+                "failed_metrics": []
+              },
+              "Bearing3_4": {
+                "rows": 1515,
+                "unique_snapshots": 1515,
+                "passed": true,
+                "status": "noninferior",
+                "parent": {
+                  "rmse": 710.8130722393482,
+                  "mae": 600.82569119581
+                },
+                "candidate": {
+                  "rmse": 690.85173920167,
+                  "mae": 592.3410841112031
+                },
+                "failed_metrics": []
+              }
+            },
+            "insufficient": [],
+            "unknown_rows": 0,
+            "coverage": {
+              "total_rows": 1679,
+              "recognized_rows": 1679,
+              "supported_rows": 1679,
+              "supported_groups": [
+                "Bearing1_4",
+                "Bearing2_4",
+                "Bearing3_4"
+              ],
+              "complete": true
+            },
+            "limitation": "Public bearing point estimates do not establish hidden-stage or unseen-bearing safety."
+          },
+          "parent": {
+            "mae": 563.1058414514887,
+            "rmse": 681.1598326043113,
+            "nasa_score": 839321.1284858374,
+            "bias": -365.38394916105057
+          },
+          "candidate": {
+            "mae": 559.4318172453917,
+            "rmse": 663.6360593953132,
+            "nasa_score": 858840.2003308206,
+            "bias": -322.7836249332114
+          }
+        },
+        "candidates": [
+          {
+            "kind": "retain",
+            "primary": 681.1598326043113,
+            "metrics": {
+              "mae": 563.1058414514887,
+              "rmse": 681.1598326043113,
+              "nasa_score": 839321.1284858374,
+              "bias": -365.38394916105057
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_trained",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "continue_train",
+            "primary": 663.6360593953132,
+            "metrics": {
+              "mae": 559.4318172453917,
+              "rmse": 663.6360593953132,
+              "nasa_score": 858840.2003308206,
+              "bias": -322.7836249332114
+            },
+            "experiment_cache": {
+              "cache_hit": false,
+              "cache_key": "204714670a8b61756ad4c7c833ab611b306cad736c684e29aa968a95ba3d7deb",
+              "parent_sha256": "c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+              "train_sha256": "39590d7d4f541624a2173bb2538c48e6e7b69bad284bded0e4226945fa9bc9fd",
+              "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+              "cache_enabled": true,
+              "cache_source": "fit",
+              "disk_budget": {
+                "entries": 8,
+                "bytes": 16777216
+              }
+            },
+            "alpha": null,
+            "group_guard": {
+              "passed": false,
+              "status": "bearing_regression",
+              "minimum_rows": 10,
+              "global": {
+                "parent": {
+                  "rmse": 681.1598326043113,
+                  "mae": 563.1058414514887
+                },
+                "candidate": {
+                  "rmse": 663.6360593953132,
+                  "mae": 559.4318172453917
+                },
+                "passed": true,
+                "failed_metrics": [],
+                "status": "noninferior"
+              },
+              "groups": {
+                "Bearing1_4": {
+                  "rows": 122,
+                  "unique_snapshots": 122,
+                  "passed": false,
+                  "status": "regression",
+                  "parent": {
+                    "rmse": 241.98079883050283,
+                    "mae": 175.58693393738477
+                  },
+                  "candidate": {
+                    "rmse": 290.010084898141,
+                    "mae": 235.15155449006633
+                  },
+                  "failed_metrics": [
+                    "rmse",
+                    "mae"
+                  ]
+                },
+                "Bearing2_4": {
+                  "rows": 42,
+                  "unique_snapshots": 42,
+                  "passed": true,
+                  "status": "noninferior",
+                  "parent": {
+                    "rmse": 390.81504161336534,
+                    "mae": 328.14713559610186
+                  },
+                  "candidate": {
+                    "rmse": 381.69046966234913,
+                    "mae": 314.3045018750412
+                  },
+                  "failed_metrics": []
+                },
+                "Bearing3_4": {
+                  "rows": 1515,
+                  "unique_snapshots": 1515,
+                  "passed": true,
+                  "status": "noninferior",
+                  "parent": {
+                    "rmse": 710.8130722393482,
+                    "mae": 600.82569119581
+                  },
+                  "candidate": {
+                    "rmse": 690.85173920167,
+                    "mae": 592.3410841112031
+                  },
+                  "failed_metrics": []
+                }
+              },
+              "insufficient": [],
+              "unknown_rows": 0,
+              "coverage": {
+                "total_rows": 1679,
+                "recognized_rows": 1679,
+                "supported_rows": 1679,
+                "supported_groups": [
+                  "Bearing1_4",
+                  "Bearing2_4",
+                  "Bearing3_4"
+                ],
+                "complete": true
+              },
+              "limitation": "Public bearing point estimates do not establish hidden-stage or unseen-bearing safety."
+            },
+            "training_action": "trained",
+            "parameters": {
+              "epochs": 15,
+              "learning_rate": 0.001,
+              "seed": 42
+            }
+          }
+        ],
+        "model_call_count": 1,
+        "journal_rounds": 1,
+        "state_files": 5
+      },
+      {
+        "round": 2,
+        "chosen": "retain",
+        "controller": "pipeline",
+        "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+        "candidate_checkpoint_sha256": "c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+        "postprocess": {
+          "type": "none"
+        },
+        "selected_metrics": {
+          "mae": 563.1058414514887,
+          "rmse": 681.1598326043113,
+          "nasa_score": 839321.1284858374,
+          "bias": -365.38394916105057
+        },
+        "a_final_guard": null,
+        "b_final_guard": {
+          "passed": false,
+          "group_guard": {
+            "passed": false,
+            "status": "bearing_regression",
+            "minimum_rows": 10,
+            "global": {
+              "parent": {
+                "rmse": 681.1598326043113,
+                "mae": 563.1058414514887
+              },
+              "candidate": {
+                "rmse": 663.6360593953132,
+                "mae": 559.4318172453917
+              },
+              "passed": true,
+              "failed_metrics": [],
+              "status": "noninferior"
+            },
+            "groups": {
+              "Bearing1_4": {
+                "rows": 122,
+                "unique_snapshots": 122,
+                "passed": false,
+                "status": "regression",
+                "parent": {
+                  "rmse": 241.98079883050283,
+                  "mae": 175.58693393738477
+                },
+                "candidate": {
+                  "rmse": 290.010084898141,
+                  "mae": 235.15155449006633
+                },
+                "failed_metrics": [
+                  "rmse",
+                  "mae"
+                ]
+              },
+              "Bearing2_4": {
+                "rows": 42,
+                "unique_snapshots": 42,
+                "passed": true,
+                "status": "noninferior",
+                "parent": {
+                  "rmse": 390.81504161336534,
+                  "mae": 328.14713559610186
+                },
+                "candidate": {
+                  "rmse": 381.69046966234913,
+                  "mae": 314.3045018750412
+                },
+                "failed_metrics": []
+              },
+              "Bearing3_4": {
+                "rows": 1515,
+                "unique_snapshots": 1515,
+                "passed": true,
+                "status": "noninferior",
+                "parent": {
+                  "rmse": 710.8130722393482,
+                  "mae": 600.82569119581
+                },
+                "candidate": {
+                  "rmse": 690.85173920167,
+                  "mae": 592.3410841112031
+                },
+                "failed_metrics": []
+              }
+            },
+            "insufficient": [],
+            "unknown_rows": 0,
+            "coverage": {
+              "total_rows": 1679,
+              "recognized_rows": 1679,
+              "supported_rows": 1679,
+              "supported_groups": [
+                "Bearing1_4",
+                "Bearing2_4",
+                "Bearing3_4"
+              ],
+              "complete": true
+            },
+            "limitation": "Public bearing point estimates do not establish hidden-stage or unseen-bearing safety."
+          },
+          "parent": {
+            "mae": 563.1058414514887,
+            "rmse": 681.1598326043113,
+            "nasa_score": 839321.1284858374,
+            "bias": -365.38394916105057
+          },
+          "candidate": {
+            "mae": 559.4318172453917,
+            "rmse": 663.6360593953132,
+            "nasa_score": 858840.2003308206,
+            "bias": -322.7836249332114
+          }
+        },
+        "candidates": [
+          {
+            "kind": "retain",
+            "primary": 681.1598326043113,
+            "metrics": {
+              "mae": 563.1058414514887,
+              "rmse": 681.1598326043113,
+              "nasa_score": 839321.1284858374,
+              "bias": -365.38394916105057
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_trained",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "continue_train",
+            "primary": 663.6360593953132,
+            "metrics": {
+              "mae": 559.4318172453917,
+              "rmse": 663.6360593953132,
+              "nasa_score": 858840.2003308206,
+              "bias": -322.7836249332114
+            },
+            "experiment_cache": {
+              "cache_hit": true,
+              "cache_key": "204714670a8b61756ad4c7c833ab611b306cad736c684e29aa968a95ba3d7deb",
+              "parent_sha256": "c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+              "train_sha256": "39590d7d4f541624a2173bb2538c48e6e7b69bad284bded0e4226945fa9bc9fd",
+              "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+              "cache_enabled": true,
+              "cache_source": "state",
+              "disk_budget": {
+                "entries": 8,
+                "bytes": 16777216
+              }
+            },
+            "alpha": null,
+            "group_guard": {
+              "passed": false,
+              "status": "bearing_regression",
+              "minimum_rows": 10,
+              "global": {
+                "parent": {
+                  "rmse": 681.1598326043113,
+                  "mae": 563.1058414514887
+                },
+                "candidate": {
+                  "rmse": 663.6360593953132,
+                  "mae": 559.4318172453917
+                },
+                "passed": true,
+                "failed_metrics": [],
+                "status": "noninferior"
+              },
+              "groups": {
+                "Bearing1_4": {
+                  "rows": 122,
+                  "unique_snapshots": 122,
+                  "passed": false,
+                  "status": "regression",
+                  "parent": {
+                    "rmse": 241.98079883050283,
+                    "mae": 175.58693393738477
+                  },
+                  "candidate": {
+                    "rmse": 290.010084898141,
+                    "mae": 235.15155449006633
+                  },
+                  "failed_metrics": [
+                    "rmse",
+                    "mae"
+                  ]
+                },
+                "Bearing2_4": {
+                  "rows": 42,
+                  "unique_snapshots": 42,
+                  "passed": true,
+                  "status": "noninferior",
+                  "parent": {
+                    "rmse": 390.81504161336534,
+                    "mae": 328.14713559610186
+                  },
+                  "candidate": {
+                    "rmse": 381.69046966234913,
+                    "mae": 314.3045018750412
+                  },
+                  "failed_metrics": []
+                },
+                "Bearing3_4": {
+                  "rows": 1515,
+                  "unique_snapshots": 1515,
+                  "passed": true,
+                  "status": "noninferior",
+                  "parent": {
+                    "rmse": 710.8130722393482,
+                    "mae": 600.82569119581
+                  },
+                  "candidate": {
+                    "rmse": 690.85173920167,
+                    "mae": 592.3410841112031
+                  },
+                  "failed_metrics": []
+                }
+              },
+              "insufficient": [],
+              "unknown_rows": 0,
+              "coverage": {
+                "total_rows": 1679,
+                "recognized_rows": 1679,
+                "supported_rows": 1679,
+                "supported_groups": [
+                  "Bearing1_4",
+                  "Bearing2_4",
+                  "Bearing3_4"
+                ],
+                "complete": true
+              },
+              "limitation": "Public bearing point estimates do not establish hidden-stage or unseen-bearing safety."
+            },
+            "training_action": "cache_reused",
+            "parameters": {
+              "epochs": 15,
+              "learning_rate": 0.001,
+              "seed": 42
+            }
+          }
+        ],
+        "model_call_count": 1,
+        "journal_rounds": 2,
+        "state_files": 5
+      },
+      {
+        "round": 3,
+        "chosen": "retain",
+        "controller": "pipeline",
+        "parent_checkpoint_sha256": "sha256:c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+        "candidate_checkpoint_sha256": "c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+        "postprocess": {
+          "type": "none"
+        },
+        "selected_metrics": {
+          "mae": 563.1058414514887,
+          "rmse": 681.1598326043113,
+          "nasa_score": 839321.1284858374,
+          "bias": -365.38394916105057
+        },
+        "a_final_guard": null,
+        "b_final_guard": {
+          "passed": false,
+          "group_guard": {
+            "passed": false,
+            "status": "bearing_regression",
+            "minimum_rows": 10,
+            "global": {
+              "parent": {
+                "rmse": 681.1598326043113,
+                "mae": 563.1058414514887
+              },
+              "candidate": {
+                "rmse": 663.6360593953132,
+                "mae": 559.4318172453917
+              },
+              "passed": true,
+              "failed_metrics": [],
+              "status": "noninferior"
+            },
+            "groups": {
+              "Bearing1_4": {
+                "rows": 122,
+                "unique_snapshots": 122,
+                "passed": false,
+                "status": "regression",
+                "parent": {
+                  "rmse": 241.98079883050283,
+                  "mae": 175.58693393738477
+                },
+                "candidate": {
+                  "rmse": 290.010084898141,
+                  "mae": 235.15155449006633
+                },
+                "failed_metrics": [
+                  "rmse",
+                  "mae"
+                ]
+              },
+              "Bearing2_4": {
+                "rows": 42,
+                "unique_snapshots": 42,
+                "passed": true,
+                "status": "noninferior",
+                "parent": {
+                  "rmse": 390.81504161336534,
+                  "mae": 328.14713559610186
+                },
+                "candidate": {
+                  "rmse": 381.69046966234913,
+                  "mae": 314.3045018750412
+                },
+                "failed_metrics": []
+              },
+              "Bearing3_4": {
+                "rows": 1515,
+                "unique_snapshots": 1515,
+                "passed": true,
+                "status": "noninferior",
+                "parent": {
+                  "rmse": 710.8130722393482,
+                  "mae": 600.82569119581
+                },
+                "candidate": {
+                  "rmse": 690.85173920167,
+                  "mae": 592.3410841112031
+                },
+                "failed_metrics": []
+              }
+            },
+            "insufficient": [],
+            "unknown_rows": 0,
+            "coverage": {
+              "total_rows": 1679,
+              "recognized_rows": 1679,
+              "supported_rows": 1679,
+              "supported_groups": [
+                "Bearing1_4",
+                "Bearing2_4",
+                "Bearing3_4"
+              ],
+              "complete": true
+            },
+            "limitation": "Public bearing point estimates do not establish hidden-stage or unseen-bearing safety."
+          },
+          "parent": {
+            "mae": 563.1058414514887,
+            "rmse": 681.1598326043113,
+            "nasa_score": 839321.1284858374,
+            "bias": -365.38394916105057
+          },
+          "candidate": {
+            "mae": 559.4318172453917,
+            "rmse": 663.6360593953132,
+            "nasa_score": 858840.2003308206,
+            "bias": -322.7836249332114
+          }
+        },
+        "candidates": [
+          {
+            "kind": "retain",
+            "primary": 681.1598326043113,
+            "metrics": {
+              "mae": 563.1058414514887,
+              "rmse": 681.1598326043113,
+              "nasa_score": 839321.1284858374,
+              "bias": -365.38394916105057
+            },
+            "experiment_cache": null,
+            "alpha": null,
+            "group_guard": null,
+            "training_action": "not_trained",
+            "parameters": {
+              "epochs": null,
+              "learning_rate": null,
+              "seed": 42
+            }
+          },
+          {
+            "kind": "continue_train",
+            "primary": 663.6360593953132,
+            "metrics": {
+              "mae": 559.4318172453917,
+              "rmse": 663.6360593953132,
+              "nasa_score": 858840.2003308206,
+              "bias": -322.7836249332114
+            },
+            "experiment_cache": {
+              "cache_hit": true,
+              "cache_key": "204714670a8b61756ad4c7c833ab611b306cad736c684e29aa968a95ba3d7deb",
+              "parent_sha256": "c7d819fcee9d25459c583b5ffdb35593d4a47b524ed152d0226bf81a283314b4",
+              "train_sha256": "39590d7d4f541624a2173bb2538c48e6e7b69bad284bded0e4226945fa9bc9fd",
+              "code_sha256": "e1fba885fcb5b5a9bf78279ff39a5b0eb1e46deac404c9bde1dd46dc7ea07c20",
+              "cache_enabled": true,
+              "cache_source": "state",
+              "disk_budget": {
+                "entries": 8,
+                "bytes": 16777216
+              }
+            },
+            "alpha": null,
+            "group_guard": {
+              "passed": false,
+              "status": "bearing_regression",
+              "minimum_rows": 10,
+              "global": {
+                "parent": {
+                  "rmse": 681.1598326043113,
+                  "mae": 563.1058414514887
+                },
+                "candidate": {
+                  "rmse": 663.6360593953132,
+                  "mae": 559.4318172453917
+                },
+                "passed": true,
+                "failed_metrics": [],
+                "status": "noninferior"
+              },
+              "groups": {
+                "Bearing1_4": {
+                  "rows": 122,
+                  "unique_snapshots": 122,
+                  "passed": false,
+                  "status": "regression",
+                  "parent": {
+                    "rmse": 241.98079883050283,
+                    "mae": 175.58693393738477
+                  },
+                  "candidate": {
+                    "rmse": 290.010084898141,
+                    "mae": 235.15155449006633
+                  },
+                  "failed_metrics": [
+                    "rmse",
+                    "mae"
+                  ]
+                },
+                "Bearing2_4": {
+                  "rows": 42,
+                  "unique_snapshots": 42,
+                  "passed": true,
+                  "status": "noninferior",
+                  "parent": {
+                    "rmse": 390.81504161336534,
+                    "mae": 328.14713559610186
+                  },
+                  "candidate": {
+                    "rmse": 381.69046966234913,
+                    "mae": 314.3045018750412
+                  },
+                  "failed_metrics": []
+                },
+                "Bearing3_4": {
+                  "rows": 1515,
+                  "unique_snapshots": 1515,
+                  "passed": true,
+                  "status": "noninferior",
+                  "parent": {
+                    "rmse": 710.8130722393482,
+                    "mae": 600.82569119581
+                  },
+                  "candidate": {
+                    "rmse": 690.85173920167,
+                    "mae": 592.3410841112031
+                  },
+                  "failed_metrics": []
+                }
+              },
+              "insufficient": [],
+              "unknown_rows": 0,
+              "coverage": {
+                "total_rows": 1679,
+                "recognized_rows": 1679,
+                "supported_rows": 1679,
+                "supported_groups": [
+                  "Bearing1_4",
+                  "Bearing2_4",
+                  "Bearing3_4"
+                ],
+                "complete": true
+              },
+              "limitation": "Public bearing point estimates do not establish hidden-stage or unseen-bearing safety."
+            },
+            "training_action": "cache_reused",
+            "parameters": {
+              "epochs": 15,
+              "learning_rate": 0.001,
+              "seed": 42
+            }
+          }
+        ],
+        "model_call_count": 1,
+        "journal_rounds": 3,
+        "state_files": 5
+      }
+    ]
+  }
+}

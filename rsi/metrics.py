@@ -22,16 +22,25 @@ def classification_metrics(probabilities: np.ndarray, expected: np.ndarray, clas
     return result
 
 
-def regression_metrics(predicted: np.ndarray, expected: np.ndarray) -> dict:
+def regression_metrics(predicted: np.ndarray, expected: np.ndarray, *, profile=None) -> dict:
     error = predicted - expected
     result = {"mae": float(np.mean(np.abs(error))), "rmse": float(np.sqrt(np.mean(error ** 2)))}
-    # CMAPSS-style NASA score; normalized by sample count so units stay comparable.
-    # The score is only meaningful when the target unit is a cycle count (task C).
-    # For tasks whose target is minutes (task B) extreme errors would overflow the
-    # exponential, so the per-row penalty is capped at 1e6 for report readability;
-    # the platform only requires rmse+mae for task B, and selection never uses it.
-    penalty = np.where(error < 0, np.expm1(-error / 13.0), np.expm1(error / 10.0))
-    result["nasa_score"] = float(np.mean(np.minimum(penalty, 1e6)))
+    # C uses the official untruncated CMAPSS-style penalty sum in cycle units.
+    # Other profiles retain the legacy capped mean for report compatibility.
+    # In task B, minute-scale errors can overflow the exponential; the platform
+    # requires rmse+mae for B and selection never uses this auxiliary NASA value.
+    exponent = np.where(error < 0, -error / 13.0, error / 10.0)
+    with np.errstate(over="ignore"):
+        penalty = np.expm1(exponent)
+    if profile == "C":
+        # C's platform score is an untruncated sum. A nonrepresentable score
+        # stays explicit and JSON-safe so selection can reject the candidate.
+        with np.errstate(over="ignore"):
+            nasa_score = float(penalty.sum())
+        result["nasa_score"] = nasa_score if np.isfinite(nasa_score) else None
+        result["nasa_overflow"] = not np.isfinite(nasa_score)
+    else:
+        result["nasa_score"] = float(np.mean(np.minimum(penalty, 1e6)))
     result["bias"] = float(np.mean(error))
     return result
 
@@ -54,8 +63,8 @@ def improved(task: str, candidate: float, parent: float, minimum: float) -> bool
     return candidate <= parent - minimum
 
 
-def from_predictions(task: str, predicted, expected, classes=()) -> dict:
+def from_predictions(task: str, predicted, expected, classes=(), *, profile=None) -> dict:
     """Metrics for already-computed predictions (postprocess/TTA included)."""
     if task == "classification":
         return classification_metrics(predicted, expected, classes)
-    return regression_metrics(predicted, expected)
+    return regression_metrics(predicted, expected, profile=profile)
